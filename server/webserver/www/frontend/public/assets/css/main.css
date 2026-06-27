@@ -1,0 +1,197 @@
+/**
+ * Main Stylesheet for Chatbot Application.
+ *
+ * Provides styling for the chat interface including:
+ * - Responsive chat container with backdrop blur effect
+ * - Message bubble styling for user and bot messages
+ * - Avatar and description layout
+ * - Thinking indicator animation
+ * - Video message container styling
+ * - Form input styling with auto-resize
+ *
+ * Uses CSS variables and media queries for responsive design. Compatible with Bootstrap 5 utility classes.
+ *
+ * @stylesheet main.css
+ * @author Robert Abraham
+ */
+
+/** Body styling with optional background image support */
+body {
+    background-color: #f8f9fa;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    min-height: 100vh;
+}
+
+/** Card container with translucent background and blur effect */
+.card {
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: none;
+}
+
+/** Chat message container. Fixed height with vertical scroll, translucent background */
+.chat-box {
+    height: 36vh;
+    overflow-y: auto;
+    background-color: rgba(255, 255, 255, 0.6);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid rgba(222, 226, 230, 0.6);
+    border-bottom: 1px solid rgba(222, 226, 230, 0.6);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-radius: 0.5rem;
+}
+
+/** Base message container styling */
+.message {
+    margin-bottom: 1rem;
+    display: flex;
+}
+
+/** User message alignment */
+.user-message { justify-content: flex-end; }
+
+/** Chatbot message alignment */
+.chatbot-message { justify-content: flex-start; }
+
+/** Message bubble styling. Constrained width with word wrapping for text content */
+.bubble {
+    padding: 10px 14px;
+    border-radius: 15px;
+    max-width: 75%;
+    word-wrap: break-word;
+}
+
+/** User message bubble color (green tint) */
+.user-message .bubble { background-color: #d1e7dd; }
+
+/** Chatbot message bubble color (gray tint) */
+.chatbot-message .bubble { background-color: #e2e3e5; }
+
+/** Avatar container styling. Centered avatar with top margin */
+.avatar-container {
+    text-align: center;
+    margin-top: 20px;
+}
+
+/** Avatar image styling. Circular avatar with border and shadow */
+.avatar-container img {
+    background-color: #fff;
+    width: 150px;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 4px solid #007bff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    opacity: 1 !important;
+}
+
+/** Avatar description text styling */
+.description-text {
+    margin-top: 15px;
+    font-size: 1rem;
+    color: #555;
+}
+
+/** Thinking message indicator styling. Lighter background with italic text */
+.message.thinking .bubble {
+    background-color: #f0f0f0;
+    font-style: italic;
+    color: #666;
+    opacity: 0.8;
+    position: relative;
+}
+
+/** Animated dots for thinking indicator */
+.message.thinking .dots {
+    display: inline-block;
+    animation: blinkDots 1.2s infinite steps(3);
+}
+
+/** Video container styling. Flex layout for video message bubbles */
+.video-container {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/** Chat video styling. Rounded video player with max height constraint */
+.chat-video {
+    max-height: 240px;
+    width: auto;
+    border: 2px solid #dee2e6;
+    border-radius: 10px;
+    background-color: #000;
+    cursor: pointer;
+}
+
+/** Alert message styling */
+.alert {
+    font-size: 0.95rem;
+    padding: 10px 14px;
+    border-radius: 10px;
+}
+
+/** User input textarea styling. Auto-resizing disabled, height constrained */
+#user-input {
+    resize: none;
+    overflow-y: hidden;
+    min-height: 38px;
+    max-height: 150px;
+}
+
+/** Animated blinking dots keyframes */
+@keyframes blinkDots {
+    0% { content: "."; }
+    33% { content: ".."; }
+    66% { content: "..."; }
+}
+
+/** Large screen chat box height constraint */
+@media (min-height: 1000px) {
+    .chat-box { max-height: 600px; }
+}
+
+/** Tablet/desktop video max-height increase */
+@media (min-width: 768px) {
+    .chat-video { max-height: 360px; }
+}
+
+/** Small screen mobile optimizations */
+@media (max-width: 576px) {
+    .card { margin: 1rem; }
+    .avatar-container img {
+        width: 100px;
+        height: 100px;
+    }
+    .chat-video {
+        max-height: 200px;
+        width: 100%;
+        height: auto;
+    }
+}
+
+/** Top margin for main container */
+.container-fluid.pb-3 { margin-top: 1rem; }
+
+/** Gap spacing override */
+.gap-2 { gap: 0.5rem !important; }
+
+/** Very short screen height optimizations */
+@media (max-height: 600px) {
+    .avatar-container img {
+        width: 80px;
+        height: 80px;
+    }
+    .avatar-container { margin-top: 5px; }
+    .description-text { display: none; }
+}
+
+/** Hide vertical button groups */
+.btn-group-vertical { display: none !important; }

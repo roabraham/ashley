@@ -1,0 +1,18 @@
+info:
+  name: BAD REQUEST - test request
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: 127.0.0.1:5123/v1/chat/completions
+  body:
+    type: text
+    data: This is an invalid request to trigger errors.
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

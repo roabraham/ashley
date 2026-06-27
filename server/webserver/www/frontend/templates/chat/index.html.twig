@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ persona.chatbot_name }} Chatbot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{{ asset('assets/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/bootstrap-utilities.min.css') }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/main.css') }}" rel="stylesheet">
+    {% if persona.css_override %}
+        <style>{{ persona.css_override|raw }}</style>
+    {% endif %}
+</head>
+{% set llmEnabled = llm_config.llm_enabled ?? true %}
+{% set embeddingEnabled = llm_config.embedding_enabled ?? true %}
+{% set bothDisabled = (not llmEnabled) and (not embeddingEnabled) %}
+<body{% if persona.background_img and not bothDisabled %} style="background-image:url('{{ persona.background_img|raw }}');"{% endif %}>
+{% if bothDisabled %}
+<div class="container mt-5">
+    <div class="alert alert-danger">
+        <h4 class="alert-heading">Both AI Services Disabled</h4>
+        <p>The chatbot is currently unavailable because both the LLM engine and the embedding engine are disabled.</p>
+        <hr>
+        <p class="mb-0">To fix this issue, please enable at least one of the following services in your configuration:</p>
+        <ul class="mt-2">
+            <li><strong>LLM Engine</strong> - For conversational responses</li>
+            <li><strong>Embedding Engine</strong> - For semantic behavior matching</li>
+        </ul>
+        <p class="mt-3"><small>Enable at least one of the services in the service manager or check your <code>wrapper.json</code> configuration file.</small></p>
+    </div>
+</div>
+{% else %}
+<div class="container py-4">
+    <div class="card shadow-lg">
+        <div class="card-header bg-primary text-white text-center">
+            <h4 class="mb-0">{{ persona.chatbot_name }} Chatbot</h4>
+        </div>
+        {% if persona.avatar_img %}
+        <div class="avatar-container">
+            <img src="{{ persona.avatar_img|raw }}" alt="Avatar">
+            {% if persona.description %}
+                <p class="description-text">{{ persona.description }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        <div class="card-body chat-box" id="chat-box" tabindex="0"></div>
+        <div class="card-footer">
+            <form id="chat-form" class="d-flex">
+                <textarea id="user-input" class="form-control me-2" rows="1" placeholder="Write your message..." autocomplete="off" required tabindex="1"></textarea>
+                <button class="btn btn-success" type="submit" tabindex="2">Submit</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+<script src="{{ asset('assets/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ asset('assets/js/main.js') }}"></script>
+<script>
+    // Chatbot configuration from PHP
+    var CHATBOT_NAME = {{ persona.chatbot_name|json_encode|raw }};
+    var INITIAL_MESSAGE = {{ persona.initial_message|json_encode|raw }};
+    var LLM_ENDPOINT = {{ llm_config.llm_endpoint|json_encode|raw }};
+    var LLM_HOST_URL = {{ (llm_config.proxy_location ?? '/llamacpp/')|json_encode|raw }};
+    var API_ENDPOINT = '/api/chat';
+    var RESPONSE_MODE = {{ persona.response_mode ?? 1 }};
+    var LLM_CTX_SIZE = {{ llm_ctx_size }};
+    var LLM_MAX_RESPONSE_TOKENS = {{ llm_max_response_tokens }};
+    var SAFETY_MARGIN = {{ safety_margin }};
+    var EMBEDDING_ENABLED = {{ embeddingEnabled ? 'true' : 'false' }};
+    var SYSTEM_PROMPT = {{ persona.active_prompt|json_encode|raw }};
+    var WARNING_THRESHOLD = {{ warning_threshold }};
+    // Check if there's existing session conversation data (for response mode 1)
+    var HAS_SESSION_CONVERSATION = {{ has_session_conversation ? 'true' : 'false' }};
+ </script>
+<div id="confirm-modal" class="modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="confirm-ok-btn" class="btn btn-primary">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="error-modal" class="modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Error</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="error-message">An error occurred.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid pb-2">
+    <div class="d-flex flex-wrap justify-content-center gap-2">
+        {% if llmEnabled %}
+        <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm px-3" style="border-radius: 15px; font-size: 0.75rem;" target="_blank">llama.cpp</a>
+        {% endif %}
+        <button id="export-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm px-3" style="display: none; border-radius: 15px; font-size: 0.75rem;">Export</button>
+        <button id="import-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm px-3" style="border-radius: 15px; font-size: 0.75rem;">Import</button>
+        <button id="new-session-btn" type="button" class="btn btn-secondary btn-sm shadow-sm px-3" style="border-radius: 15px; font-size: 0.75rem;">New</button>
+    </div>
+</div>
+<input type="file" id="import-conversation-input" accept=".json,application/json" style="display: none;" aria-label="Import conversation file">
+</body>
+</html>

@@ -1,0 +1,10 @@
+/**
+ * Application Styles Entry Point.
+ *
+ * This stylesheet is imported by app.js and serves as the main application CSS entry point. It is processed by Symfony's AssetMapper.
+ *
+ * Current styling: Sets the body background color to sky blue. This is overridden by main.css for the chat interface.
+ */
+body {
+    background-color: skyblue;
+}

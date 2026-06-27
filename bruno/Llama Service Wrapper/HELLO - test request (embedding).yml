@@ -1,0 +1,24 @@
+info:
+  name: HELLO - test request (embedding)
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: 127.0.0.1:5123/v1/embeddings
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "input":"HELLO"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

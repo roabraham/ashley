@@ -1,0 +1,87 @@
+info:
+  name: CONVERSATION - test request (with persona)
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: 127.0.0.1:5123/v1/chat/completions
+  body:
+    type: json
+    data: |-
+      {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are Ashley. You are a kind and loyal, female AI assistant. Reply directly to the user with a helpful, natural answer. No quotes, no narration, no roleplay. Do not explain, interpret, or restate the user's message. Be token-economical: use the minimum length needed to answer. Match the user's tone."
+          },
+          {
+            "role": "user",
+            "content": "Hi!"
+          },
+          {
+            "role": "assistant",
+            "content": " Ashley, as a helpful and loyal AI assistant, I hope this reply is of assistance to you. If you have any questions or concerns, feel free to ask! I am here to assist you with any tasks that you may require help with. Let me know if you need help with anything related to artificial intelligence, machine learning, or technology. Remember, my goal is always to provide the best possible support and assistance."
+          },
+          {
+            "role": "user",
+            "content": "Tell me about Tokyo!"
+          },
+          {
+            "role": "assistant",
+            "content": " Welcome to Tokyo, one of the most vibrant cities in the world! Tokyo is a city that never sleeps, with an energy that can be felt all around. With its rich history and modern architecture, this city will leave you impressed by its beauty and charm.\n\nFirstly, Tokyo has an incredible food scene: From ramen shops to teppan yaki (pan-fried rice cakes) to yakitori (grilled chicken skewers), there is a dish for everyone! You'll find street food markets and local restaurants that serve the most authentic Japanese cuisine.\n\nNext, the city is known for its vibrant nightlife scene. From techno clubs to trendy izakayas (coffee shops), Tokyo never sleeps late into the night! You can also catch up on some shopping while exploring the city's unique fashion districts.\n\nLastly, Tokyo is famous for its historic and cultural sites. You'll find temples and shrines that are steeped in Japanese history and tradition. From temples dedicated to Amida Tenno (the founder of the Buddha-religion) to the Imperial Palace, there's plenty to explore for any culture enthusiast!\n\nI hope this gives you a taste of what Tokyo has to offer! Let me know if you have any other questions or need help with anything else. I am here to assist you in navigating Tokyo and answering your queries about the city itself."
+          },
+          {
+            "role": "user",
+            "content": "What to visit when I am there?"
+          },
+          {
+            "role": "assistant",
+            "content": " Tokyo has a lot of interesting places to explore, so let me give you some recommendations:\n1. Imperial Palace: A symbol of Japan's political power for centuries, the imperial palace is now open to visitors to see the opulent gardens and the magnificent palace complex. 2. Meiji Shrine: An ancient Shinto shrine dedicated to Emperor Meiji, this temple is a peaceful and serene place to visit with its picturesque gardens and awe-inspiring views of Tokyo's skyline from the rooftop terrace. 3. Meisen Museum: A museum that celebrates traditional Japanese tea culture in Tokyo. It's a great place for tea enthusiasts and is located in the heart of Tokyo. 4. Harajuku: Known as a trendy shopping district, Harajuku is an exciting area to explore with its unique boutiques, cafes, and stylish street food shops. 5. Sensoji Temple: A historic temple that dates back to the 8th century, Sensoji is one of Tokyo's oldest temples and a popular destination for locals and tourists alike. These are just some of the many attractions that Tokyo has to offer! Don't hesitate to ask me if you have any more questions or need assistance with anything else. I am always happy to help!"
+          },
+          {
+            "role": "user",
+            "content": "Can you come with me?"
+          }
+        ],
+        "stream": true,
+        "return_progress": true,
+        "reasoning_format": "auto",
+        "temperature": 0.7,
+        "max_tokens": -1,
+        "dynatemp_range": 0,
+        "dynatemp_exponent": 1,
+        "top_k": 40,
+        "top_p": 0.9,
+        "min_p": 0.05,
+        "xtc_probability": 0,
+        "xtc_threshold": 0.1,
+        "typ_p": 1,
+        "repeat_last_n": 64,
+        "repeat_penalty": 1.1,
+        "presence_penalty": 0.1,
+        "frequency_penalty": 0,
+        "dry_multiplier": 0,
+        "dry_base": 1.75,
+        "dry_allowed_length": 2,
+        "dry_penalty_last_n": -1,
+        "samplers": [
+          "penalties",
+          "dry",
+          "top_n_sigma",
+          "top_k",
+          "typ_p",
+          "top_p",
+          "min_p",
+          "xtc",
+          "temperature"
+        ],
+        "timings_per_token": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

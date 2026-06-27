@@ -1,0 +1,97 @@
+<?php
+
+/*
+ * This file is part of the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace Symfony\UX\Turbo\Bridge\Mercure;
+
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Twig\MercureExtension;
+use Symfony\UX\StimulusBundle\Helper\StimulusHelper;
+use Symfony\UX\Turbo\Broadcaster\IdAccessor;
+use Symfony\UX\Turbo\Twig\TurboStreamListenRendererInterface;
+use Twig\Environment;
+use Twig\Error\RuntimeError;
+use Twig\Extension\AbstractExtension;
+
+/**
+ * Renders the attributes to load the "mercure-turbo-stream" controller.
+ *
+ * @author Kévin Dunglas <kevin@dunglas.fr>
+ */
+final class TurboStreamListenRenderer implements TurboStreamListenRendererInterface
+{
+    public function __construct(
+        private HubInterface $hub,
+        private StimulusHelper $stimulusHelper,
+        private IdAccessor $idAccessor,
+        private Environment $twig,
+    ) {
+    }
+
+    public function renderTurboStreamListen(Environment $env, $topic, array $eventSourceOptions = []): string
+    {
+        $topics = $topic instanceof TopicSet
+            ? array_map($this->resolveTopic(...), $topic->getTopics())
+            : [$this->resolveTopic($topic)];
+
+        $controllerAttributes = ['hub' => $this->hub->getPublicUrl()];
+        if (1 < \count($topics)) {
+            $controllerAttributes['topics'] = $topics;
+        } else {
+            $controllerAttributes['topic'] = current($topics);
+        }
+
+        if ([] !== $eventSourceOptions) {
+            try {
+                // Mercure >= 0.7: https://github.com/symfony/mercure/pull/123
+                /* @phpstan-ignore-next-line function.alreadyNarrowedType */
+                $mercure = is_subclass_of(MercureExtension::class, AbstractExtension::class)
+                    ? $this->twig->getExtension(MercureExtension::class) /* @phpstan-ignore argument.templateType */
+                    : $this->twig->getRuntime(MercureExtension::class);
+
+                if ($eventSourceOptions['withCredentials'] ?? false) {
+                    $eventSourceOptions['subscribe'] ??= $topics;
+                    $controllerAttributes['withCredentials'] = true;
+                }
+
+                $mercure->mercure($topics, $eventSourceOptions);
+            } catch (RuntimeError $e) {
+            }
+        }
+
+        $stimulusAttributes = $this->stimulusHelper->createStimulusAttributes();
+        $stimulusAttributes->addController(
+            'symfony/ux-turbo/mercure-turbo-stream',
+            $controllerAttributes,
+        );
+
+        return (string) $stimulusAttributes;
+    }
+
+    private function resolveTopic(object|string $topic): string
+    {
+        if (\is_object($topic)) {
+            $class = $topic::class;
+
+            if (!$id = $this->idAccessor->getEntityId($topic)) {
+                throw new \LogicException(\sprintf('Cannot listen to entity of class "%s" as the PropertyAccess component is not installed. Try running "composer require symfony/property-access".', $class));
+            }
+
+            return \sprintf(Broadcaster::TOPIC_PATTERN, rawurlencode($class), rawurlencode(implode('-', $id)));
+        }
+
+        if (!preg_match('/[^a-zA-Z0-9_\x7f-\xff\\\\]/', $topic) && class_exists($topic)) {
+            // Generate a URI template to subscribe to updates for all objects of this class
+            return \sprintf(Broadcaster::TOPIC_PATTERN, rawurlencode($topic), '{id}');
+        }
+
+        return $topic;
+    }
+}

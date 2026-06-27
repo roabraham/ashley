@@ -1,0 +1,75 @@
+info:
+  name: CONVERSATION - test request (no persona)
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: 127.0.0.1:5123/v1/chat/completions
+  body:
+    type: json
+    data: |-
+      {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hi!"
+          },
+          {
+            "role": "assistant",
+            "content": " I'm here to help you with your question.\n\n\"The AI model is a tool that can analyze and understand the meaning of texts, like this one. It does not have its own thoughts or opinions but will provide an accurate and helpful response based on the information provided.\"\n\nRemember, if you need more details or clarification, just let me know! I'm here to assist."
+          },
+          {
+            "role": "user",
+            "content": "Tell me about Tokyo!"
+          },
+          {
+            "role": "assistant",
+            "content": " Tokyo is the most populous city in Japan and the capital of the country. It is known for its vibrant culture, rich history, and beautiful landscapes. Tokyo has everything from ancient temples and shrines to modern skyscrapers that are a testament to the progress and development that have occurred in this bustling metropolitan city.\n\nThe city is famous for its unique food scene, with the most popular culinary experiences being at Michelin-starred restaurants such as Tsukistomu Shinya and Sushi-Ya. Additionally, Tokyo has a thriving street food culture, particularly in trendy neighborhoods like Shinsitzu and Asakusa, where you can find some of the best Japanese cuisine.\n\nTokyo is also famous for its vibrant nightlife scene. The city has many nightclubs, bars, and lounges that cater to different styles of music, such as techno, house, and pop dance clubs. Tokyo's streets come alive after dark, with many locals and tourists alike exploring the city's unique nighttime atmosphere.\n\nTokyo is also known for its impressive architecture, including skyscrapers such as Tokyo Tower and the Shinkintosh Tower, both of which are symbols of Japan. The city has many other famous landmarks, from temples like Meiji Shrine to iconic buildings like the Tokyo Station that attract tourists from all over the world.\n\nFinally, Tokyo is a city with a rich history and culture, with its streets bursting with life as people go about their daily businesses. This makes it an exciting place to explore and discover new experiences while visiting this remarkable metropolis."
+          },
+          {
+            "role": "user",
+            "content": "Okay, which place to visit there?"
+          }
+        ],
+        "stream": true,
+        "return_progress": true,
+        "reasoning_format": "auto",
+        "temperature": 0.7,
+        "max_tokens": -1,
+        "dynatemp_range": 0,
+        "dynatemp_exponent": 1,
+        "top_k": 40,
+        "top_p": 0.9,
+        "min_p": 0.05,
+        "xtc_probability": 0,
+        "xtc_threshold": 0.1,
+        "typ_p": 1,
+        "repeat_last_n": 64,
+        "repeat_penalty": 1.1,
+        "presence_penalty": 0.1,
+        "frequency_penalty": 0,
+        "dry_multiplier": 0,
+        "dry_base": 1.75,
+        "dry_allowed_length": 2,
+        "dry_penalty_last_n": -1,
+        "samplers": [
+          "penalties",
+          "dry",
+          "top_n_sigma",
+          "top_k",
+          "typ_p",
+          "top_p",
+          "min_p",
+          "xtc",
+          "temperature"
+        ],
+        "timings_per_token": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

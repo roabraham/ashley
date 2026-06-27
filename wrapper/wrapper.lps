@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="12"/>
+    <BuildModes Active="Debug"/>
+    <Units>
+      <Unit>
+        <Filename Value="wrapper.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
+        <UsageCount Value="106"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\lazarus\fpc\3.2.2\source\packages\fcl-base\src\custapp.pp"/>
+        <UnitName Value="CustApp"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="57"/>
+        <CursorPos X="15" Y="67"/>
+        <UsageCount Value="7"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\lazarus\fpc\3.2.2\source\packages\fcl-net\src\ssockets.pp"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="183"/>
+        <CursorPos X="14" Y="197"/>
+        <UsageCount Value="8"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\lazarus\fpc\3.2.2\source\rtl\win\tthread.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="89"/>
+        <CursorPos X="35" Y="101"/>
+        <UsageCount Value="9"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\lazarus\fpc\3.2.2\source\rtl\objpas\classes\classesh.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1777"/>
+        <CursorPos X="20" Y="1791"/>
+        <UsageCount Value="9"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\lazarus\fpc\3.2.2\source\rtl\objpas\sysutils\sysstr.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="628"/>
+        <CursorPos X="10" Y="640"/>
+        <UsageCount Value="9"/>
+      </Unit>
+    </Units>
+    <JumpHistory HistoryIndex="29">
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="178" Column="32" TopLine="168"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="178" Column="33" TopLine="160"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="179" Column="33" TopLine="160"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="981" Column="4" TopLine="972"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2238" Column="18" TopLine="2225"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="164" Column="20" TopLine="154"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1347" Column="21" TopLine="1328"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2238" Column="40" TopLine="2219"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="166" Column="19" TopLine="155"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1349" TopLine="1327"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2333" Column="12" TopLine="2319"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="109" Column="38" TopLine="97"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="185" Column="22" TopLine="167"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="659" Column="31" TopLine="639"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="738" Column="14" TopLine="718"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="927" Column="10" TopLine="905"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2004" Column="10" TopLine="1984"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2166" TopLine="2147"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2312" Column="18" TopLine="2302"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="184" Column="27" TopLine="166"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1956" Column="50" TopLine="1936"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="18" Column="49"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2360" Column="38" TopLine="2337"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2348" Column="33" TopLine="2338"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="61" TopLine="61"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="72" TopLine="64"/>
+      </Position>
+    </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes ActiveMode=""/>
+    </RunParams>
+  </ProjectSession>
+</CONFIG>

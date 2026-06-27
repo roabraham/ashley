@@ -1,0 +1,62 @@
+info:
+  name: HELLO - test request
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: 127.0.0.1:5123/v1/chat/completions
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "messages": [
+          {
+            "role": "user",
+            "content": "HELLO"
+          }
+        ],
+        "stream": true,
+        "return_progress": true,
+        "reasoning_format": "auto",
+        "temperature": 0.7,
+        "max_tokens": -1,
+        "dynatemp_range": 0,
+        "dynatemp_exponent": 1,
+        "top_k": 40,
+        "top_p": 0.9,
+        "min_p": 0.05,
+        "xtc_probability": 0,
+        "xtc_threshold": 0.1,
+        "typ_p": 1,
+        "repeat_last_n": 64,
+        "repeat_penalty": 1.1,
+        "presence_penalty": 0.1,
+        "frequency_penalty": 0,
+        "dry_multiplier": 0,
+        "dry_base": 1.75,
+        "dry_allowed_length": 2,
+        "dry_penalty_last_n": -1,
+        "samplers": [
+          "penalties",
+          "dry",
+          "top_n_sigma",
+          "top_k",
+          "typ_p",
+          "top_p",
+          "min_p",
+          "xtc",
+          "temperature"
+        ],
+        "timings_per_token": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
