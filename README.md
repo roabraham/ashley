@@ -2,13 +2,11 @@
 
 Ashley is an all-in-one, single-click local AI assistant. It bundles an llama.cpp LLM inference engine, a Symfony/PHP web chatbot interface, a CEF-based web client (PHP Desktop), and a service manager (written in Free Pascal) into one package - no Internet connection or cloud API key required at runtime.
 
-This repository contains the complete source tree including compiled binaries and model files for development. For public distribution, see the **Public Repository Structure** section below.
-
 ---
 
-## Directory Layout — Source (Public Repository)
+## Directory Layout
 
-The public repository contains only source files to minimize size. After cloning, the build process assembles the `server/` subdirectory into a runnable package.
+This repository contains only source files to minimize size. After cloning, the build process assembles the `server/` subdirectory into a runnable package.
 
 ```
 ashley/                             # Project root (this directory)
