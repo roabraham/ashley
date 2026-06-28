@@ -1,6 +1,35 @@
 # Ashley - LLM Service Manager
 
-Ashley is an all-in-one, single-click local AI assistant. It bundles an llama.cpp LLM inference engine, a Symfony/PHP web chatbot interface, a CEF-based web client (PHP Desktop), and a service manager (written in Free Pascal) into one package - no Internet connection or cloud API key required at runtime.
+Ashley is an all-in-one, single-click local AI assistant that runs entirely on your own computer. It includes everything needed to run an LLM offline: an llama.cpp LLM inference engine, a Symfony/PHP web chatbot interface, a CEF-based web client (PHP Desktop), and a service manager (written in Free Pascal) into one package - no Internet connection or cloud API key required at runtime.
+
+## Why Ashley
+
+- Complete control over the AI stack
+- No cloud dependencies
+- Predictable long-term availability
+- Vendor-independent deployment
+- Suitable for confidential environments
+- Easily customizable and extensible
+
+## Typical Use Cases
+
+- Companies handling confidential data
+- Developers experimenting with GGUF models
+- Offline AI workstations
+- Air-gapped environments
+- AI appliances
+- Embedded systems
+
+## Features
+
+- Fully offline operation
+- No API keys or cloud services
+- Supports any GGUF model
+- CPU, CUDA and Vulkan backends
+- Embedded desktop application
+- Local SQLite configuration
+- Self-contained deployment
+- Modular, easy to add extensions
 
 ---
 
@@ -98,6 +127,9 @@ ashley/                             # Project root (this directory)
 > **Key design principle:** this repository contains only files that are authored or directly edited for this project. The `sqlite3.dll` and `sqlite3.def` files in `manager/` and `server/` **are** checked in because they are required at compile-time for the Pascal linker. All project configuration files (`settings.json`, `nginx.conf`, `php.ini`, `fastcgi.conf`, `fastcgi_params`, `scgi_params`, `uwsgi_params`) are properly adjusted for Ashley and must be kept unchanged. The files `mime.types`, `koi-utf`, `koi-win`, and `win-utf` in `server/webserver/conf/` are **not** project-supplied — they come from the NGINX distro and must be added during the build.
 
 > **Note:** The `server/webserver/conf/ssl/` directory, `server/config/`, `server/log/`, and `server/temp/` are intentionally empty in the source. These are runtime directories created during assembly.
+
+> The web frontend intentionally uses Symfony instead of Electron or Node.js. It provides a lightweight, stable, server-side rendered interface with minimal client-side complexity.
+> The service manager is written in Free Pascal because it produces standalone native executables with virtually no runtime dependencies and excellent Windows integration.
 
 ---
 
