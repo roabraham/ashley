@@ -129,6 +129,7 @@ ashley/                             # Project root (this directory)
 > **Note:** The `server/webserver/conf/ssl/` directory, `server/config/`, `server/log/`, and `server/temp/` are intentionally empty in the source. These are runtime directories created during assembly.
 
 > The web frontend intentionally uses Symfony instead of Electron or Node.js. It provides a lightweight, stable, server-side rendered interface with minimal client-side complexity.
+
 > The service manager is written in Free Pascal because it produces standalone native executables with virtually no runtime dependencies and excellent Windows integration.
 
 ---
