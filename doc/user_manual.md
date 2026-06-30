@@ -44,7 +44,7 @@
 
 ## What is Ashley?
 
-Ashley is a complete, single-click local AI assistant for Windows. It bundles an *LLM inference engine*, a *web chatbot interface*, and a *settings manager* into one package that requires no Internet connection or cloud API key. The application runs entirely on your computer using locally installed AI models.
+Ashley is an all-in-one, single-click local AI assistant that runs entirely on your own computer. It includes everything needed to run an LLM offline: an llama.cpp LLM inference engine, a Symfony/PHP web chatbot interface, a CEF-based web client (PHP Desktop), and a service manager (written in Free Pascal) into one package - no Internet connection or cloud API key required at runtime.
 
 The **Service Manager** (`manager.exe`) is the central control application. It runs from the *system tray*, manages all background services and provides the graphical interface for configuration.
 
