@@ -127,6 +127,8 @@ type
   { TProxyThread: Manager thread that listens for connections and monitors worker threads. }
   TProxyThread = class(TThread)
   protected
+    { FProxyHost: Host address on which the proxy listens for incoming connections. }
+    FProxyHost: String;
     { FProxyPort: The port on which the proxy listens for incoming connections. }
     FProxyPort: Integer;
     { FTargetPort: The target port for the conversational LLM server. }
@@ -155,7 +157,7 @@ type
     procedure Execute; override;
   public
     { Create: Initializes the proxy thread with routing and connection parameters. }
-    constructor Create(APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
+    constructor Create(AProxyHost: String; APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
     { Destroy: Frees the proxy thread and cleans up resources. }
     destructor Destroy; override;
   end;
@@ -209,6 +211,8 @@ type
     FEmbeddingEnabled: Boolean;
     { FUseLogFile: Flag indicating whether to log to file. }
     FUseLogFile: boolean;
+    { FProxyHost: Host address for the API proxy service to listen on. }
+    FProxyHost: String;
     { FProxyPort: Port for the API proxy service. }
     FProxyPort: integer;
     { FProxyTimeout: Timeout in seconds for proxy connections. }
@@ -743,9 +747,10 @@ end;
 { TProxyThread implementation. }
 
 { TProxyThread.Create: Initializes the proxy thread with routing and connection parameters. }
-constructor TProxyThread.Create(APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
+constructor TProxyThread.Create(AProxyHost: String; APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
 begin
   inherited Create(false);
+  FProxyHost := AProxyHost;
   FProxyPort := APort;
   FTargetPort := ATargetPort;
   FTargetEmbeddingPort := ATargetEmbeddingPort;
@@ -842,10 +847,10 @@ var
 begin
   try
     Listener := nil;
-    FServerSocket := TInetServer.Create(FProxyPort);
+    FServerSocket := TInetServer.Create(FProxyHost, FProxyPort);
     FServerSocket.Bind;
     FServerSocket.Listen;
-    WriteLn('[PROXY] Multi-threaded manager listening on ', FProxyPort);
+    WriteLn('[PROXY] Multi-threaded manager listening on ', FProxyHost, ':', FProxyPort);
     while not(Terminated) do
     begin
       CleanupFinishedWorkers;
@@ -937,6 +942,7 @@ begin
   end;
   WriteLn(StatusMsg);
   FProxyThread := TProxyThread.Create(
+    FProxyHost,
     AProxyPort,
     FinalATargetPort,
     FinalATargetEmbeddingPort,
@@ -1052,6 +1058,7 @@ begin
   DBPathSHM := ChangeFileExt(DBPath, '.db-shm');
   FParams := TStringList.Create;
   FEmbeddingParams := TStringList.Create;
+  FProxyHost := '127.0.0.1';
   FWebserverHttpPort := 80;
   FWebserverHttpsPort := 443;
   FPhpHost := '127.0.0.1';
@@ -1107,6 +1114,7 @@ var
   ServerFileName: String;
   AllowedParams, AllowedEmbeddingParams: TStringList;
   ConfigTypeName: String;
+  FHost, FEmbeddingHost: String;
 begin
   JsonFile := FConfigDir + 'wrapper.json';
   EngineID := '';
@@ -1199,6 +1207,10 @@ begin
           begin
             if enableServer then FEmbeddingModelFile := ParamValue;
           end
+          else if ParamName = 'host' then
+          begin
+            if enableServer then FEmbeddingHost := ParamValue;
+          end
           else if enableServer then
           begin
             FEmbeddingParams.Add('--' + ParamName);
@@ -1216,6 +1228,10 @@ begin
           if ParamName = 'model' then
           begin
             if enableServer then FModelFile := ParamValue;
+          end
+          else if ParamName = 'host' then
+          begin
+            if enableServer then FHost := ParamValue;
           end
           else if enableServer then
           begin
@@ -1323,6 +1339,11 @@ begin
                 if ParamName = '' then continue;
                 if ParamName = 'device' then continue;
                 if ParamName = 'model' then continue;
+                if ParamName = 'host' then
+                begin
+                  FHost := trim(ParamsObj.Items[i].AsString);
+                  continue;
+                end;
                 if AllowedParams.Values[ParamName] = '0' then continue;
                 FParams.Add('--' + ParamName); //Flag
                 if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
@@ -1360,6 +1381,11 @@ begin
                       if ParamName = '' then continue;
                       if ParamName = 'device' then continue;
                       if ParamName = 'model' then continue;
+                      if ParamName = 'host' then
+                      begin
+                        FEmbeddingHost := trim(ParamsObj.Items[i].AsString);
+                        continue;
+                      end;
                       if AllowedEmbeddingParams.Values[ParamName] = '0' then continue;
                       FEmbeddingParams.Add('--' + ParamName); //Flag
                       if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
@@ -1442,6 +1468,14 @@ begin
     FinalFEmbeddingModelFile := FEmbeddingModelDir + FEmbeddingModelFile;
     if not(FileExists(FinalFEmbeddingModelFile)) then raise Exception.Create('Model file not found: ' + FinalFEmbeddingModelFile);
   end;
+  // Set proxy host based on LLM/Embedding server host configuration
+  // Priority: LLM host > Embedding host > default 127.0.0.1
+  if not(FinalFModelFile = '') and not(FHost = '') then
+    FProxyHost := FHost
+  else if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingHost = '') then
+    FProxyHost := FEmbeddingHost
+  else
+    FProxyHost := '127.0.0.1';
   if FProxyPort >= 1 then
   begin
     if (FProxyTimeout < 1) then raise Exception.Create('Invalid Proxy Service Timeout: ' + IntToStr(FProxyTimeout));
