@@ -715,7 +715,7 @@ class ChatController extends AbstractController
             $personalityId = intval($persona['personality_id'] ?? 0);
             $stmt = $db->prepare(
                 "SELECT id, similarity_threshold, embedding FROM behavior" .
-                " WHERE personality_id = :pid AND embedding IS NOT NULL AND LENGTH(embedding) >= 4"
+                " WHERE (personality_id = :pid OR all_personalities != 0) AND embedding IS NOT NULL AND LENGTH(embedding) >= 4"
             );
             $stmt->bindValue(':pid', $personalityId, \PDO::PARAM_INT);
             $stmt->execute();
