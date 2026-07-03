@@ -1,6 +1,6 @@
 <h1 align="center">Ashley User Manual</h1>
 
-<img title="Ashley portrait" src="../media/ashley_icon.png" alt="Ashley portrait" data-align="center" width="300">
+<img title="Ashley portrait" src="../media/icon/ashley_icon.png" alt="Ashley portrait" data-align="center" width="300">
 
 ## Table of Contents
 
