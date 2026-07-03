@@ -82,6 +82,8 @@ Before running Ashley, ensure the following prerequisites are installed on your 
 
 ## Service Manager Window
 
+<img title="Service Manager Window" src="../media/screenshot/manager_main_window.jpg" alt="Service Manager Window" data-align="center">
+
 When the *Service Manager* window is visible, it contains:
 
 * A **menu bar** at the top with the following menus: **Service**, **Tools**, and **Help**.
@@ -103,12 +105,14 @@ The main window is primarily used for service control, tool execution, and acces
 
 * **Generate embedding vectors**: generates missing embedding vectors. This requires the *LLM service* to be running. A confirmation dialog appears before starting. This process runs synchronously and blocks the application until completed.
 * **Generate SSL certificate**: generates a new *self-signed SSL certificate* for HTTPS connections. The *LLM service* must be stopped first. A confirmation dialog appears before starting. This process runs synchronously and blocks the application until completed.
+* **Settings**: opens Settings window, where you can set all of the main parameters of your AI assistant (see later).
 
 ### Help Menu
 
 * **Database Documentation > Service Wrapper**: opens the *Service Wrapper* database documentation.
 * **Database Documentation > Personality Database**: opens the *Personality* database documentation.
 * **Frontend Documentation**: opens the frontend documentation in your default browser.
+* **Service Manager Documentation**: opens the developer documentation of the service manager.
 * **User Manual**: opens this *user manual* document.
 * **About**: opens the *About* dialog showing the *application version*, *copyright*, and *license* information.
 
@@ -127,6 +131,8 @@ The popup menu contains the following additional option:
 Restores the *Service Manager* window from the *system tray*. This option is available when the window is minimized or hidden.
 
 ## Settings Window
+
+<img title="Settings Window" src="../media/screenshot/settings_window.jpg" alt="Settings Window" data-align="center">
 
 The *Settings window* is the main configuration interface for Ashley. It contains five tabs organized in a tab control at the top. The tabs are:
 
@@ -153,8 +159,8 @@ This is the first and most important tab. It configures the core *LLM engine* th
 
 * **LLM engine**: a drop-down list that lets you select the *LLM engine* to use. The available engines are loaded from the `database/wrapper.db` file and depend on which engine binaries are present in the `llama/` folder. The available options are:
   * **CPU**: works on every Windows PC. No extra software needed. Slowest option but universally compatible.
-  * **CUDA**: requires an *NVIDIA GPU* with *CUDA toolkit* installed. Provides significant performance improvements over CPU.
   * **Vulkan**: works on *AMD*, *Intel*, and *NVIDIA GPU*s without requiring the *CUDA toolkit*. Good cross-vendor alternative.
+  * **CUDA**: requires an *NVIDIA GPU* with *CUDA toolkit* installed. Provides significant performance improvements over CPU.
   * **HIP Radeon**: requires a *Radeon GPU* with *ROCm* support. Windows support is experimental.
     The engine choice highly affects performance. Select the engine that matches your hardware.
 * **Device**: a drop-down list that lets you select which specific device (*GPU*) the *LLM engine* should use. When you select an engine that supports multiple devices, the application queries the engine binary for available devices and populates this list. *N/A* will be selected for CPU or when device selection is not applicable. This choice also highly affects performance.
@@ -179,6 +185,8 @@ When you change the *LLM engine* selection, a confirmation dialog appears: *"Loa
 
 ### Embedding Tab
 
+<img title="Embedding Tab" src="../media/screenshot/embedding_settings.jpg" alt="Embedding Tab" data-align="center">
+
 This tab configures the embedding engine, which is used for behavior matching. The embedding engine allows Ashley to recognize question patterns and respond more appropriately.
 
 #### Embedding Model Group
@@ -199,6 +207,8 @@ This tab configures the embedding engine, which is used for behavior matching. T
 
 ### Logging and Proxy Tab
 
+<img title="Logging and Proxy Tab" src="../media/screenshot/logging_and_proxy_settings.jpg" alt="Logging and Proxy Tab" data-align="center">
+
 This tab controls logging behavior and the LLM proxy service settings.
 
 #### Logging Group
@@ -217,6 +227,8 @@ This tab controls logging behavior and the LLM proxy service settings.
 The timeout, max connections, and max package size settings are only enabled when a proxy port number is specified.
 
 ### Web Server Tab
+
+<img title="Web Server Tab" src="../media/screenshot/webserver_settings.jpg" alt="Web Server Tab" data-align="center">
 
 This tab configures the built-in *NGINX web server* and *PHP runtime*.
 
@@ -239,6 +251,8 @@ This tab configures the built-in *NGINX web server* and *PHP runtime*.
 * **Clear Folder**: clears all temporary files and folders in the `temp/` directory recursively. This can only be done when the *LLM service* is stopped. A confirmation dialog appears before clearing.
 
 ### Persona Tab
+
+<img title="Persona Tab" src="../media/screenshot/persona_settings.jpg" alt="Persona Tab" data-align="center">
 
 This tab configures the AI chatbot's personality, appearance and behavior.
 
@@ -342,6 +356,10 @@ These documents are intended for advanced users and developers who need to under
 ## Frontend Documentation
 
 The **Frontend Documentation** option in the *Help* menu opens the *frontend documentation* in your default web browser. This document describes the web-based chatbot interface, its HTML/CSS/JavaScript structure, and how it communicates with the backend services. This is intended for developers and advanced users who want to customize or extend the web interface.
+
+## Service Manager Documentation
+
+The **Service Manager Documentation** option in the *Help* menu opens the *developer documentation* of the Service Manager in your default web browser. This document describes all elements of the Service Manager's source code. This is intended for developers only.
 
 ---
 
