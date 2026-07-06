@@ -1840,6 +1840,11 @@ begin
         FProcess.Parameters.Add('--device');
         FProcess.Parameters.Add(FDeviceID);
       end;
+      if FProcess.Parameters.IndexOf('--alias') = -1 then
+      begin
+        FProcess.Parameters.Add('--alias');
+        FProcess.Parameters.Add(UpperCase(Trim(ChangeFileExt(ExtractFileName(FinalFModelFile), ''))));
+      end;
     end;
     if not(FinalFEmbeddingModelFile = '') then
     begin
@@ -1851,6 +1856,11 @@ begin
       begin
         FEmbeddingProcess.Parameters.Add('--device');
         FEmbeddingProcess.Parameters.Add(FDeviceID);
+      end;
+      if FEmbeddingProcess.Parameters.IndexOf('--alias') = -1 then
+      begin
+        FEmbeddingProcess.Parameters.Add('--alias');
+        FEmbeddingProcess.Parameters.Add(UpperCase(Trim(ChangeFileExt(ExtractFileName(FinalFEmbeddingModelFile), ''))));
       end;
     end;
     // Add all other params one-by-one
@@ -2497,6 +2507,9 @@ end;
 
 { Application entry point: Creates and runs the TServiceWrapper application. }
 var Application: TServiceWrapper;
+
+{$R *.res}
+
 begin
   Application := TServiceWrapper.Create(nil);
   Application.OnException := @Application.HandleGlobalException;
