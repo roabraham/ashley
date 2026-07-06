@@ -840,7 +840,8 @@ begin
     end;
     if
       not(MessageDlg(
-        'Do you really want to import the model file?',
+        'Do you really want to import the model file?' + sLineBreak +
+          'This may take a while and the application may seem unresponsive.',
         mtConfirmation,
         [mbYes, mbNo],
         0) = mrYes)
@@ -923,7 +924,8 @@ begin
     end;
     if
       not(MessageDlg(
-        'Do you really want to import the model file?',
+        'Do you really want to import the model file?' + sLineBreak +
+          'This may take a while and the application may seem unresponsive.',
         mtConfirmation,
         [mbYes, mbNo],
         0) = mrYes)
