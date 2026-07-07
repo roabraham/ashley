@@ -810,6 +810,7 @@ class ChatController extends AbstractController
      * | {{CURRENT_DATE}}        | 2026-06-25                       |
      * | {{CURRENT_TIME}}        | 14:35                            |
      * | {{CURRENT_TIMESTAMP}}   | 2026-06-25 14:35:42              |
+     * | {{TIMEZONE}}            | Europe/Berlin                    |
      *
      * Values are generated at runtime using the server's current timezone and locale-independent PHP date formatting.
      *
@@ -823,7 +824,8 @@ class ChatController extends AbstractController
             '{{PERSONA_DESCRIPTION}}'   => trim($persona['description'] ?? ''),
             '{{CURRENT_DATE}}'          => date('Y-m-d'),
             '{{CURRENT_TIME}}'          => date('H:i'),
-            '{{CURRENT_TIMESTAMP}}'     => date('Y-m-d H:i:s')
+            '{{CURRENT_TIMESTAMP}}'     => date('Y-m-d H:i:s'),
+            '{{TIMEZONE}}'              => date_default_timezone_get()
         ];
     }
 
