@@ -78,6 +78,10 @@ type
   TSettingsForm = class(TForm)
     { Button to clear the temporary directory contents. }
     ClearTempDirButton: TButton;
+    { Label for the PHP time zone combobox. }
+    PHPtimezoneComboBox: TComboBox;
+    { Combobox for the PHP time zone. }
+    PHPtimezoneLabel: TLabel;
     { Button to open the temporary directory in the file explorer. }
     OpenTempDirButton: TButton;
     { Label for the persona summary prompt field. }
@@ -86,6 +90,8 @@ type
     PersonaSummaryPrompt: TMemo;
     { Group box containing temporary directory controls. }
     TempDirGroupBox: TGroupBox;
+    { SQL query component for loading PHP time zones from the database. }
+    TimezoneQuery: TSQLQuery;
     { Scrollable container for the web server configuration tab sheet. }
     WebServerTabSheetScrollBox: TScrollBox;
     { SQL query component for loading web server configuration from the database. }
@@ -410,6 +416,8 @@ type
     wrapperDbFileSHM: AnsiString;
     { Path to the web server directory. }
     webserverdir: AnsiString;
+    { Full path to the PHP configuration file. }
+    phpConfigFile: AnsiString;
     { Full path to the nginx configuration file. }
     webserverConfigFile: AnsiString;
     { Path to the SSL certificate directory. }
@@ -438,6 +446,8 @@ type
     portUniqueError: boolean;
     { Indicates whether the LLM server process is currently running. }
     MainLLMserverProcessRunning: boolean;
+    { Stores the default PHP time zone read from the database. }
+    DefaultPHPtimezone: integer;
     { Saves configuration data to JSON and webserver config files. }
     procedure SaveConfigData;
     { Checkpoints and removes SQLite WAL/SHM files after database close. }
@@ -1105,6 +1115,7 @@ begin
       WebServerConfigQuery.Next;
     end;
     WebServerConfigQuery.Close;
+    PHPtimezoneCombobox.ItemIndex := DefaultPHPtimezone;
     try
       if foundDeviceEntry then
       begin
@@ -2073,7 +2084,7 @@ var
   httpPortNode, httpsPortNode, sslCertNode, sslKeyNode, phpPortNode: TJSONData;
   RootObj, ParamsObj, WebServerObj: TJSONObject;
   JSONList: TStringList;
-  loadedEngineID, loadedModel, loadedEmbeddingModel: String;
+  loadedEngineID, loadedModel, loadedEmbeddingModel, loadedTimezone: String;
   item: TEngineComboBoxItem;
   i, foundIndex: Integer;
   paramFound: boolean;
@@ -2284,6 +2295,15 @@ begin
             else
               PHPhttpPort.Value := StrToIntDef(trim(phpPortNode.AsString), 9000);
           end;
+          loadedTimezone := trim(WebServerObj.Get('php_timezone', ''));
+          if not(loadedTimezone = '') then
+          begin
+            i := PHPtimezoneCombobox.Items.IndexOf(loadedTimezone);
+            if i = -1 then
+              PHPtimezoneComboBox.Text := loadedTimezone
+            else
+              PHPtimezoneCombobox.ItemIndex := i;
+          end;
         end;
       end;
     except
@@ -2319,6 +2339,7 @@ var
   systemPrompt: AnsiString;
   summaryPrompt: AnsiString;
   cssOverride: AnsiString;
+  phpConfigLines: TStringList;
   webserverConfigLines: TStringList;
   sslFullPath: AnsiString;
   sslRelPath: AnsiString;
@@ -2332,6 +2353,7 @@ begin
   PersonaObj := nil;
   AvatarObj := nil;
   BackgroundObj := nil;
+  phpConfigLines := nil;
   webserverConfigLines := nil;
   PortsReserved := nil;
   redirectFileContent := nil;
@@ -2450,11 +2472,30 @@ begin
         raise SaveSettingsFatal.Create('Error: PHP port already reserved: ' + IntToStr(PHPhttpPort.Value));
       PortsReserved.Add(IntToStr(PHPhttpPort.Value));
       ParamsObj.Add('php_http_port', PHPhttpPort.Value);
+      ParamsObj.Add('php_timezone', trim(PHPtimezoneCombobox.Text));
       RootObj.Add('webserver', ParamsObj);
       ParamsObj := nil;
       JSONList.Text := RootObj.FormatJSON();
       JSONList.SaveToFile(wrapperConfigFile);
       FreeAndNil(JSONList);
+      if length(trim(PHPTimezoneCombobox.Text)) >= 1 then
+      begin
+        phpConfigLines := TStringList.Create;
+        try
+          phpConfigLines.LoadFromFile(phpConfigFile);
+          regexp.Expression := '(^\s*date\.timezone\s*=\s*)([^;#\r\n]*)(.*$)';
+          for i := 0 to phpConfigLines.Count - 1 do
+          begin
+            if not(regexp.Exec(phpConfigLines[i])) then continue;
+            phpConfigLines[i] := regexp.Replace(phpConfigLines[i], '${1}' + trim(PHPTimezoneCombobox.Text) + '${3}', true);
+            break;
+          end;
+          phpConfigLines.SaveToFile(phpConfigFile);
+        except
+          on x: Exception do
+            MessageDlg('Error', 'Failed to update PHP configuration: ' + x.Message, mtError, [mbOK], 0);
+        end;
+      end;
       webserverConfigLines := TStringList.Create;
       try
         webserverConfigLines.LoadFromFile(webserverConfigFile);
@@ -2641,6 +2682,7 @@ begin
     if Assigned(JSONList) then FreeAndNil(JSONList);
     if Assigned(ParamsObj) then FreeAndNil(ParamsObj);
     if Assigned(regexp) then FreeAndNil(regexp);
+    if Assigned(phpConfigLines) then FreeAndNil(phpConfigLines);
     if Assigned(webserverConfigLines) then FreeAndNil(webserverConfigLines);
     if Assigned(PortsReserved) then FreeAndNil(PortsReserved);
     if Assigned(redirectFileContent) then FreeAndNil(redirectFileContent);
@@ -2657,6 +2699,8 @@ var
   ServerFilePath: AnsiString;
   ServerCLIfileName: String;
   ServerCLIfilePath: AnsiString;
+  PHPtimezone: String;
+  TimezoneIndex: integer;
   item: TEngineComboBoxItem;
 begin
   try
@@ -2679,6 +2723,7 @@ begin
     configDataSaved := false;
     portUniqueError := false;
     MainLLMserverProcessRunning := false;
+    DefaultPHPtimezone := -1;
     {$IFDEF MSWINDOWS}
     appdir := IncludeTrailingPathDelimiter(ExtractFilePath(application.ExeName));
     {$ELSE}
@@ -2693,6 +2738,8 @@ begin
     wrapperDbFileSHM := ChangeFileExt(wrapperDbFile, '.db-shm');
     webserverdir := appdir + 'webserver' + PathDelim;
     if not(DirectoryExists(webserverdir)) then raise Exception.Create('Web server directory not found: ' + webserverdir);
+    phpConfigFile := webserverdir + 'php' + PathDelim + 'php.ini';
+    if not(FileExists(phpConfigFile)) then raise Exception.Create('PHP config file not found: ' + phpConfigFile);
     webserverConfigFile := webserverdir + 'conf' + PathDelim + 'nginx.conf';
     if not(FileExists(webserverConfigFile)) then raise Exception.Create('Web server config file not found: ' + webserverConfigFile);
     redirectFile := webserverdir + 'www' + PathDelim + 'index.php';
@@ -2746,8 +2793,26 @@ begin
         end;
         LlamaQuery.Next;
       end;
+      //Get PHP time zones
+      TimezoneQuery.Open;
+      TimezoneIndex := -1;
+      PHPtimezoneCombobox.Items.Clear;
+      while not(TimezoneQuery.EOF) do
+      begin
+        PHPtimezone := trim(TimezoneQuery.FieldByName('name').AsString);
+        if length(PHPtimezone) >= 1 then
+        begin
+          Inc(TimezoneIndex);
+          PHPtimezoneCombobox.Items.Append(PHPtimezone);
+          if not(TimezoneQuery.FieldByName('default').AsInteger = 0) then
+            DefaultPHPtimezone := TimezoneIndex;
+        end;
+        TimezoneQuery.Next;
+      end;
+      PHPtimezoneCombobox.ItemIndex := DefaultPHPtimezone;
     finally
       LlamaQuery.Close;
+      TimezoneQuery.Close;
       LlamaTransaction.Active := false;
       LlamaDBconnection.Close;
       // Note: WAL/SHM files are managed by SQLite automatically. Do not delete them.
@@ -2917,6 +2982,7 @@ begin
       PersonaResponseMode.Items.Clear;
     end;
     LlamaQuery.Close;
+    TimezoneQuery.Close;
     LlamaTransaction.Active := false;
     LlamaDBconnection.Close;
     PersonaQuery.Close;

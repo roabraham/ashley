@@ -244,6 +244,7 @@ This tab configures the built-in *NGINX web server* and *PHP runtime*.
 #### PHP Settings Group
 
 * **PHP HTTP port (internal)**: the port number for the internal *PHP FastCGI* process. This is used for localhost-only communication between *NGINX* and *PHP*. Range: 1-65535. Default: 9000.
+* **Time zone**: the global time zone to which all PHP date and time functions are set. This value is written to the `date.timezone` directive in the PHP configuration and is used for generating timestamps, formatting dates, and all other date/time operations.
 
 #### Temporary Files and Folders Group
 

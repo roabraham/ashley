@@ -1054,14 +1054,33 @@ object SettingsForm: TSettingsForm
             Height = 33
             Hint = 'Change PHP HTTP port (localhost only)'
             Top = 40
-            Width = 723
-            Anchors = [akTop, akLeft, akRight]
+            Width = 360
             MaxValue = 65535
             MinValue = 1
             ParentShowHint = False
             ShowHint = True
             TabOrder = 0
             Value = 9000
+          end
+          object PHPtimezoneLabel: TLabel
+            Left = 376
+            Height = 25
+            Top = 8
+            Width = 81
+            Caption = 'Time zone'
+          end
+          object PHPtimezoneComboBox: TComboBox
+            Left = 376
+            Height = 33
+            Hint = 'Select PHP time zone'
+            Top = 40
+            Width = 355
+            Anchors = [akTop, akLeft, akRight]
+            AutoComplete = True
+            AutoCompleteText = [cbactEnabled, cbactEndOfLineComplete, cbactSearchAscending]
+            AutoDropDown = True
+            ItemHeight = 25
+            TabOrder = 1
           end
         end
         object TempDirGroupBox: TGroupBox
@@ -2086,6 +2105,18 @@ object SettingsForm: TSettingsForm
     Params = <>
     Macros = <>
     Left = 472
+    Top = 400
+  end
+  object TimezoneQuery: TSQLQuery
+    FieldDefs = <>
+    Database = LlamaDBconnection
+    Transaction = LlamaTransaction
+    SQL.Strings = (
+      'SELECT time_zone.name AS name, time_zone."default" AS "default" FROM time_zone ORDER BY time_zone.id ASC'
+    )
+    Params = <>
+    Macros = <>
+    Left = 432
     Top = 400
   end
 end
