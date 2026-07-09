@@ -155,7 +155,7 @@ HELP);
         // Handle --limit option
         $limit = intval($input->getOption('limit') ?: 0);
         if ($limit >= 1) { $this->embedding_limit = $limit; }
-        $dbPath = $this->configService->getServerRoot() . '/database/personality.db';
+        $dbPath = $this->configService->getPersonalityDbPath();
         // Guard: database must exist
         if (!file_exists($dbPath)) {
             $output->writeln('<error>ERROR: personality database not found!</error>');

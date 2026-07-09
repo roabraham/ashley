@@ -686,7 +686,7 @@ class ChatController extends AbstractController
      * @return array<string,mixed>|null The best match response or null
      */
     protected function tryBehaviorMatching(string $userMessage, SessionInterface $session, array $llmConfig, array $persona): ?array {
-        $personalityDbPath = $this->configService->getServerRoot() . '/database/personality.db';
+        $personalityDbPath = $this->configService->getPersonalityDbPath();
         if (!file_exists($personalityDbPath)) { return null; }
         try {
             $db = new \PDO("sqlite:{$personalityDbPath}");

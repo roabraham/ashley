@@ -19,5 +19,11 @@ services:
     App\:
         resource: '../src/'
 
+    # SQLite database locations are sourced from environment variables (see .env)
+    App\Service\ChatConfigService:
+        bind:
+            $wrapperDbPath: '%env(resolve:WRAPPER_DB_PATH)%'
+            $personalityDbPath: '%env(resolve:PERSONALITY_DB_PATH)%'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

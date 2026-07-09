@@ -24,16 +24,38 @@ class ChatConfigService {
     protected string $serverRoot;
 
     /**
+     * Absolute path to the wrapper SQLite database (e.g. `database/wrapper.db`).
+     *
+     * Sourced from the `WRAPPER_DB_PATH` environment variable (see .env), falling back to a `database/wrapper.db` file next to the server root.
+     */
+    protected string $wrapperDbPath;
+
+    /**
+     * Absolute path to the personality SQLite database (e.g. `database/personality.db`).
+     *
+     * Sourced from the `PERSONALITY_DB_PATH` environment variable (see .env), falling back to a `database/personality.db` file next to the server root.
+     */
+    protected string $personalityDbPath;
+
+    /**
      * Build the service, resolving the server root at construction time.
      *
-     * Designed to work without a Symfony container by computing {$serverRoot}
-     * relative to the physical location of this class file.
+     * Designed to work without a Symfony container by computing {$serverRoot} relative to the physical location of this class file. Database locations are injected via {$wrapperDbPath} / {$personalityDbPath} (resolved from the environment) and fall back to the server root when not provided.
+     *
+     * @param string|null $wrapperDbPath Injected `WRAPPER_DB_PATH` value
+     * @param string|null $personalityDbPath Injected `PERSONALITY_DB_PATH` value
      */
-    public function __construct() {
+    public function __construct(?string $wrapperDbPath = null, ?string $personalityDbPath = null) {
         $this->serverRoot = realpath(dirname(__DIR__, 5));
         if (!$this->serverRoot) {
             throw new \RuntimeException('Could not reliably determine the server root directory!');
         }
+        $this->wrapperDbPath = "{$this->serverRoot}/database/wrapper.db";
+        $wrapperDbPathFixed = trim($wrapperDbPath);
+        if ($wrapperDbPathFixed) { $this->wrapperDbPath = $wrapperDbPathFixed; }
+        $this->personalityDbPath = "{$this->serverRoot}/database/personality.db";
+        $personalityDbPathFixed = trim($personalityDbPath);
+        if ($personalityDbPathFixed) { $this->personalityDbPath = $personalityDbPathFixed; }
     }
 
     /**
@@ -45,6 +67,24 @@ class ChatConfigService {
      * @return string Absolute filesystem path
      */
     public function getServerRoot(): string { return $this->serverRoot; }
+
+    /**
+     * Return the absolute path to the wrapper SQLite database.
+     *
+     * Sourced from the `WRAPPER_DB_PATH` environment variable.
+     *
+     * @return string Absolute filesystem path
+     */
+    public function getWrapperDbPath(): string { return $this->wrapperDbPath; }
+
+    /**
+     * Return the absolute path to the personality SQLite database.
+     *
+     * Sourced from the `PERSONALITY_DB_PATH` environment variable.
+     *
+     * @return string Absolute filesystem path
+     */
+    public function getPersonalityDbPath(): string { return $this->personalityDbPath; }
 
     /**
      * Return the LLM / embedding engine configuration.
@@ -59,7 +99,7 @@ class ChatConfigService {
      */
     public function getLlmConfig(): array {
         //Check Wrapper Database availability
-        $wrapperDbPath = "{$this->serverRoot}/database/wrapper.db";
+        $wrapperDbPath = $this->wrapperDbPath;
         if (!file_exists($wrapperDbPath)) {
             throw new \RuntimeException("Wrapper database not found: {$wrapperDbPath}!");
         }
@@ -326,7 +366,7 @@ class ChatConfigService {
             }
         }
         // personality.db - query active personality row
-        $personalityDbPath = "{$this->serverRoot}/database/personality.db";
+        $personalityDbPath = $this->personalityDbPath;
         if (file_exists($personalityDbPath)) {
             try {
                 $db = new \PDO("sqlite:" . $personalityDbPath);
