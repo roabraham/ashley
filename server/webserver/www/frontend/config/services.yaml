@@ -24,6 +24,8 @@ services:
         bind:
             $wrapperDbPath: '%env(resolve:WRAPPER_DB_PATH)%'
             $personalityDbPath: '%env(resolve:PERSONALITY_DB_PATH)%'
+            $wrapperJsonPath: '%env(resolve:WRAPPER_JSON_PATH)%'
+            $personalityJsonPath: '%env(resolve:PERSONALITY_JSON_PATH)%'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

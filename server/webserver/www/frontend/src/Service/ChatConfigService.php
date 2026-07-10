@@ -38,14 +38,30 @@ class ChatConfigService {
     protected string $personalityDbPath;
 
     /**
+     * Absolute path to the wrapper JSON configuration file (e.g. `config/wrapper.json`).
+     *
+     * Sourced from the `WRAPPER_JSON_PATH` environment variable (see .env), falling back to a `config/wrapper.json` file next to the server root.
+     */
+    protected string $wrapperJsonPath;
+
+    /**
+     * Absolute path to the personality JSON configuration file (e.g. `config/personality.json`).
+     *
+     * Sourced from the `PERSONALITY_JSON_PATH` environment variable (see .env), falling back to a `config/personality.json` file next to the server root.
+     */
+    protected string $personalityJsonPath;
+
+    /**
      * Build the service, resolving the server root at construction time.
      *
-     * Designed to work without a Symfony container by computing {$serverRoot} relative to the physical location of this class file. Database locations are injected via {$wrapperDbPath} / {$personalityDbPath} (resolved from the environment) and fall back to the server root when not provided.
+     * Designed to work without a Symfony container by computing {$serverRoot} relative to the physical location of this class file. Database and JSON configuration locations are injected via the corresponding parameters (resolved from the environment) and fall back to the server root when not provided.
      *
      * @param string|null $wrapperDbPath Injected `WRAPPER_DB_PATH` value
      * @param string|null $personalityDbPath Injected `PERSONALITY_DB_PATH` value
+     * @param string|null $wrapperJsonPath Injected `WRAPPER_JSON_PATH` value
+     * @param string|null $personalityJsonPath Injected `PERSONALITY_JSON_PATH` value
      */
-    public function __construct(?string $wrapperDbPath = null, ?string $personalityDbPath = null) {
+    public function __construct(?string $wrapperDbPath = null, ?string $personalityDbPath = null, ?string $wrapperJsonPath = null, ?string $personalityJsonPath = null) {
         $this->serverRoot = realpath(dirname(__DIR__, 5));
         if (!$this->serverRoot) {
             throw new \RuntimeException('Could not reliably determine the server root directory!');
@@ -56,6 +72,12 @@ class ChatConfigService {
         $this->personalityDbPath = "{$this->serverRoot}/database/personality.db";
         $personalityDbPathFixed = trim($personalityDbPath);
         if ($personalityDbPathFixed) { $this->personalityDbPath = $personalityDbPathFixed; }
+        $this->wrapperJsonPath = "{$this->serverRoot}/config/wrapper.json";
+        $wrapperJsonPathFixed = trim($wrapperJsonPath);
+        if ($wrapperJsonPathFixed) { $this->wrapperJsonPath = $wrapperJsonPathFixed; }
+        $this->personalityJsonPath = "{$this->serverRoot}/config/personality.json";
+        $personalityJsonPathFixed = trim($personalityJsonPath);
+        if ($personalityJsonPathFixed) { $this->personalityJsonPath = $personalityJsonPathFixed; }
     }
 
     /**
@@ -85,6 +107,24 @@ class ChatConfigService {
      * @return string Absolute filesystem path
      */
     public function getPersonalityDbPath(): string { return $this->personalityDbPath; }
+
+    /**
+     * Return the absolute path to the wrapper JSON configuration file.
+     *
+     * Sourced from the `WRAPPER_JSON_PATH` environment variable.
+     *
+     * @return string Absolute filesystem path
+     */
+    public function getWrapperJsonPath(): string { return $this->wrapperJsonPath; }
+
+    /**
+     * Return the absolute path to the personality JSON configuration file.
+     *
+     * Sourced from the `PERSONALITY_JSON_PATH` environment variable.
+     *
+     * @return string Absolute filesystem path
+     */
+    public function getPersonalityJsonPath(): string { return $this->personalityJsonPath; }
 
     /**
      * Return the LLM / embedding engine configuration.
@@ -125,7 +165,7 @@ class ChatConfigService {
             'summary_temperature'  => 0.3,
             'engine_id'            => null
         ];
-        $wrapperJsonPath = "{$this->serverRoot}/config/wrapper.json";
+        $wrapperJsonPath = $this->wrapperJsonPath;
         // Priority 1: wrapper.db engine configuration (sets SQLite defaults)
         try {
             $db = new \PDO("sqlite:{$wrapperDbPath}");
@@ -354,7 +394,7 @@ class ChatConfigService {
         $personalityName = null;
         // personality.json - read selectors (personality name, full_name, etc.)
         $jsonData = null;
-        $personalityJsonPath = "{$this->serverRoot}/config/personality.json";
+        $personalityJsonPath = $this->personalityJsonPath;
         if (file_exists($personalityJsonPath)) {
             try {
                 $jsonData = json_decode(file_get_contents($personalityJsonPath), true);
