@@ -63,20 +63,18 @@ class ChatConfigService {
      */
     public function __construct(?string $wrapperDbPath = null, ?string $personalityDbPath = null, ?string $wrapperJsonPath = null, ?string $personalityJsonPath = null) {
         $this->serverRoot = realpath(dirname(__DIR__, 5));
-        if (!$this->serverRoot) {
-            throw new \RuntimeException('Could not reliably determine the server root directory!');
-        }
+        if (!$this->serverRoot) { throw new \RuntimeException('Could not reliably determine the server root directory!'); }
         $this->wrapperDbPath = "{$this->serverRoot}/database/wrapper.db";
-        $wrapperDbPathFixed = trim($wrapperDbPath);
+        $wrapperDbPathFixed = trim($wrapperDbPath ?? '');
         if ($wrapperDbPathFixed) { $this->wrapperDbPath = $wrapperDbPathFixed; }
         $this->personalityDbPath = "{$this->serverRoot}/database/personality.db";
-        $personalityDbPathFixed = trim($personalityDbPath);
+        $personalityDbPathFixed = trim($personalityDbPath ?? '');
         if ($personalityDbPathFixed) { $this->personalityDbPath = $personalityDbPathFixed; }
         $this->wrapperJsonPath = "{$this->serverRoot}/config/wrapper.json";
-        $wrapperJsonPathFixed = trim($wrapperJsonPath);
+        $wrapperJsonPathFixed = trim($wrapperJsonPath ?? '');
         if ($wrapperJsonPathFixed) { $this->wrapperJsonPath = $wrapperJsonPathFixed; }
         $this->personalityJsonPath = "{$this->serverRoot}/config/personality.json";
-        $personalityJsonPathFixed = trim($personalityJsonPath);
+        $personalityJsonPathFixed = trim($personalityJsonPath ?? '');
         if ($personalityJsonPathFixed) { $this->personalityJsonPath = $personalityJsonPathFixed; }
     }
 
