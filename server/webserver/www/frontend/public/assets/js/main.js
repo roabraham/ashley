@@ -47,6 +47,19 @@
 (function () {
     'use strict';
 
+    // Polyfill TextDecoder for EdgeHTML/legacy WebView environments
+    if (typeof TextDecoder === 'undefined') {
+        window.TextDecoder = function () {};
+        TextDecoder.prototype.decode = function (bytes) {
+            if (typeof bytes === 'string') { return bytes; }
+            var result = '';
+            for (var i = 0; i < bytes.length; i++) {
+                result += String.fromCharCode(bytes[i]);
+            }
+            return result;
+        };
+    }
+
     // =============================================================================
     // SECTION 1: CONFIGURATION & DEFAULTS
     // =============================================================================
@@ -1037,20 +1050,28 @@
             function finalise(rdr) {
                 if (completed) { return; }
                 completed = true;
-                // Hide cursor indicator.
                 var dots = messageDiv.querySelector('.dots');
                 if (dots) { dots.style.display = 'none'; }
-                // FIX-WARN-7: Only persist if there was actual content.
                 if (assistantMessage.length > 0) {
                     AppState.chatHistory.push({ role: 'user',      content: userMessage });
                     AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
                     saveHistoryToStorage();
                 }
-                // Cancel the underlying stream to release network resources.
-                // FIX-WARN-4: original code omitted reader.cancel().
-                try { rdr.cancel(); } catch (e) { /* ignore */ }
+                if (rdr && typeof rdr.cancel === 'function') {
+                    try {
+                        var cancelResult = rdr.cancel();
+                        if (cancelResult && typeof cancelResult.catch === 'function') {
+                            cancelResult.catch(function () {});
+                        }
+                    } catch (e) { /* ignore */ }
+                }
                 if (typeof callback === 'function') {
-                    callback(assistantMessage.length > 0 ? assistantMessage : null);
+                    try {
+                        callback(assistantMessage.length > 0 ? assistantMessage : null);
+                    } catch (cbErr) {
+                        console.warn('[Stream] Callback error:', cbErr.message);
+                        finishProcessing();
+                    }
                 }
             }
 
@@ -1397,8 +1418,16 @@
      * @param {Event} e
      */
     function handleSubmit(e) {
-        if (e) { e.preventDefault(); }
-        handleFormSubmit();
+        if (e && typeof e.preventDefault === 'function') {
+            e.preventDefault();
+        }
+        try {
+            handleFormSubmit();
+        } catch (err) {
+            console.error('[Form] Submit handler error:', err);
+            finishProcessing();
+        }
+        return false;
     }
 
     // =============================================================================

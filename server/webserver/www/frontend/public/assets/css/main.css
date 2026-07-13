@@ -51,7 +51,7 @@ body {
 
 /** Sidebar card: ~25% width, full height, content scrolls if needed */
 .sidebar {
-    width: 28%;
+    flex: 0 0 28%;
     max-width: 360px;
     min-width: 260px;
     display: flex;
@@ -101,6 +101,7 @@ body {
 .chat-box {
     flex: 1 1 auto;
     min-height: 0;
+    min-width: 0;
     overflow-y: auto;
     background-color: transparent;
     padding: 1rem;
