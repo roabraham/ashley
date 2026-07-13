@@ -30,19 +30,31 @@
     </div>
 </div>
 {% else %}
-<div class="container py-4">
-    <div class="card shadow-lg">
+<div class="chat-layout">
+    <aside class="sidebar card shadow-lg">
         <div class="card-header bg-primary text-white text-center">
             <h4 class="mb-0">{{ persona.chatbot_name }} Chatbot</h4>
         </div>
-        {% if persona.avatar_img %}
-        <div class="avatar-container">
-            <img src="{{ persona.avatar_img|raw }}" alt="Avatar">
-            {% if persona.description %}
-                <p class="description-text">{{ persona.description }}</p>
+        <div class="sidebar-content">
+            {% if persona.avatar_img %}
+            <div class="avatar-container">
+                <img src="{{ persona.avatar_img|raw }}" alt="Avatar">
+                {% if persona.description %}
+                    <p class="description-text">{{ persona.description }}</p>
+                {% endif %}
+            </div>
             {% endif %}
+            <div class="sidebar-menu d-flex flex-column gap-2">
+                {% if llmEnabled %}
+                <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank">llama.cpp</a>
+                {% endif %}
+                <button id="export-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="display: none; border-radius: 15px; font-size: 0.8rem;">Export</button>
+                <button id="import-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;">Import</button>
+                <button id="new-session-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;">New</button>
+            </div>
         </div>
-        {% endif %}
+    </aside>
+    <main class="chat-panel card shadow-lg">
         <div class="card-body chat-box" id="chat-box" tabindex="0"></div>
         <div class="card-footer">
             <form id="chat-form" class="d-flex">
@@ -50,7 +62,7 @@
                 <button class="btn btn-success" type="submit" tabindex="2">Submit</button>
             </form>
         </div>
-    </div>
+    </main>
 </div>
 {% endif %}
 <script src="{{ asset('assets/js/bootstrap.bundle.min.js') }}"></script>
@@ -71,7 +83,7 @@
     var WARNING_THRESHOLD = {{ warning_threshold }};
     // Check if there's existing session conversation data (for response mode 1)
     var HAS_SESSION_CONVERSATION = {{ has_session_conversation ? 'true' : 'false' }};
- </script>
+</script>
 <div id="confirm-modal" class="modal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
@@ -103,16 +115,6 @@
                 <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
             </div>
         </div>
-    </div>
-</div>
-<div class="container-fluid pb-2">
-    <div class="d-flex flex-wrap justify-content-center gap-2">
-        {% if llmEnabled %}
-        <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm px-3" style="border-radius: 15px; font-size: 0.75rem;" target="_blank">llama.cpp</a>
-        {% endif %}
-        <button id="export-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm px-3" style="display: none; border-radius: 15px; font-size: 0.75rem;">Export</button>
-        <button id="import-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm px-3" style="border-radius: 15px; font-size: 0.75rem;">Import</button>
-        <button id="new-session-btn" type="button" class="btn btn-secondary btn-sm shadow-sm px-3" style="border-radius: 15px; font-size: 0.75rem;">New</button>
     </div>
 </div>
 <input type="file" id="import-conversation-input" accept=".json,application/json" style="display: none;" aria-label="Import conversation file">
