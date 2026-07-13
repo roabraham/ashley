@@ -24,9 +24,11 @@ body {
     min-height: 100vh;
 }
 
-/** Card container with translucent background */
+/** Card container with translucent background and blur effect */
 .card {
-    background-color: rgba(255, 255, 255, 0.85);
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border: none;
     border-radius: 0.5rem;
 }
@@ -223,7 +225,7 @@ body {
 }
 
 /** Stack the layout vertically on small screens (tablet/mobile) */
-@media (max-width: 991.98px) {
+@media (max-width: 1024px) {
     .chat-layout {
         flex-direction: column;
         height: auto;
