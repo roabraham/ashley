@@ -44,7 +44,7 @@
                 {% endif %}
             </div>
             {% endif %}
-            <div class="sidebar-menu d-flex flex-column gap-2">
+            <div class="sidebar-menu d-flex flex-column">
                 {% if llmEnabled %}
                 <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank">llama.cpp</a>
                 {% endif %}
