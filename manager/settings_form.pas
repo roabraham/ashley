@@ -2809,6 +2809,10 @@ begin
         end;
         TimezoneQuery.Next;
       end;
+      if DefaultPHPtimezone = -1 then
+      begin
+        if PHPtimezoneCombobox.Items.Count > 0 then DefaultPHPtimezone := 0;
+      end;
       PHPtimezoneCombobox.ItemIndex := DefaultPHPtimezone;
     finally
       LlamaQuery.Close;
