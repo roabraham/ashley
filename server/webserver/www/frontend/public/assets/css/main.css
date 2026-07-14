@@ -221,13 +221,16 @@ body {
     .chat-video { max-height: 360px; }
 }
 
+/** Smaller avatar on smaller screens */
+@media (max-width: 1280px) {
+    .avatar-container { margin-top: 10px; }
+    .avatar-container img { max-width: 200px; }
+}
+
 /** Smaller avatar on small screens (tablet/mobile) */
 @media (max-width: 960px) {
     .avatar-container { margin-top: 6px; }
-    .avatar-container img {
-        width: 80px;
-        height: 80px;
-    }
+    .avatar-container img { max-width: 80px; }
 }
 
 /** Hide description on small screens (tablet/mobile) */
