@@ -718,11 +718,11 @@ begin
     if MainLLMserverProcessRunning then
     begin
       if not(MessageDlg(
-      'Confirm Cleanup',
-      'Do you really want to clear the cache?',
-      mtConfirmation,
-      [mbYes, mbNo],
-      0) = mrYes) then Exit;
+        'Confirm Cleanup',
+        'Do you really want to clear the cache?',
+        mtConfirmation,
+        [mbYes, mbNo],
+        0) = mrYes) then Exit;
     end
     else
     begin
