@@ -249,7 +249,7 @@ This tab configures the built-in *NGINX web server* and *PHP runtime*.
 #### Temporary Files and Folders Group
 
 * **Open Folder**: opens the `temp/` folder in *File Explorer*. This folder contains temporary files created by the *PHP runtime*, *web server* and other services. This button is enabled when the service is stopped and the temp directory exists.
-* **Clear Folder**: clears all temporary files and folders in the `temp/` directory recursively. This can only be done when the *LLM service* is stopped. A confirmation dialog appears before clearing.
+* **Clear Folder**: clears all temporary files and folders in the `temp/` directory recursively (when the *LLM service* is stopped) and the cache directory. A confirmation dialog appears before clearing.
 
 ### Persona Tab
 

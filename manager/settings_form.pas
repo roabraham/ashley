@@ -440,6 +440,8 @@ type
     logFile: AnsiString;
     { Path to the temporary files directory. }
     TempDirectory: AnsiString;
+    { Path to the cache directory. }
+    CacheDirectory: AnsiString;
     { Indicates whether configuration was saved successfully. }
     configDataSaved: boolean;
     { Indicates whether a port uniqueness error occurred during save. }
@@ -715,28 +717,37 @@ begin
   try
     if MainLLMserverProcessRunning then
     begin
-      MessageDlg('Error', 'Cannot clear temporary files and folders when the server is running!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    if not(length(TempDirectory) >= 1) then
-    begin
-      MessageDlg('Error', 'Directory for temporary files and folders not specified!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    if not(DirectoryExists(TempDirectory)) then
-    begin
-      MessageDlg('Error', 'Directory for temporary files and folders does not exist: ' + TempDirectory, mtError, [mbOK], 0);
-      Exit;
-    end;
-    if not(MessageDlg(
+      if not(MessageDlg(
       'Confirm Cleanup',
-      'Do you really want to clear ALL temporary files and folders in ' + TempDirectory + '?',
+      'Do you really want to clear the cache?',
       mtConfirmation,
       [mbYes, mbNo],
       0) = mrYes) then Exit;
-    DeleteDirectory(TempDirectory, true);
+    end
+    else
+    begin
+      if not(MessageDlg(
+        'Confirm Cleanup',
+        'Do you really want to clear ALL temporary files, folders and the cache?',
+        mtConfirmation,
+        [mbYes, mbNo],
+        0) = mrYes) then Exit;
+      if length(TempDirectory) >= 1 then
+      begin
+        if DirectoryExists(TempDirectory) then DeleteDirectory(TempDirectory, true);
+      end;
+    end;
+    if length(CacheDirectory) >= 1 then
+    begin
+      if DirectoryExists(CacheDirectory) then DeleteDirectory(CacheDirectory, false);
+    end;
     ClearTempDirButton.Enabled := false;
-    ShowMessage('All temporary files and folders cleared recursively!');
+    if MainLLMserverProcessRunning then
+    begin
+      ShowMessage('Cache cleared successfully!');
+      Exit;
+    end;
+    ShowMessage('All temporary files, folders and the cache cleared successfully!');
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
@@ -2063,6 +2074,13 @@ begin
         end;
       end;
     end;
+    if not(ClearTempDirButton.Enabled) then
+    begin
+      if length(CacheDirectory) >= 1 then
+      begin
+        if DirectoryExists(CacheDirectory) then ClearTempDirButton.Enabled := true;
+      end;
+    end;
     if LlamaEngineComboBox.Items.Count = 0 then Exit;
     canHandleEngineChange := false;
     LoadConfigData;
@@ -2761,6 +2779,7 @@ begin
     logDirectory := appdir + 'log' + PathDelim;
     logFile := logDirectory + 'wrapper.log';
     TempDirectory := appdir + 'temp' + PathDelim;
+    CacheDirectory := webserverdir + 'www' + PathDelim + 'frontend' + PathDelim + 'var' + PathDelim + 'cache' + PathDelim;
     try
       // DO NOT delete WAL/SHM files before opening - let SQLite handle them
       {if FileExists(wrapperDbFileWAL) then DeleteFile(wrapperDbFileWAL);

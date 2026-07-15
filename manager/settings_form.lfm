@@ -617,7 +617,7 @@ object SettingsForm: TSettingsForm
             )
             ColWidths = (
               250
-              475
+              471
             )
           end
           object AddButton: TButton
@@ -718,7 +718,7 @@ object SettingsForm: TSettingsForm
           )
           ColWidths = (
             250
-            492
+            467
           )
         end
         object AddEmbeddingParameterButton: TButton
@@ -1109,7 +1109,7 @@ object SettingsForm: TSettingsForm
           object ClearTempDirButton: TButton
             Left = 176
             Height = 31
-            Hint = 'Clear temporary files and folders'
+            Hint = 'Clear temporary files, folders and the cache'
             Top = 8
             Width = 160
             Caption = 'Clear Folder'
