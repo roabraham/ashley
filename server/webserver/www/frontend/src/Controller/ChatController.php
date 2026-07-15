@@ -92,6 +92,16 @@ class ChatController extends AbstractController
                 if (is_array($history)) { $hasSessionConversation = true; }
             }
         }
+        $activePrompt = trim($persona['active_prompt']  ?? '');
+        if (!empty($activePrompt)) {
+            $string_replacements = $this->getStringReplacements($persona);
+            if (!empty($string_replacements)) {
+                foreach($string_replacements as $variable => $replacement) {
+                    $activePrompt = trim(str_replace($variable, $replacement, $activePrompt));
+                }
+                $persona['active_prompt'] = $activePrompt;
+            }
+        }
         return $this->render('chat/index.html.twig', [
             'persona'                  => $persona,
             'llm_config'               => $llmConfig,
@@ -457,6 +467,14 @@ class ChatController extends AbstractController
                 }
             }
         }
+        if (!empty($activePrompt)) {
+            $string_replacements = $this->getStringReplacements($persona);
+            if (!empty($string_replacements)) {
+                foreach($string_replacements as $variable => $replacement) {
+                    $activePrompt = trim(str_replace($variable, $replacement, $activePrompt));
+                }
+            }
+        }
         // ── Build the conversation text to summarise ───────────────────────
         // Include the ": \n\n" suffix in header length
         // Also include the configured safety margin so the compression
@@ -601,6 +619,12 @@ class ChatController extends AbstractController
         $messages = [];
         $active_prompt = trim($persona['active_prompt'] ?? '');
         if (!empty($active_prompt)) {
+            $string_replacements = $this->getStringReplacements($persona);
+            if (!empty($string_replacements)) {
+                foreach($string_replacements as $variable => $replacement) {
+                    $active_prompt = trim(str_replace($variable, $replacement, $active_prompt));
+                }
+            }
             $messages[] = ['role' => 'system', 'content' => $active_prompt];
         }
         $llmCtxSize = intval($llmConfig['llm_ctx_size'] ?? self::DEFAULT_LLM_CTX_SIZE);
