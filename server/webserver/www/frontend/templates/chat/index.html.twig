@@ -46,21 +46,22 @@
             {% endif %}
             <div class="sidebar-menu d-flex flex-column">
                 {% if llmEnabled %}
-                <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank">llama.cpp</a>
+                <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank" title="Open llama.cpp interface">llama.cpp</a>
                 {% endif %}
-                <button id="export-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="display: none; border-radius: 15px; font-size: 0.8rem;">Export</button>
-                <button id="import-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;">Import</button>
-                <button id="new-session-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;">New</button>
+                <button id="export-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="display: none; border-radius: 15px; font-size: 0.8rem;" title="Export conversation">Export</button>
+                <button id="import-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" title="Import conversation">Import</button>
+                <button id="new-session-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" title="Start new session">New</button>
             </div>
         </div>
     </aside>
     <main class="chat-panel card shadow-lg">
-        <div class="card-body chat-box" id="chat-box" tabindex="0"></div>
+        <div class="card-body chat-box" id="chat-box" role="region" aria-label="Chat messages"></div>
         <div class="card-footer">
-            <form id="chat-form" class="d-flex" autocomplete="off" novalidate>
-                <textarea id="user-input" class="form-control me-2" rows="1" placeholder="Write your message..." autocomplete="off" required tabindex="1"></textarea>
-                <button class="btn btn-success" type="submit" tabindex="2">Submit</button>
-            </form>
+            <div id="chat-form" class="d-flex" autocomplete="off">
+                <textarea id="user-input" class="form-control me-2" rows="1" placeholder="Write your message..." autocomplete="off" aria-label="Type your message"></textarea>
+                <button id="submit-btn" class="btn btn-success" type="button">Submit</button>
+                <button id="stop-btn" class="btn btn-danger" type="button" style="display: none;" disabled>Stop</button>
+            </div>
         </div>
     </main>
 </div>
@@ -95,8 +96,8 @@
                 <p id="confirm-message">Are you sure?</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" id="confirm-ok-btn" class="btn btn-primary">OK</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" title="Cancel">Cancel</button>
+                <button type="button" id="confirm-ok-btn" class="btn btn-primary" title="Confirm">OK</button>
             </div>
         </div>
     </div>

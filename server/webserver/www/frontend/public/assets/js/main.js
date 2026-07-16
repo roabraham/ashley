@@ -92,6 +92,9 @@
         thinkingMessageDiv: null,
         currentAudio: null,
         streamingController: null,
+        streamingMessageDiv: null,
+        lastUserMessageDiv: null,
+        userStoppedStream: false,
         responseMode: DEFAULT_CONFIG.RESPONSE_MODE,
         chatHistory: [],
         hasSessionConversation: false,
@@ -114,8 +117,15 @@
         input: null,
         chatBox: null,
         submitBtn: null,
+        stopBtn: null,
         importInput: null
     };
+
+    /** Currently visible modal element for focus-trap management. */
+    var activeModalEl = null;
+
+    /** Element that had focus before a modal opened, restored on close. */
+    var previouslyFocused = null;
 
     // =============================================================================
     // SECTION 2: UTILITY FUNCTIONS
@@ -303,34 +313,95 @@
     }
 
     /**
+     * Trap keyboard focus inside the currently open modal.
+     * Required because EdgeHTML does not reliably enforce Bootstrap's
+     * built-in focus trap.
+     *
+     * @param {KeyboardEvent} e
+     */
+    function handleModalFocusTrap(e) {
+        if (!activeModalEl) { return; }
+        if (e.key !== 'Tab') { return; }
+        var focusableSelectors =
+            'a[href], button:not([disabled]), input:not([disabled]), ' +
+            'select:not([disabled]), textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])';
+        var focusableElements = activeModalEl.querySelectorAll(focusableSelectors);
+        if (focusableElements.length === 0) {
+            e.preventDefault();
+            return;
+        }
+        var first = focusableElements[0];
+        var last  = focusableElements[focusableElements.length - 1];
+        if (e.shiftKey) {
+            if (document.activeElement === first ||
+                    !activeModalEl.contains(document.activeElement)) {
+                last.focus();
+                e.preventDefault();
+            }
+        } else {
+            if (document.activeElement === last ||
+                    !activeModalEl.contains(document.activeElement)) {
+                first.focus();
+                e.preventDefault();
+            }
+        }
+    }
+
+    /**
      * Show a Bootstrap modal, or fall back to manual display.
+     * Also activates a manual focus trap for EdgeHTML compatibility.
      *
      * @param {HTMLElement} modalEl
      */
     function showModal(modalEl) {
+        previouslyFocused = document.activeElement;
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
             var modal = new bootstrap.Modal(modalEl);
             modal.show();
+            setTimeout(function () {
+                var computed = window.getComputedStyle(modalEl);
+                if (computed.display !== 'none') {
+                    activeModalEl = modalEl;
+                    document.addEventListener('keydown', handleModalFocusTrap);
+                }
+            }, 100);
             return;
         }
         modalEl.style.display = 'block';
         modalEl.style.backgroundColor = 'rgba(0,0,0,0.5)';
         modalEl.classList.add('show');
+        activeModalEl = modalEl;
+        document.addEventListener('keydown', handleModalFocusTrap);
     }
 
     /**
      * Hide a Bootstrap modal, or fall back to manual hide.
+     * Releases the focus trap and restores focus to the previously
+     * focused element.
      *
      * @param {HTMLElement} modalEl
      */
     function hideModal(modalEl) {
+        if (activeModalEl === modalEl) {
+            activeModalEl = null;
+            document.removeEventListener('keydown', handleModalFocusTrap);
+        }
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
             var modal = bootstrap.Modal.getInstance(modalEl);
             if (modal) { modal.hide(); }
+            if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+                previouslyFocused.focus();
+            }
+            previouslyFocused = null;
             return;
         }
         modalEl.style.display = 'none';
         modalEl.classList.remove('show');
+        if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+            previouslyFocused.focus();
+        }
+        previouslyFocused = null;
     }
 
     // =============================================================================
@@ -564,6 +635,7 @@
                     AppState.chatHistory = validMessages;
                     saveHistoryToStorage();
                     if (DOM.chatBox) { DOM.chatBox.innerHTML = ''; }
+                    AppState.lastUserMessageDiv = null;
                     displayInitialMessage();
                     displayChatHistory();
                     updateExportButtonVisibility();
@@ -582,6 +654,7 @@
                     if (isPlainObject(data) && data.success === true &&
                             Array.isArray(data.conversation_history)) {
                         if (DOM.chatBox) { DOM.chatBox.innerHTML = ''; }
+                        AppState.lastUserMessageDiv = null;
                         displayInitialMessage();
                         for (var i = 0; i < data.conversation_history.length; i++) {
                             var msg = data.conversation_history[i];
@@ -652,6 +725,7 @@
                 }
                 AppState.hasSessionConversation = false;
                 if (DOM.chatBox) { DOM.chatBox.innerHTML = ''; }
+                AppState.lastUserMessageDiv = null;
                 displayInitialMessage();
                 updateExportButtonVisibility();
             })
@@ -663,6 +737,7 @@
         }
         clearHistory();
         if (DOM.chatBox) { DOM.chatBox.innerHTML = ''; }
+        AppState.lastUserMessageDiv = null;
         displayInitialMessage();
         updateExportButtonVisibility();
     }
@@ -751,14 +826,15 @@
      * @param {string} [text]  - Message text (HTML-escaped before insertion).
      * @param {string} [action] - Optional action/emote prefix.
      */
-    function appendMessage(sender, text, action) {
+    function appendMessage(sender, text, action, messageClass) {
         if (!DOM.chatBox) {
             console.warn('[UI] Chat box not initialised');
-            return;
+            return null;
         }
         var senderStr = typeof sender === 'string' ? sender : 'chatbot';
         var messageDiv = document.createElement('div');
-        messageDiv.className = 'message ' + (senderStr === 'user' ? 'user-message' : 'chatbot-message');
+        var extraClass = (typeof messageClass === 'string' && messageClass.length > 0) ? (' ' + messageClass) : '';
+        messageDiv.className = 'message ' + (senderStr === 'user' ? 'user-message' : 'chatbot-message') + extraClass;
         messageDiv.setAttribute('tabindex', '-1');
         var html = '';
         if (typeof action === 'string' && action.length > 0) {
@@ -778,6 +854,7 @@
         } catch (e) {
             console.warn('[UI] Append error:', e.message);
         }
+        return messageDiv;
     }
 
     /**
@@ -1036,6 +1113,7 @@
                 '<span class="stream-content"></span>' +
                 '<span class="dots">.</span>' +
                 '</div>';
+            AppState.streamingMessageDiv = messageDiv;
             if (DOM.chatBox) {
                 DOM.chatBox.appendChild(messageDiv);
                 DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
@@ -1052,11 +1130,14 @@
                 completed = true;
                 var dots = messageDiv.querySelector('.dots');
                 if (dots) { dots.style.display = 'none'; }
-                if (assistantMessage.length > 0) {
+                var shouldSave = (assistantMessage.length > 0 && (!AppState.userStoppedStream));
+                if (shouldSave) {
                     AppState.chatHistory.push({ role: 'user',      content: userMessage });
                     AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
                     saveHistoryToStorage();
                 }
+                if (AppState.userStoppedStream) { AppState.userStoppedStream = false; }
+                AppState.streamingMessageDiv = null;
                 if (rdr && typeof rdr.cancel === 'function') {
                     try {
                         var cancelResult = rdr.cancel();
@@ -1067,7 +1148,7 @@
                 }
                 if (typeof callback === 'function') {
                     try {
-                        callback(assistantMessage.length > 0 ? assistantMessage : null);
+                        callback(shouldSave ? assistantMessage : null);
                     } catch (cbErr) {
                         console.warn('[Stream] Callback error:', cbErr.message);
                         finishProcessing();
@@ -1211,15 +1292,30 @@
      */
     function handleFormSubmit() {
         if (AppState.isProcessing) { return; }
+        AppState.userStoppedStream = false;
         if (!DOM.input) { return; }
         var rawValue = DOM.input.value;
         var message  = typeof rawValue === 'string' ? rawValue.trim() : '';
-        if (message.length === 0) { return; }
+        if (message.length === 0) {
+            DOM.input.classList.add('is-invalid');
+            DOM.input.focus();
+            return;
+        }
+        DOM.input.classList.remove('is-invalid');
         AppState.isProcessing = true;
         DOM.input.disabled = true;
-        if (DOM.submitBtn) { DOM.submitBtn.disabled = true; }
-        appendMessage('user', message);
+        if (DOM.submitBtn) {
+            DOM.submitBtn.disabled = true;
+            if (AppState.responseMode === 2) { DOM.submitBtn.style.display = 'none'; }
+        }
+        if (DOM.stopBtn && AppState.responseMode === 2) {
+            DOM.stopBtn.disabled = false;
+            DOM.stopBtn.style.display = '';
+        }
+        var userMsgDiv = appendMessage('user', message);
+        AppState.lastUserMessageDiv = userMsgDiv;
         DOM.input.value = '';
+        DOM.input.classList.remove('is-invalid');
         DOM.input.style.height = 'auto';
         // In streaming mode, history is entirely client-side. Check compression here
         // before either the embedding or direct-LLM paths.
@@ -1227,6 +1323,7 @@
                 getHistoryTokenCount(message) > AppState.warningThreshold &&
                 AppState.chatHistory.length > 0) {
             compressHistoryViaApi(message, function () {
+                if (!AppState.isProcessing) { return; }
                 proceedWithSend(message);
             });
             return;
@@ -1350,6 +1447,25 @@
         });
     }
 
+    /** Stop the ongoing llama.cpp stream in streaming mode and reset the UI. */
+    function handleStop() {
+        if (AppState.responseMode !== 2) { return; }
+        if (!AppState.isProcessing) { return; }
+        AppState.userStoppedStream = true;
+        abortActiveStream();
+        if (AppState.streamingMessageDiv && AppState.streamingMessageDiv.parentNode) {
+            AppState.streamingMessageDiv.parentNode.removeChild(AppState.streamingMessageDiv);
+        }
+        AppState.streamingMessageDiv = null;
+        if (AppState.lastUserMessageDiv && AppState.lastUserMessageDiv.parentNode) {
+            AppState.lastUserMessageDiv.parentNode.removeChild(AppState.lastUserMessageDiv);
+        }
+        AppState.lastUserMessageDiv = null;
+        removeThinkingMessage();
+        appendMessage('chatbot', 'Request canceled by user.', null, 'cancel-message');
+        finishProcessing();
+    }
+
     /**
      * Re-enable the input UI after a send cycle completes.
      * Idempotent: safe to call multiple times.
@@ -1358,10 +1474,16 @@
         AppState.isProcessing = false;
         if (DOM.input) {
             DOM.input.disabled = false;
+            DOM.input.classList.remove('is-invalid');
             try { DOM.input.focus(); } catch (e) { /* ignore focus errors */ }
         }
         if (DOM.submitBtn) {
             DOM.submitBtn.disabled = false;
+            DOM.submitBtn.style.display = '';
+        }
+        if (DOM.stopBtn && AppState.responseMode === 2) {
+            DOM.stopBtn.disabled = true;
+            DOM.stopBtn.style.display = 'none';
         }
     }
 
@@ -1374,6 +1496,7 @@
         if (!DOM.input) { return; }
         DOM.input.style.height = 'auto';
         DOM.input.style.height = DOM.input.scrollHeight + 'px';
+        DOM.input.classList.remove('is-invalid');
     }
 
     /**
@@ -1386,13 +1509,17 @@
     function handleKeydown(e) {
         if (!e) { return; }
         if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
+            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+            if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+            if (typeof e.stopImmediatePropagation === 'function') { e.stopImmediatePropagation(); }
+            e.returnValue = false;
             handleFormSubmit();
             return;
         }
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             if (!DOM.chatBox) { return; }
-            e.preventDefault();
+            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+            if (typeof e.stopImmediatePropagation === 'function') { e.stopImmediatePropagation(); }
             var messages     = DOM.chatBox.querySelectorAll('.message');
             var messageCount = messages.length;
             if (messageCount === 0) { return; }
@@ -1418,8 +1545,10 @@
      * @param {Event} e
      */
     function handleSubmit(e) {
-        if (e && typeof e.preventDefault === 'function') {
-            e.preventDefault();
+        if (e) {
+            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+            if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+            e.returnValue = false;
         }
         try {
             handleFormSubmit();
@@ -1440,9 +1569,8 @@
         DOM.input       = document.getElementById('user-input');
         DOM.chatBox     = document.getElementById('chat-box');
         DOM.importInput = document.getElementById('import-conversation-input');
-        if (DOM.form) {
-            DOM.submitBtn = DOM.form.querySelector('button[type="submit"]');
-        }
+        DOM.stopBtn     = document.getElementById('stop-btn');
+        DOM.submitBtn   = document.getElementById('submit-btn');
     }
 
     /**
@@ -1533,20 +1661,36 @@
             DOM.input.addEventListener('input',   handleInput);
             DOM.input.addEventListener('keydown', handleKeydown);
         }
-        if (DOM.form) {
-            DOM.form.addEventListener('submit', handleSubmit);
+        if (DOM.submitBtn) {
+            DOM.submitBtn.addEventListener('click', function (e) {
+                if (e) {
+                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+                    if (typeof e.stopImmediatePropagation === 'function') { e.stopImmediatePropagation(); }
+                    e.returnValue = false;
+                }
+                handleFormSubmit();
+            });
         }
         var exportBtn = document.getElementById('export-conversation-btn');
         if (exportBtn) {
             exportBtn.addEventListener('click', function (e) {
-                e.preventDefault();
+                if (e) {
+                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+                    e.returnValue = false;
+                }
                 exportConversation();
             });
         }
         var importBtn = document.getElementById('import-conversation-btn');
         if (importBtn) {
             importBtn.addEventListener('click', function (e) {
-                e.preventDefault();
+                if (e) {
+                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+                    e.returnValue = false;
+                }
                 if (DOM.importInput) { DOM.importInput.click(); }
             });
         }
@@ -1582,9 +1726,35 @@
                 );
             });
         }
+        if (DOM.stopBtn) {
+            DOM.stopBtn.addEventListener('click', function (e) {
+                if (e) {
+                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+                    e.returnValue = false;
+                }
+                handleStop();
+            });
+        }
         // Abort any active stream if the page is navigated away.
         window.addEventListener('beforeunload', function () {
             abortActiveStream();
+        });
+        // EdgeHTML-compatible modal dismiss handler.
+        // Bootstrap's data-bs-dismiss="modal" does not work reliably in Edge,
+        // so we explicitly close modals on click.
+        document.addEventListener('click', function (e) {
+            var dismissBtn = e.target.closest('[data-bs-dismiss="modal"], .btn-close');
+            if (!dismissBtn) { return; }
+            var modal = dismissBtn.closest('.modal');
+            if (modal) {
+                if (e) {
+                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
+                    e.returnValue = false;
+                }
+                hideModal(modal);
+            }
         });
     }
 
