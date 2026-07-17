@@ -1,0 +1,57 @@
+object ProgressForm: TProgressForm
+  Left = 527
+  Height = 150
+  Top = 37
+  Width = 500
+  BorderIcons = []
+  BorderStyle = bsNone
+  Caption = 'Processing'
+  ClientHeight = 150
+  ClientWidth = 500
+  DesignTimePPI = 120
+  FormStyle = fsStayOnTop
+  Position = poOwnerFormCenter
+  LCLVersion = '4.4.0.0'
+  object MainBevel: TBevel
+    Left = 8
+    Height = 136
+    Top = 8
+    Width = 488
+    Anchors = [akTop, akLeft, akRight, akBottom]
+  end
+  object ProcessingTitleLabel: TLabel
+    Left = 16
+    Height = 37
+    Top = 16
+    Width = 474
+    Alignment = taCenter
+    Anchors = [akTop, akLeft, akRight]
+    AutoSize = False
+    Caption = 'Processing'
+    Font.CharSet = EASTEUROPE_CHARSET
+    Font.Height = -27
+    Font.Pitch = fpVariable
+    Font.Quality = fqDraft
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object ProcessingDescriptionLabel: TLabel
+    Left = 16
+    Height = 25
+    Top = 64
+    Width = 474
+    Alignment = taCenter
+    Anchors = [akTop, akLeft, akRight]
+    AutoSize = False
+    Caption = 'Please wait...'
+  end
+  object MainProgressBar: TProgressBar
+    Left = 24
+    Height = 25
+    Top = 104
+    Width = 456
+    Anchors = [akTop, akLeft, akRight]
+    TabOrder = 0
+    BarShowText = True
+  end
+end

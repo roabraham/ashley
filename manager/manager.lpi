@@ -20,8 +20,9 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="4"/>
-      <BuildNr Value="67"/>
-      <StringTable Comments="Service manager application" CompanyName="Robert Abraham" FileDescription="Service manager application" InternalName="Service Manager" LegalCopyright="Robert Abraham" LegalTrademarks="Robert Abraham" OriginalFilename="manager.exe" ProductName="Service Manager" ProductVersion="0.4"/>
+      <RevisionNr Value="1"/>
+      <BuildNr Value="1"/>
+      <StringTable Comments="Service manager application" CompanyName="Robert Abraham" FileDescription="Service manager application" InternalName="Service Manager" LegalCopyright="Robert Abraham" LegalTrademarks="Robert Abraham" OriginalFilename="manager.exe" ProductName="Service Manager" ProductVersion="0.4.1"/>
     </VersionInfo>
     <BuildModes>
       <Item Name="Debug" Default="True"/>
@@ -111,6 +112,13 @@
         <Filename Value="about_form.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="AboutForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit>
+      <Unit>
+        <Filename Value="progress_form.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="ProgressForm"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
       </Unit>

@@ -9,7 +9,7 @@ uses
   Classes, LCLIntf, SysUtils, DB, SQLite3Conn, SQLDB, Forms, Controls, Graphics,
   Dialogs, StdCtrls, ExtCtrls, ValEdit, ComCtrls, DBCtrls, Grids, Spin, fpjson,
   jsonparser, StrUtils, RegExpr, process, FileUtil, SynHighlighterCss, SynEdit,
-  math, base64, Types;
+  math, base64, Types, progress_form;
 
 type
 
@@ -397,6 +397,8 @@ type
     llmEmbeddingPort: integer;
     { Proxy location path for nginx. }
     llmProxyLocation: AnsiString;
+    { Copies a file progressively while updating the progress bar (helper). }
+    function CopyFileWithProgress(const SourceFile, DestFile: AnsiString): Boolean;
   public
     { Path to the application directory. }
     appdir: AnsiString;
@@ -754,6 +756,67 @@ begin
   end;
 end;
 
+//Copy file progressively while updating the progress bar (helper)
+function TSettingsForm.CopyFileWithProgress(const SourceFile, DestFile: AnsiString): Boolean;
+var
+  SrcStream: TFileStream;
+  DstStream: TFileStream;
+  Buffer: array[0..65535] of Byte;
+  TotalSize, Copied, ReadBytes: Int64;
+  Percent: Integer;
+begin
+  Result := false;
+  SrcStream := nil;
+  DstStream := nil;
+  try
+    try
+      ProgressForm.MainProgressBar.Position := 0;
+      ProgressForm.Show;
+      Application.ProcessMessages;
+      SrcStream := TFileStream.Create(SourceFile, fmOpenRead or fmShareDenyWrite);
+      TotalSize := SrcStream.Size;
+      if TotalSize <= 0 then
+      begin
+        ProgressForm.Hide;
+        MessageDlg('Error', 'Cannot import empty file: ' + SourceFile, mtError, [mbOK], 0);
+        Exit;
+      end;
+      if FileExists(DestFile) then DeleteFile(DestFile);
+      DstStream := TFileStream.Create(DestFile, fmCreate);
+      Copied := 0;
+      while Copied < TotalSize do
+      begin
+        ReadBytes := SrcStream.Read(Buffer, Min(Max(TotalSize - Copied, 0), SizeOf(Buffer)));
+        if ReadBytes <= 0 then Break;
+        DstStream.Write(Buffer, ReadBytes);
+        Inc(Copied, ReadBytes);
+        Percent := Min(Round((Copied / TotalSize) * 100), 100);
+        ProgressForm.MainProgressBar.Position := Percent;
+        Application.ProcessMessages;
+      end;
+      if Copied = TotalSize then
+      begin
+        Result := true;
+        ProgressForm.Hide;
+        ShowMessage('File successfully imported to: ' + DestFile);
+        Exit;
+      end;
+      ProgressForm.Hide;
+      MessageDlg('Error', 'Failed to import file: ' + SourceFile, mtError, [mbOK], 0);
+    except
+      on x: Exception do
+      begin
+        if ProgressForm.Visible then ProgressForm.Hide;
+        MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+      end;
+    end;
+  finally
+    if ProgressForm.Visible then ProgressForm.Hide;
+    if Assigned(SrcStream) then FreeAndNil(SrcStream);
+    if Assigned(DstStream) then FreeAndNil(DstStream);
+  end;
+end;
+
 //Call log clearing
 procedure TSettingsForm.ClearLogButtonClick(Sender: TObject);
 begin
@@ -893,18 +956,16 @@ begin
       Exit;
     end;
     BaseName := ReplaceRegExpr('[^a-zA-Z0-9_]', BaseName, '_');
+    BaseName := ReplaceRegExpr('_+', BaseName, '_');
     TargetFileName := BaseName + FileExtension;
     TargetFilePath := embeddingModeldir + TargetFileName;
     ForceDirectories(ExtractFilePath(TargetFilePath));
-    //[cffOverwriteFile] ensures it succeeds if a file with that name already exists
-    if CopyFile(FileToImport, TargetFilePath, [cffOverwriteFile]) then
+    if CopyFileWithProgress(FileToImport, TargetFilePath) then
     begin
-      ShowMessage('Model successfully imported to: ' + TargetFilePath);
       chdir(appdir);
       LoadLLMfiles('EMBEDDING', String(TargetFileName));
       Exit;
     end;
-    MessageDlg('Error', 'Failed to import model file: ' + FileToImport, mtError, [mbOK], 0);
     chdir(appdir);
   except
     on x: Exception do
@@ -977,18 +1038,16 @@ begin
       Exit;
     end;
     BaseName := ReplaceRegExpr('[^a-zA-Z0-9_]', BaseName, '_');
+    BaseName := ReplaceRegExpr('_+', BaseName, '_');
     TargetFileName := BaseName + FileExtension;
     TargetFilePath := modeldir + TargetFileName;
     ForceDirectories(ExtractFilePath(TargetFilePath));
-    //[cffOverwriteFile] ensures it succeeds if a file with that name already exists
-    if CopyFile(FileToImport, TargetFilePath, [cffOverwriteFile]) then
+    if CopyFileWithProgress(FileToImport, TargetFilePath) then
     begin
-      ShowMessage('Model successfully imported to: ' + TargetFilePath);
       chdir(appdir);
       LoadLLMfiles('CONVERSATIONAL', String(TargetFileName));
       Exit;
     end;
-    MessageDlg('Error', 'Failed to import model file: ' + FileToImport, mtError, [mbOK], 0);
     chdir(appdir);
   except
     on x: Exception do
