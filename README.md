@@ -51,8 +51,9 @@ ashley/                             # Project root (this directory)
 │
 ├─ manager/                                     # Pascal GUI manager (Lazarus project)
 │  ├─ lib/x86_64-win64/                         # Compiler output directory (empty in source)
-│  ├─ manager.lpi / manager.lpr
+│  ├─ manager.lpi / manager.lpr / manager.lps
 │  ├─ main_form.pas + main_form.lfm
+│  ├─ progress_form.pas + progress_form.lfm
 │  ├─ settings_form.pas + settings_form.lfm
 │  ├─ about_form.pas + about_form.lfm
 │  ├─ vinfo.pas
@@ -120,7 +121,7 @@ ashley/                             # Project root (this directory)
 │
 └─ wrapper/                           # Pascal service wrapper (Lazarus project)
    ├─ lib/x86_64-win64/               # Compiler output directory (empty in source)
-   ├─ wrapper.lpi / wrapper.lpr
+   ├─ wrapper.lpi / wrapper.lpr / wrapper.lps
    └─ wrapper.ico / wrapper.res
 ```
 
@@ -431,8 +432,9 @@ server/
 ├─ log/                                 # Empty runtime log directory
 ├─ manager.exe                          # Built from manager/ project
 ├─ model/
-│  ├─ embedding/                        # Optional embedding models
-│  ├─ h2o_danube_1_8b_chat_q2_k.gguf    # Bundled default model (or your model)
+│  ├─ embedding/
+│  │  └─ nomic_embed_text_v2_moe_q4_k_m.gguf
+│  ├─ h2o_danube_1_8b_chat_q2_k.gguf
 │  └─ license.txt
 ├─ readme.txt                           # Quick start guide
 ├─ sqlite3.def                          # SQLite import library
@@ -452,15 +454,26 @@ server/
 │  │  ├─ ssl/                                       # Empty (auto-generated on first run)
 │  │  └─ (mime.types, koi-utf, koi-win, win-utf)    # From NGINX distro
 │  ├─ logs/                                         # Empty runtime logs
+│  ├─ openssl/                                      # OpenSSL runtime
+│  │  ├─ bin/
+│  │  ├─ include/
+│  │  ├─ lib/
+│  │  ├─ LICENSE.txt
+│  │  └─ version.txt
 │  ├─ php/                                          # Added from PHP distro + project's php.ini
 │  └─ www/
 │     ├─ index.php
 │     ├─ not_found.php
 │     └─ frontend/                                  # Already adjusted
+│        ├─ README.md
 │        ├─ composer.json / composer.lock
 │        ├─ symfony.lock
 │        ├─ .env / .env.dev / .env.test
 │        ├─ compose.yaml / compose.override.yaml
+│        ├─ importmap.php
+│        ├─ phpunit.dist.xml
+│        ├─ .editorconfig
+│        ├─ .gitignore
 │        ├─ assets/
 │        ├─ bin/
 │        ├─ config/
@@ -469,9 +482,13 @@ server/
 │        ├─ templates/
 │        ├─ tests/
 │        ├─ translations/
+│        ├─ share/
 │        ├─ public/                                   # Compiled assets (css/, js/)
+│        │  ├─ assets/
+│        │  └─ index.php
 │        ├─ var/                                      # Symfony cache var dir
-│        └─ vendor/                                   # Composer-installed dependencies
+│        ├─ vendor/                                   # Composer-installed dependencies
+│        └─ console/                                  # Symfony console binary
 └─ wrapper.exe           # Built from wrapper/ project
 ```
 
