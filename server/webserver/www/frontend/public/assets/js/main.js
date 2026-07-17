@@ -38,6 +38,16 @@
  * - WARN-4: reader.cancel() not called on early finish_reason exit. Fixed.
  * - WARN-7: Empty assistantMessage could be pushed to history on stream done.
  *   Fixed with length guard.
+ * - BUG-8 [HIGH]: In response mode 2 the summarise POST to /api/chat performs a
+ *   synchronous blocking LLM call. If that call is slow the request could appear to
+ *   hang and the client saw an opaque failure ("Compression request failed: HTTP 404")
+ *   even though summarisation on the LLM side had actually completed. Fixed on the
+ *   client by deriving the AbortController timeout from the configured request_timeout
+ *   (always strictly below the server's own authoritative limit, and never sent to or
+ *   overridden on the server), with bounded retry/back-off and in-flight request dedupe
+ *   so a momentarily slow summarisation cannot wedge the chat. The web server's FastCGI
+ *   timeout was removed so PHP runs up to its own max_execution_time; the server keeps
+ *   sole authority over request duration (no client-influenced DDoS vector).
  * Additional hardening: role validation, config bounds checking, res.body null guard,
  *   transformer try-catch, sender validation, idempotent finishProcessing, stream
  *   abort on new session.
@@ -78,7 +88,8 @@
         SAFETY_MARGIN: 256,
         EMBEDDING_ENABLED: true,
         SYSTEM_PROMPT: null,
-        API_ENDPOINT: '/api/chat'
+        API_ENDPOINT: '/api/chat',
+        REQUEST_TIMEOUT: 300 // server-configured request timeout (seconds)
     };
 
     /** Allowed message role values. Anything else is rejected on import/load. */
@@ -106,7 +117,8 @@
         warningThreshold: 0,
         systemPrompt: DEFAULT_CONFIG.SYSTEM_PROMPT,
         chatbotName: DEFAULT_CONFIG.CHATBOT_NAME,
-        apiEndpoint: DEFAULT_CONFIG.API_ENDPOINT
+        apiEndpoint: DEFAULT_CONFIG.API_ENDPOINT,
+        requestTimeout: DEFAULT_CONFIG.REQUEST_TIMEOUT
     };
 
     /**
@@ -753,9 +765,26 @@
     }
 
     /**
+     * In-flight compression request, shared by all concurrent callers so the
+     * server is never hit with duplicate summarise POSTs.
+     * @type {Promise|null}
+     */
+    var _compressionInFlight = null;
+
+    /**
      * Request the server to compress/summarise the current chat history when it
      * approaches the context limit. Always invokes callback() regardless of outcome
      * to prevent the UI from getting stuck.
+     *
+     * Robustness:
+     * - A client-side AbortController timeout (kept strictly below the server's
+     *   own authoritative request limit) guarantees the UI can never deadlock
+     *   waiting on a hung request. The client never sends or overrides the
+     *   server timeout — it only reads the configured value.
+     * - Transient failures (network errors, 404/5xx) are retried with a short
+     *   back-off so a momentarily slow summarisation does not wedge the chat.
+     * - Concurrent callers share a single in-flight request (debounce/dedupe) so
+     *   the LLM is not asked to summarise several times for one send cycle.
      *
      * FIX-BUG-3: Original code never called callback() in the .catch() path or in
      * the "unknown response" branch, causing a permanent UI deadlock.
@@ -769,7 +798,14 @@
             cb();
             return;
         }
-        showThinkingMessage();
+
+        // Dedupe: if a compression for the same (or any) turn is already running,
+        // wait for it instead of firing a second, competing summarise request.
+        if (_compressionInFlight) {
+            _compressionInFlight.then(cb, cb);
+            return;
+        }
+
         var payload = {
             action: 'summarize',
             conversation_history: AppState.chatHistory
@@ -777,40 +813,95 @@
         if (typeof pendingMessage === 'string' && pendingMessage.length > 0) {
             payload.pending_message = pendingMessage;
         }
-        fetch(getApiUrl(), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-        .then(function (res) {
-            if (!res.ok) { throw new Error('HTTP ' + res.status); }
-            return res.json();
-        })
-        .then(function (data) {
-            removeThinkingMessage();
-            if (isPlainObject(data) && data.success === true &&
-                    Array.isArray(data.summarized_history)) {
-                AppState.chatHistory = data.summarized_history.filter(isValidMessage);
-                saveHistoryToStorage();
-                cb();
-                return;
+
+        // The server enforces its own authoritative request timeout server-side
+        // (the user-configured request_timeout, with no fixed minimum — PHP runs
+        // up to its max_execution_time). The client must NEVER send or override
+        // it. We only READ that configured value so the client's abort timeout
+        // stays strictly below it, ensuring we always get to decide what happens
+        // on a slow summarisation instead of inheriting an opaque upstream error.
+        var serverTimeoutSec = (typeof AppState.requestTimeout === 'number' && AppState.requestTimeout > 0)
+            ? AppState.requestTimeout
+            : DEFAULT_CONFIG.REQUEST_TIMEOUT;
+        var CLIENT_TIMEOUT_MS = Math.max((serverTimeoutSec - 5) * 1000, 5000);
+        var MAX_ATTEMPTS = 2;
+        // Brief delay before a retry so a transient upstream blip is not hit
+        // instantly again. Kept small relative to the overall request budget.
+        var RETRY_BACKOFF_MS = 1000;
+
+        function attempt(attemptNo) {
+            showThinkingMessage();
+            var controller = ('AbortController' in window) ? new AbortController() : null;
+            var timer = null;
+            if (controller && typeof controller.signal !== 'undefined') {
+                timer = setTimeout(function () {
+                    try { controller.abort(); } catch (e) { /* ignore */ }
+                }, CLIENT_TIMEOUT_MS);
             }
-            if (isPlainObject(data) && data.error === 'NOT_NEEDED') {
-                cb();
-                return;
-            }
-            // Unknown/unexpected response — log and continue rather than freeze.
-            // FIX-BUG-3b: Original code omitted cb() here.
-            console.warn(
-                '[History] Compression returned unexpected response:',
-                isPlainObject(data) ? data.error : 'non-object'
-            );
+            var fetchOpts = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            };
+            if (controller) { fetchOpts.signal = controller.signal; }
+            return fetch(getApiUrl(), fetchOpts)
+                .then(function (res) {
+                    if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                    return res.json();
+                })
+                .then(function (data) {
+                    removeThinkingMessage();
+                    if (isPlainObject(data) && data.success === true && Array.isArray(data.summarized_history)) {
+                        AppState.chatHistory = data.summarized_history.filter(isValidMessage);
+                        saveHistoryToStorage();
+                        return { done: true };
+                    }
+                    if (isPlainObject(data) && data.error === 'NOT_NEEDED') {
+                        return { done: true };
+                    }
+                    // Unknown/unexpected response — log and continue rather than freeze.
+                    // FIX-BUG-3b: Original code omitted cb() here.
+                    console.warn(
+                        '[History] Compression returned unexpected response:',
+                        isPlainObject(data) ? data.error : 'non-object'
+                    );
+                    return { done: true };
+                })
+                .catch(function (err) {
+                    // AbortError => our own client timeout (handled as retryable).
+                    var isAbort = err && err.name === 'AbortError';
+                    if (attemptNo < MAX_ATTEMPTS) {
+                        console.warn(
+                            '[History] Compression request failed (attempt ' +
+                            attemptNo + '), retrying:',
+                            err.message
+                        );
+                        // Wait out the back-off, then retry with a fresh controller.
+                        return new Promise(function (resolve) {
+                            setTimeout(resolve, RETRY_BACKOFF_MS);
+                        }).then(function () {
+                            return attempt(attemptNo + 1);
+                        });
+                    }
+                    // FIX-BUG-3: Original code omitted cb() here.
+                    removeThinkingMessage();
+                    console.warn('[History] Compression request failed:', err.message);
+                    return { done: true, error: isAbort ? 'timeout' : 'error' };
+                })
+                .then(function (result) {
+                    if (timer) { clearTimeout(timer); }
+                    return result;
+                });
+        }
+
+        _compressionInFlight = attempt(1).then(function (result) {
+            _compressionInFlight = null;
             cb();
-        })
-        .catch(function (err) {
-            // FIX-BUG-3: Original code omitted cb() here.
+            return result;
+        }, function (err) {
+            _compressionInFlight = null;
             removeThinkingMessage();
-            console.warn('[History] Compression request failed:', err.message);
+            console.warn('[History] Compression request failed:', err && err.message);
             cb();
         });
     }
@@ -1648,6 +1739,14 @@
             'API_ENDPOINT',
             DEFAULT_CONFIG.API_ENDPOINT,
             function (v) { return String(v); }
+        );
+        AppState.requestTimeout = getConfigValue(
+            'REQUEST_TIMEOUT',
+            DEFAULT_CONFIG.REQUEST_TIMEOUT,
+            function (v) {
+                var n = parseIntSafe(v, DEFAULT_CONFIG.REQUEST_TIMEOUT);
+                return n > 0 ? n : DEFAULT_CONFIG.REQUEST_TIMEOUT;
+            }
         );
         // Derive the compression threshold from validated values.
         var calculated = AppState.llmCtxSize -

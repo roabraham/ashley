@@ -82,6 +82,7 @@
     var EMBEDDING_ENABLED = {{ embeddingEnabled ? 'true' : 'false' }};
     var SYSTEM_PROMPT = {{ persona.active_prompt|json_encode|raw }};
     var WARNING_THRESHOLD = {{ warning_threshold }};
+    var REQUEST_TIMEOUT = {{ request_timeout }};
     // Check if there's existing session conversation data (for response mode 1)
     var HAS_SESSION_CONVERSATION = {{ has_session_conversation ? 'true' : 'false' }};
 </script>

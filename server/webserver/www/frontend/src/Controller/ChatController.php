@@ -102,6 +102,7 @@ class ChatController extends AbstractController
                 $persona['active_prompt'] = $activePrompt;
             }
         }
+        $requestTimeout = intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT);
         return $this->render('chat/index.html.twig', [
             'persona'                  => $persona,
             'llm_config'               => $llmConfig,
@@ -109,7 +110,8 @@ class ChatController extends AbstractController
             'llm_ctx_size'             => $llmCtxSize,
             'llm_max_response_tokens'  => $llmMaxResponseTokens,
             'safety_margin'            => $safetyMargin,
-            'warning_threshold'        => $warningThreshold
+            'warning_threshold'        => $warningThreshold,
+            'request_timeout'          => $requestTimeout
         ]);
     }
 
