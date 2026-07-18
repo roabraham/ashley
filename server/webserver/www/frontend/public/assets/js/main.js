@@ -2,7 +2,7 @@
  * =============================================================================
  * Chatbot Application - Main JavaScript
  * =============================================================================
- * A robust, cross-browser compatible chat client that supports both legacy
+ * A robust, ES6-based cross-browser chat client that supports both legacy
  * (proxy-based) and streaming (direct llama.cpp) response modes.
  *
  * Features:
@@ -16,7 +16,12 @@
  * - Keyboard navigation (TAB + Arrow keys)
  * - New session reset with confirmation
  *
- * Compatibility: PHP Desktop (Feb 2025), all modern browsers, ES6+
+ * Compatibility: all modern browsers (Edge, Chrome, Firefox, Safari) and embedded
+ * runtimes such as PHP Desktop (Chromium 2025) — ES6+.
+ * Built on the ES6 standard (no IE/EdgeHTML transpilation needed). Browser-specific
+ * compatibility shims were dropped; the modal accessibility layer (focus trap +
+ * dismiss) is intentionally retained for embedded runtimes where Bootstrap's own
+ * handlers do not fire reliably.
  *
  * AUDIT LOG (bugs fixed from original AI-generated version):
  * - BUG-1 [CRITICAL]: Streaming double-callback: finish_reason=stop AND result.done
@@ -42,33 +47,33 @@
  *   synchronous blocking LLM call. If that call is slow the request could appear to
  *   hang and the client saw an opaque failure ("Compression request failed: HTTP 404")
  *   even though summarisation on the LLM side had actually completed. Fixed on the
- *   client by deriving the AbortController timeout from the configured request_timeout
- *   (always strictly below the server's own authoritative limit, and never sent to or
- *   overridden on the server), with bounded retry/back-off and in-flight request dedupe
- *   so a momentarily slow summarisation cannot wedge the chat. The web server's FastCGI
- *   timeout was removed so PHP runs up to its own max_execution_time; the server keeps
- *   sole authority over request duration (no client-influenced DDoS vector).
+ *   client by issuing the request via fetch() with a native AbortController timeout
+ *   derived from the configured request_timeout (always strictly below the server's
+ *   own authoritative limit, and never sent to or overridden on the server), with
+ *   bounded retry/back-off and in-flight request dedupe so a momentarily slow
+ *   summarisation cannot wedge the chat. The web server's FastCGI timeout was removed
+ *   so PHP runs up to its own max_execution_time; the server keeps sole authority
+ *   over request duration (no client-influenced DDoS vector).
  * Additional hardening: role validation, config bounds checking, res.body null guard,
- *   transformer try-catch, sender validation, idempotent finishProcessing, stream
- *   abort on new session.
+ * transformer try-catch, sender validation, idempotent finishProcessing, stream
+ * abort on new session.
+ *
+ * This module is written as a single IIFE that loads directly via a <script> tag
+ * (no bundler/transpilation), so it stays 100% ES6: const/let, arrow functions,
+ * template literals, for...of, classes-free modules, async/await, and the native
+ * AbortController/fetch/Streams APIs.
+ *
+ * NOTE: this client deliberately KEEPS the modal accessibility layer (focus trap
+ * in handleModalKeydown, dismiss handling for [data-bs-dismiss]/.btn-close, and
+ * focus-return on close). Bootstrap 5's own enforceFocus/keydown handlers are not
+ * relied upon because they have been observed not to fire reliably in some embedded
+ * runtimes — see showModal/hideModal. The TextDecoder usage is the native API
+ * (no polyfill); feature-detection guards remain where the Streams API may be absent.
  * =============================================================================
  */
 
 (function () {
     'use strict';
-
-    // Polyfill TextDecoder for EdgeHTML/legacy WebView environments
-    if (typeof TextDecoder === 'undefined') {
-        window.TextDecoder = function () {};
-        TextDecoder.prototype.decode = function (bytes) {
-            if (typeof bytes === 'string') { return bytes; }
-            var result = '';
-            for (var i = 0; i < bytes.length; i++) {
-                result += String.fromCharCode(bytes[i]);
-            }
-            return result;
-        };
-    }
 
     // =============================================================================
     // SECTION 1: CONFIGURATION & DEFAULTS
@@ -78,7 +83,7 @@
      * Default configuration values.
      * Used as fallback when PHP/Twig-injected globals are absent or malformed.
      */
-    var DEFAULT_CONFIG = {
+    const DEFAULT_CONFIG = {
         CHATBOT_NAME: 'ChatBot',
         INITIAL_MESSAGE: null,
         RESPONSE_MODE: 1, // 1 = legacy (proxy), 2 = streaming (direct)
@@ -93,12 +98,12 @@
     };
 
     /** Allowed message role values. Anything else is rejected on import/load. */
-    var VALID_ROLES = { 'user': true, 'assistant': true, 'system': true };
+    const VALID_ROLES = { user: true, assistant: true, system: true };
 
     /**
      * Application state — single source of truth.
      */
-    var AppState = {
+    const AppState = {
         isProcessing: false,
         thinkingMessageDiv: null,
         currentAudio: null,
@@ -124,7 +129,7 @@
     /**
      * Cached DOM element references. Populated once in initDOM().
      */
-    var DOM = {
+    const DOM = {
         form: null,
         input: null,
         chatBox: null,
@@ -134,10 +139,7 @@
     };
 
     /** Currently visible modal element for focus-trap management. */
-    var activeModalEl = null;
-
-    /** Element that had focus before a modal opened, restored on close. */
-    var previouslyFocused = null;
+    let activeModalEl = null;
 
     // =============================================================================
     // SECTION 2: UTILITY FUNCTIONS
@@ -155,19 +157,19 @@
     function getConfigValue(name, defaultValue, transformer) {
         try {
             if (typeof window[name] === 'undefined') { return defaultValue; }
-            var value = window[name];
+            const value = window[name];
             if (value === null || value === undefined) { return defaultValue; }
             if (typeof transformer === 'function') {
                 try {
                     return transformer(value);
                 } catch (te) {
-                    console.warn('[Config] Transformer error for ' + name + ':', te.message);
+                    console.warn(`[Config] Transformer error for ${name}:`, te.message);
                     return defaultValue;
                 }
             }
             return value;
         } catch (e) {
-            console.warn('[Config] Error reading ' + name + ':', e.message);
+            console.warn(`[Config] Error reading ${name}:`, e.message);
             return defaultValue;
         }
     }
@@ -183,7 +185,7 @@
     function parseIntSafe(value, defaultValue) {
         try {
             if (value === null || value === undefined || value === '') { return defaultValue; }
-            var parsed = parseInt(String(value), 10);
+            const parsed = parseInt(String(value), 10);
             return isNaN(parsed) ? defaultValue : parsed;
         } catch (e) {
             return defaultValue;
@@ -199,14 +201,14 @@
      */
     function escapeHtml(text) {
         if (typeof text !== 'string') { return ''; }
-        var map = {
+        const map = {
             '&': '&amp;',
             '<': '&lt;',
             '>': '&gt;',
             '"': '&quot;',
             "'": '&#039;'
         };
-        return text.replace(/[&<>"']/g, function (char) { return map[char]; });
+        return text.replace(/[&<>"']/g, (char) => map[char]);
     }
 
     /**
@@ -251,16 +253,16 @@
     /**
      * Safe localStorage wrapper. All methods return null/false on error.
      */
-    var Storage = {
-        getItem: function (key) {
+    const Storage = {
+        getItem(key) {
             try { return localStorage.getItem(key); }
             catch (e) { console.warn('[Storage] Read error:', e.message); return null; }
         },
-        setItem: function (key, value) {
+        setItem(key, value) {
             try { localStorage.setItem(key, value); return true; }
             catch (e) { console.warn('[Storage] Write error:', e.message); return false; }
         },
-        removeItem: function (key) {
+        removeItem(key) {
             try { localStorage.removeItem(key); return true; }
             catch (e) { console.warn('[Storage] Remove error:', e.message); return false; }
         }
@@ -279,30 +281,28 @@
      * Bootstrap-based confirmation modal helper.
      * Falls back to direct callback execution when Bootstrap or the modal markup is absent.
      */
-    var ConfirmModal = {
+    const ConfirmModal = {
         /**
          * Show a confirmation modal and invoke onConfirm when the user accepts.
          *
          * @param {string}   message   - Prompt text shown inside the modal.
          * @param {function} onConfirm - Callback invoked on confirmation.
          */
-        show: function (message, onConfirm) {
-            var modalEl   = document.getElementById('confirm-modal');
-            var messageEl = document.getElementById('confirm-message');
-            var okBtn     = document.getElementById('confirm-ok-btn');
+        show(message, onConfirm) {
+            const modalEl   = document.getElementById('confirm-modal');
+            const messageEl = document.getElementById('confirm-message');
+            const okBtn     = document.getElementById('confirm-ok-btn');
             if (!modalEl || !messageEl || !okBtn) {
                 // Modal markup missing — proceed immediately.
                 if (typeof onConfirm === 'function') { onConfirm(); }
                 return;
             }
             messageEl.textContent = message;
-            // Clone the button to eliminate any previously attached listeners.
-            var newOkBtn = okBtn.cloneNode(true);
-            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-            newOkBtn.addEventListener('click', function () {
-                hideModal(modalEl);
-                if (typeof onConfirm === 'function') { onConfirm(); }
-            });
+            // Store the pending callback; the OK button's handler is bound once
+            // (see initEvents) so we never clone/replace the node — cloning left a
+            // detached element that could hold focus and swallow Enter in some
+            // embedded runtimes.
+            confirmCallback = (typeof onConfirm === 'function') ? onConfirm : null;
             showModal(modalEl);
         }
     };
@@ -313,8 +313,8 @@
      * @param {string} message
      */
     function showErrorModal(message) {
-        var modalEl   = document.getElementById('error-modal');
-        var messageEl = document.getElementById('error-message');
+        const modalEl   = document.getElementById('error-modal');
+        const messageEl = document.getElementById('error-message');
         if (!modalEl || !messageEl) {
             // Fallback: log to console if markup is missing.
             console.error('[Error Modal]', message);
@@ -325,26 +325,52 @@
     }
 
     /**
-     * Trap keyboard focus inside the currently open modal.
-     * Required because EdgeHTML does not reliably enforce Bootstrap's
-     * built-in focus trap.
+     * Return the element that should receive initial focus when a modal opens.
+     * Per WAI-ARIA dialog guidance, focus goes to the primary/confirm action
+     * (not the close "✕" button, which appears first in the DOM). Falls back to
+     * the first focusable element, then the modal itself.
+     *
+     * @param {HTMLElement} modalEl
+     * @returns {HTMLElement}
+     */
+    function getFocusTarget(modalEl) {
+        const primary = modalEl.querySelector('.modal-footer .btn-primary, #confirm-ok-btn');
+        if (primary && !primary.disabled) { return primary; }
+        const focusableSelectors =
+            'a[href], button:not([disabled]):not(.btn-close), input:not([disabled]), ' +
+            'select:not([disabled]), textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])';
+        const focusable = modalEl.querySelectorAll(focusableSelectors);
+        return (focusable.length > 0) ? focusable[0] : modalEl;
+    }
+
+    /**
+     * Keyboard handling for the open modal: Tab/Shift+Tab cycling and Escape to
+     * close. Only acts on Tab/Escape so Enter/Space keep activating controls
+     * normally. Works across all ES6-capable browsers and embedded runtimes.
      *
      * @param {KeyboardEvent} e
      */
-    function handleModalFocusTrap(e) {
+    function handleModalKeydown(e) {
         if (!activeModalEl) { return; }
-        if (e.key !== 'Tab') { return; }
-        var focusableSelectors =
-            'a[href], button:not([disabled]), input:not([disabled]), ' +
-            'select:not([disabled]), textarea:not([disabled]), ' +
-            '[tabindex]:not([tabindex="-1"])';
-        var focusableElements = activeModalEl.querySelectorAll(focusableSelectors);
-        if (focusableElements.length === 0) {
+        if (e.key === 'Escape') {
             e.preventDefault();
+            hideModal(activeModalEl);
             return;
         }
-        var first = focusableElements[0];
-        var last  = focusableElements[focusableElements.length - 1];
+        if (e.key !== 'Tab') { return; }
+        const focusable = activeModalEl.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), ' +
+            'select:not([disabled]), textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) {
+            e.preventDefault();
+            activeModalEl.focus();
+            return;
+        }
+        const first = focusable[0];
+        const last  = focusable[focusable.length - 1];
         if (e.shiftKey) {
             if (document.activeElement === first ||
                     !activeModalEl.contains(document.activeElement)) {
@@ -361,60 +387,101 @@
     }
 
     /**
-     * Show a Bootstrap modal, or fall back to manual display.
-     * Also activates a manual focus trap for EdgeHTML compatibility.
+     * The element that opened the current modal, so focus can return to it on
+     * close. Captured defensively so a native file dialog (which steals focus
+     * mid-flow) cannot leave it pointing at a stale/hidden element.
+     * @type {HTMLElement|null}
+     */
+    let modalOpenerEl = null;
+
+    /** Pending confirm callback, invoked when the OK button is activated. */
+    let confirmCallback = null;
+
+    /**
+     * Confirm the currently open confirmation modal: hide it and run the
+     * stored callback (if any). Bound once to the OK button in initEvents.
+     */
+    function confirmModalOk() {
+        const cb = confirmCallback;
+        confirmCallback = null;
+        const modalEl = document.getElementById('confirm-modal');
+        if (modalEl) { hideModal(modalEl); }
+        if (typeof cb === 'function') { cb(); }
+    }
+
+    /**
+     * Show a modal and move focus into it.
+     *
+     * We drive the modal entirely ourselves (display + .show class) and do NOT
+     * use bootstrap.Modal: Bootstrap 5 installs its own enforceFocus/keydown
+     * handlers on the document, which have been observed to conflict with the
+     * handling below in some environments. Owning the modal fully keeps
+     * keyboard control predictable. The .modal/.modal-dialog markup is
+     * unchanged, so Bootstrap's styles still apply.
+     *
+     * Note: on embedded Chromium/CEF hosts, keyboard focus can fail to return
+     * to the page after a *native* OS dialog (e.g. the file-import picker)
+     * closes. That is a focus-handoff issue in the native host application
+     * embedding the browser, not something a web page can reliably correct —
+     * CEF's own focus callbacks don't fire in that state either, so there is
+     * no DOM-level signal to hook. It needs a fix on the host side (e.g. the
+     * host explicitly reclaiming input focus for the browser widget when the
+     * app window is reactivated). This function still does the correct,
+     * standard thing for every environment where focus behaves normally.
      *
      * @param {HTMLElement} modalEl
      */
     function showModal(modalEl) {
-        previouslyFocused = document.activeElement;
-        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            var modal = new bootstrap.Modal(modalEl);
-            modal.show();
-            setTimeout(function () {
-                var computed = window.getComputedStyle(modalEl);
-                if (computed.display !== 'none') {
-                    activeModalEl = modalEl;
-                    document.addEventListener('keydown', handleModalFocusTrap);
-                }
-            }, 100);
-            return;
+        // Record the opener only if it is a connected, visible element that is
+        // not itself inside a modal — otherwise keep the previously known opener.
+        const candidate = document.activeElement;
+        if (candidate instanceof HTMLElement &&
+                candidate.isConnected &&
+                !candidate.closest('.modal') &&
+                candidate !== modalEl) {
+            modalOpenerEl = candidate;
         }
+        modalEl.setAttribute('tabindex', '-1');
         modalEl.style.display = 'block';
         modalEl.style.backgroundColor = 'rgba(0,0,0,0.5)';
         modalEl.classList.add('show');
         activeModalEl = modalEl;
-        document.addEventListener('keydown', handleModalFocusTrap);
+        document.addEventListener('keydown', handleModalKeydown);
+        // Move focus into the modal immediately so keyboard users start inside it.
+        try {
+            getFocusTarget(modalEl).focus();
+        } catch (e) {
+            console.warn('[Modal] Could not move focus into modal:', e.message);
+        }
     }
 
     /**
-     * Hide a Bootstrap modal, or fall back to manual hide.
-     * Releases the focus trap and restores focus to the previously
-     * focused element.
+     * Hide the modal and restore focus to the element that opened it.
      *
      * @param {HTMLElement} modalEl
      */
     function hideModal(modalEl) {
         if (activeModalEl === modalEl) {
             activeModalEl = null;
-            document.removeEventListener('keydown', handleModalFocusTrap);
-        }
-        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            var modal = bootstrap.Modal.getInstance(modalEl);
-            if (modal) { modal.hide(); }
-            if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
-                previouslyFocused.focus();
-            }
-            previouslyFocused = null;
-            return;
+            document.removeEventListener('keydown', handleModalKeydown);
         }
         modalEl.style.display = 'none';
         modalEl.classList.remove('show');
-        if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
-            previouslyFocused.focus();
+        // Return focus to the opener if it is still usable; fall back to the
+        // chat input, then body, so focus never gets trapped on a closed modal.
+        const nextFocus = (modalOpenerEl && modalOpenerEl.isConnected) ? modalOpenerEl : DOM.input;
+        modalOpenerEl = null;
+        try {
+            if (nextFocus && typeof nextFocus.focus === 'function') {
+                nextFocus.focus();
+            } else if (document.body) {
+                document.body.focus();
+            }
+        } catch (e) {
+            console.warn('[Modal] Could not restore focus after close:', e.message);
         }
-        previouslyFocused = null;
     }
+
 
     // =============================================================================
     // SECTION 3: TOKEN ESTIMATION & HISTORY MANAGEMENT
@@ -440,15 +507,14 @@
      * @returns {number}
      */
     function getHistoryTokenCount(pendingMessage) {
-        var total = 0;
+        let total = 0;
         if (!Array.isArray(AppState.chatHistory)) { return 0; }
-        for (var i = 0; i < AppState.chatHistory.length; i++) {
-            var msg = AppState.chatHistory[i];
+        for (const msg of AppState.chatHistory) {
             if (!isValidMessage(msg)) { continue; }
-            total += estimateTokens(msg.role + ': ' + msg.content);
+            total += estimateTokens(`${msg.role}: ${msg.content}`);
         }
         if (typeof pendingMessage === 'string' && pendingMessage.length > 0) {
-            total += estimateTokens('user: ' + pendingMessage);
+            total += estimateTokens(`user: ${pendingMessage}`);
         }
         return total;
     }
@@ -470,9 +536,9 @@
      * Show or hide the export button depending on whether there is anything to export.
      */
     function updateExportButtonVisibility() {
-        var exportBtn = document.getElementById('export-conversation-btn');
+        const exportBtn = document.getElementById('export-conversation-btn');
         if (!exportBtn) { return; }
-        var hasData;
+        let hasData;
         if (AppState.responseMode === 2) {
             hasData = Array.isArray(AppState.chatHistory) && AppState.chatHistory.length > 0;
         } else {
@@ -487,9 +553,9 @@
      */
     function loadHistoryFromStorage() {
         try {
-            var stored = Storage.getItem('assistant_chat_history');
+            const stored = Storage.getItem('assistant_chat_history');
             if (!stored) { AppState.chatHistory = []; return; }
-            var parsed = JSON.parse(stored);
+            const parsed = JSON.parse(stored);
             if (!Array.isArray(parsed)) { AppState.chatHistory = []; return; }
             AppState.chatHistory = parsed.filter(isValidMessage);
         } catch (e) {
@@ -516,21 +582,20 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'get_conversation_history' })
         })
-        .then(function (res) {
+        .then((res) => {
             if (!res.ok) { throw new Error('HTTP ' + res.status); }
             return res.json();
         })
-        .then(function (data) {
+        .then((data) => {
             if (isPlainObject(data) && data.success === true &&
                     Array.isArray(data.conversation_history)) {
-                for (var i = 0; i < data.conversation_history.length; i++) {
-                    var msg = data.conversation_history[i];
+                for (const msg of data.conversation_history) {
                     if (!isValidMessage(msg)) { continue; }
                     appendMessage(msg.role, msg.content);
                 }
             }
         })
-        .catch(function (err) {
+        .catch((err) => {
             console.warn('[History] Fetch from API failed:', err.message);
         });
     }
@@ -542,14 +607,14 @@
      */
     function exportConversation() {
         if (AppState.responseMode === 2) {
-            var dataToExport = Array.isArray(AppState.chatHistory) ? AppState.chatHistory : [];
+            const dataToExport = Array.isArray(AppState.chatHistory) ? AppState.chatHistory : [];
             if (dataToExport.length === 0) {
                 showErrorModal('There is no data to export!');
                 return;
             }
             triggerJsonDownload(
                 JSON.stringify(dataToExport, null, 2),
-                'conversation_' + isoFilenameTimestamp() + '.json'
+                `conversation_${isoFilenameTimestamp()}.json`
             );
             return;
         }
@@ -559,13 +624,13 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'export_conversation' })
         })
-        .then(function (res) { return res.text(); })
-        .then(function (text) {
+        .then((res) => res.text())
+        .then((text) => {
             // The server may return a JSON error envelope or raw JSON data.
             // Attempt to detect an error envelope; if it is one, throw.
             // If not (SyntaxError or no error key), treat the raw text as the export.
             try {
-                var data = JSON.parse(text);
+                const data = JSON.parse(text);
                 if (isPlainObject(data) && data.error) {
                     throw new Error(data.message || 'Failed to export conversation');
                 }
@@ -573,9 +638,9 @@
                 if (!(e instanceof SyntaxError)) { throw e; }
                 // SyntaxError → raw non-JSON body (unusual but handled).
             }
-            triggerJsonDownload(text, 'conversation_' + isoFilenameTimestamp() + '.json');
+            triggerJsonDownload(text, `conversation_${isoFilenameTimestamp()}.json`);
         })
-        .catch(function (err) {
+        .catch((err) => {
             console.warn('[Export] Error:', err.message);
             showErrorModal('Failed to export conversation: ' + err.message);
         });
@@ -589,9 +654,9 @@
      */
     function triggerJsonDownload(jsonContent, filename) {
         try {
-            var blob = new Blob([jsonContent], { type: 'application/json' });
-            var url  = URL.createObjectURL(blob);
-            var a    = document.createElement('a');
+            const blob = new Blob([jsonContent], { type: 'application/json' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
             a.href     = url;
             a.download = filename;
             document.body.appendChild(a);
@@ -622,24 +687,20 @@
      */
     function importConversation(file) {
         if (!file) { return; }
-        var reader = new FileReader();
-        reader.onload = function (e) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
             try {
-                var importedData = JSON.parse(e.target.result);
+                const importedData = JSON.parse(e.target.result);
                 if (!Array.isArray(importedData)) {
                     throw new Error('Invalid format: expected a JSON array.');
                 }
-                var validMessages = importedData
+                const validMessages = importedData
                     .filter(isValidMessage)
-                    .map(function (msg) {
-                        return {
-                            role: msg.role.trim(),
-                            content: msg.content.trim()
-                        };
-                    })
-                    .filter(function (msg) {
-                        return msg.content.length > 0;
-                    });
+                    .map((msg) => ({
+                        role: msg.role.trim(),
+                        content: msg.content.trim()
+                    }))
+                    .filter((msg) => msg.content.length > 0);
                 if (validMessages.length === 0) {
                     throw new Error('No data to import! The file contains no valid messages.');
                 }
@@ -654,22 +715,21 @@
                     return;
                 }
                 // Mode 1: send file to server.
-                var formData = new FormData();
+                const formData = new FormData();
                 formData.append('action', 'import_conversation');
                 formData.append('conversation_file', file);
                 fetch(getApiUrl(), { method: 'POST', body: formData })
-                .then(function (res) {
+                .then((res) => {
                     if (!res.ok) { throw new Error('HTTP ' + res.status); }
                     return res.json();
                 })
-                .then(function (data) {
+                .then((data) => {
                     if (isPlainObject(data) && data.success === true &&
                             Array.isArray(data.conversation_history)) {
                         if (DOM.chatBox) { DOM.chatBox.innerHTML = ''; }
                         AppState.lastUserMessageDiv = null;
                         displayInitialMessage();
-                        for (var i = 0; i < data.conversation_history.length; i++) {
-                            var msg = data.conversation_history[i];
+                        for (const msg of data.conversation_history) {
                             if (!isValidMessage(msg)) { continue; }
                             appendMessage(msg.role.trim(), msg.content.trim());
                         }
@@ -683,7 +743,7 @@
                         );
                     }
                 })
-                .catch(function (err) {
+                .catch((err) => {
                     console.warn('[Import] Server error:', err.message);
                     showErrorModal('Failed to import conversation: ' + err.message);
                 });
@@ -700,7 +760,7 @@
                 }
             }
         };
-        reader.onerror = function () {
+        reader.onerror = () => {
             showErrorModal('Failed to read file. Please try again.');
         };
         reader.readAsText(file);
@@ -719,12 +779,12 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'clear_session' })
             })
-            .then(function (res) {
+            .then((res) => {
                 if (!res.ok) { throw new Error('HTTP ' + res.status); }
                 return res.json();
             })
-            .then(function (data) {
-                var cleared = (isPlainObject(data) && (
+            .then((data) => {
+                const cleared = (isPlainObject(data) && (
                     (data.success === true && data.cleared) ||
                     data.error === 'NO_DATA_TO_CLEAR'
                 ));
@@ -741,7 +801,7 @@
                 displayInitialMessage();
                 updateExportButtonVisibility();
             })
-            .catch(function (err) {
+            .catch((err) => {
                 console.warn('[Session] Clear error:', err.message);
                 showErrorModal('Failed to start new session: ' + err.message);
             });
@@ -769,7 +829,7 @@
      * server is never hit with duplicate summarise POSTs.
      * @type {Promise|null}
      */
-    var _compressionInFlight = null;
+    let _compressionInFlight = null;
 
     /**
      * Request the server to compress/summarise the current chat history when it
@@ -793,7 +853,7 @@
      * @param {function|null} [callback]       - Called after compression (or on error).
      */
     function compressHistoryViaApi(pendingMessage, callback) {
-        var cb = typeof callback === 'function' ? callback : function () {};
+        const cb = typeof callback === 'function' ? callback : () => {};
         if (!Array.isArray(AppState.chatHistory) || AppState.chatHistory.length < 1) {
             cb();
             return;
@@ -806,7 +866,7 @@
             return;
         }
 
-        var payload = {
+        const payload = {
             action: 'summarize',
             conversation_history: AppState.chatHistory
         };
@@ -817,49 +877,58 @@
         // The server enforces its own authoritative request timeout server-side
         // (the user-configured request_timeout, with no fixed minimum — PHP runs
         // up to its max_execution_time). The client must NEVER send or override
-        // it. We only READ that configured value so the client's abort timeout
-        // stays strictly below it, ensuring we always get to decide what happens
-        // on a slow summarisation instead of inheriting an opaque upstream error.
-        var serverTimeoutSec = (typeof AppState.requestTimeout === 'number' && AppState.requestTimeout > 0)
+        // it. We only READ that configured value so the client's AbortController
+        // timeout stays strictly below it, ensuring we always get to decide what
+        // happens on a slow summarisation instead of inheriting an opaque error.
+        const serverTimeoutSec = (typeof AppState.requestTimeout === 'number' && AppState.requestTimeout > 0)
             ? AppState.requestTimeout
             : DEFAULT_CONFIG.REQUEST_TIMEOUT;
-        var CLIENT_TIMEOUT_MS = Math.max((serverTimeoutSec - 5) * 1000, 5000);
-        var MAX_ATTEMPTS = 2;
+        const CLIENT_TIMEOUT_MS = Math.max((serverTimeoutSec - 5) * 1000, 5000);
+        const MAX_ATTEMPTS = 2;
         // Brief delay before a retry so a transient upstream blip is not hit
         // instantly again. Kept small relative to the overall request budget.
-        var RETRY_BACKOFF_MS = 1000;
+        const RETRY_BACKOFF_MS = 1000;
 
-        function attempt(attemptNo) {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        /**
+         * Perform a single compression attempt using fetch + AbortController.
+         * Resolves with the parsed JSON payload, or rejects on network/HTTP/timeout.
+         */
+        async function attempt(attemptNo) {
             showThinkingMessage();
-            return new Promise(function (resolve, reject) {
-                try {
-                    var xhr = new XMLHttpRequest();
-                    xhr.open('POST', getApiUrl(), true);
-                    xhr.setRequestHeader('Content-Type', 'application/json');
-                    xhr.timeout = CLIENT_TIMEOUT_MS;
-                    xhr.onload = function () {
-                        if (xhr.status >= 200 && xhr.status < 300) {
-                            try {
-                                resolve(JSON.parse(xhr.responseText));
-                            } catch (e) {
-                                reject(new Error('Invalid JSON response'));
-                            }
-                        } else {
-                            reject(new Error('HTTP ' + xhr.status));
-                        }
-                    };
-                    xhr.onerror = function () { reject(new Error('Network error')); };
-                    xhr.ontimeout = function () {
-                        var err = new Error('timeout');
-                        err.name = 'AbortError';
-                        reject(err);
-                    };
-                    xhr.send(JSON.stringify(payload));
-                } catch (e) {
-                    reject(e);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
+            try {
+                const response = await fetch(getApiUrl(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
                 }
-            })
-            .then(function (data) {
+                return await response.json();
+            } catch (err) {
+                // Map an AbortController timeout to an explicit timeout error.
+                if (err && err.name === 'AbortError') {
+                    const timeoutErr = new Error('timeout');
+                    timeoutErr.name = 'AbortError';
+                    throw timeoutErr;
+                }
+                throw err;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        /**
+         * Run attempts with bounded retry and process the result into AppState.
+         */
+        async function runWithRetry(attemptNo) {
+            try {
+                const data = await attempt(attemptNo);
                 removeThinkingMessage();
                 if (isPlainObject(data) && data.success === true && Array.isArray(data.summarized_history)) {
                     AppState.chatHistory = data.summarized_history.filter(isValidMessage);
@@ -874,37 +943,35 @@
                     isPlainObject(data) ? data.error : 'non-object'
                 );
                 return { done: true };
-            })
-            .catch(function (err) {
-                var isAbort = err && err.name === 'AbortError';
+            } catch (err) {
+                const isAbort = err && err.name === 'AbortError';
                 if (attemptNo < MAX_ATTEMPTS) {
                     console.warn(
-                        '[History] Compression request failed (attempt ' +
-                        attemptNo + '), retrying:',
+                        `[History] Compression request failed (attempt ${attemptNo}), retrying:`,
                         err.message
                     );
-                    return new Promise(function (resolve) {
-                        setTimeout(resolve, RETRY_BACKOFF_MS);
-                    }).then(function () {
-                        return attempt(attemptNo + 1);
-                    });
+                    await sleep(RETRY_BACKOFF_MS);
+                    return runWithRetry(attemptNo + 1);
                 }
                 removeThinkingMessage();
                 console.warn('[History] Compression request failed:', err.message);
                 return { done: true, error: isAbort ? 'timeout' : 'error' };
-            });
+            }
         }
 
-        _compressionInFlight = attempt(1).then(function (result) {
-            _compressionInFlight = null;
-            try { cb(); } catch (e) { /* ignore */ }
-            return result;
-        }, function (err) {
-            _compressionInFlight = null;
-            removeThinkingMessage();
-            console.warn('[History] Compression request failed:', err && err.message);
-            try { cb(); } catch (e) { /* ignore */ }
-        });
+        _compressionInFlight = runWithRetry(1).then(
+            (result) => {
+                _compressionInFlight = null;
+                try { cb(); } catch (e) { /* ignore */ }
+                return result;
+            },
+            (err) => {
+                _compressionInFlight = null;
+                removeThinkingMessage();
+                console.warn('[History] Compression request failed:', err && err.message);
+                try { cb(); } catch (e) { /* ignore */ }
+            }
+        );
     }
 
     // =============================================================================
@@ -923,23 +990,21 @@
             console.warn('[UI] Chat box not initialised');
             return null;
         }
-        var senderStr = typeof sender === 'string' ? sender : 'chatbot';
-        var messageDiv = document.createElement('div');
-        var extraClass = (typeof messageClass === 'string' && messageClass.length > 0) ? (' ' + messageClass) : '';
+        const senderStr = typeof sender === 'string' ? sender : 'chatbot';
+        const messageDiv = document.createElement('div');
+        const extraClass = (typeof messageClass === 'string' && messageClass.length > 0) ? (' ' + messageClass) : '';
         messageDiv.className = 'message ' + (senderStr === 'user' ? 'user-message' : 'chatbot-message') + extraClass;
         messageDiv.setAttribute('tabindex', '-1');
-        var html = '';
+        let html = '';
         if (typeof action === 'string' && action.length > 0) {
-            html += '<span style="font-style:italic;">*' +
-                    escapeHtml(action.trim()) +
-                    '*</span> ';
+            html += `<span style="font-style:italic;">*${escapeHtml(action.trim())}*</span> `;
         }
         if (typeof text === 'string' && text.length > 0) {
             // Unescape literal \n sequences that some LLMs emit as the two characters \n.
-            var fixedText = text.replace(/\\n/g, '\n');
+            const fixedText = text.replace(/\\n/g, '\n');
             html += nl2br(escapeHtml(fixedText));
         }
-        messageDiv.innerHTML = '<div class="bubble">' + html + '</div>';
+        messageDiv.innerHTML = `<div class="bubble">${html}</div>`;
         try {
             DOM.chatBox.appendChild(messageDiv);
             DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
@@ -959,10 +1024,10 @@
         if (!DOM.chatBox || typeof videoFileName !== 'string' || videoFileName.length === 0) {
             return;
         }
-        var messageDiv = document.createElement('div');
+        const messageDiv = document.createElement('div');
         messageDiv.className = 'message chatbot-message';
-        var videoPath = 'media/' + encodeURIComponent(videoFileName);
-        var loadingDiv = document.createElement('div');
+        const videoPath = 'media/' + encodeURIComponent(videoFileName);
+        const loadingDiv = document.createElement('div');
         loadingDiv.className = 'text-center mt-2 mb-3 w-100';
         loadingDiv.innerHTML =
             '<div class="spinner-border text-secondary" role="status" ' +
@@ -973,11 +1038,11 @@
         DOM.chatBox.appendChild(messageDiv);
         DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
         fetch(videoPath, { method: 'HEAD' })
-        .then(function (response) {
+        .then((response) => {
             if (!response.ok) { throw new Error('Video not found'); }
-            var videoContainer = document.createElement('div');
+            const videoContainer = document.createElement('div');
             videoContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
-            var video = document.createElement('video');
+            const video = document.createElement('video');
             video.src         = videoPath;
             video.controls    = true;
             video.loop        = true;
@@ -992,8 +1057,8 @@
             messageDiv.appendChild(videoContainer);
             DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
         })
-        .catch(function () {
-            var errorDiv = document.createElement('div');
+        .catch(() => {
+            const errorDiv = document.createElement('div');
             errorDiv.className = 'alert alert-warning mt-2 mb-3 w-100';
             errorDiv.innerHTML =
                 '<strong class="me-2">Video not found:</strong>' +
@@ -1012,8 +1077,7 @@
         AppState.thinkingMessageDiv = document.createElement('div');
         AppState.thinkingMessageDiv.className = 'message chatbot-message thinking';
         AppState.thinkingMessageDiv.innerHTML =
-            '<div class="bubble"><em>' +
-            escapeHtml(AppState.chatbotName) +
+            `<div class="bubble"><em>${escapeHtml(AppState.chatbotName)}` +
             ' is thinking<span class="dots">.</span></em></div>';
         DOM.chatBox.appendChild(AppState.thinkingMessageDiv);
         DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
@@ -1041,8 +1105,8 @@
      */
     function animateDots(span) {
         if (!span) { return; }
-        var dots = 1;
-        var intervalId = setInterval(function () {
+        let dots = 1;
+        const intervalId = setInterval(() => {
             if (!AppState.thinkingMessageDiv) {
                 clearInterval(intervalId);
                 return;
@@ -1069,7 +1133,7 @@
                 } catch (e) { /* ignore */ }
                 AppState.currentAudio = null;
             }
-            var byteCharacters;
+            let byteCharacters;
             try {
                 byteCharacters = atob(base64);
             } catch (e) {
@@ -1080,24 +1144,24 @@
                 console.warn('[Audio] Decoded value is not a string');
                 return;
             }
-            var byteArray = new Uint8Array(byteCharacters.length);
-            for (var i = 0; i < byteCharacters.length; i++) {
+            const byteArray = new Uint8Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
                 byteArray[i] = byteCharacters.charCodeAt(i);
             }
-            var audioBlob = new Blob([byteArray], { type: 'audio/wav' });
-            var audioUrl  = URL.createObjectURL(audioBlob);
-            var audio     = new Audio(audioUrl);
+            const audioBlob = new Blob([byteArray], { type: 'audio/wav' });
+            const audioUrl  = URL.createObjectURL(audioBlob);
+            const audio     = new Audio(audioUrl);
             AppState.currentAudio = audio;
-            audio.onended = function () {
+            audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
                 AppState.currentAudio = null;
             };
-            audio.onerror = function () {
+            audio.onerror = () => {
                 URL.revokeObjectURL(audioUrl);
                 AppState.currentAudio = null;
                 console.warn('[Audio] Playback error');
             };
-            audio.play().catch(function (err) {
+            audio.play().catch((err) => {
                 console.warn('[Audio] Play blocked by browser policy:', err.message);
                 AppState.currentAudio = null;
             });
@@ -1127,39 +1191,37 @@
      * @param {function} callback         - Invoked with the final reply string (or null).
      * @param {boolean}  [skipCompression] - If true, skip the pre-flight compression check.
      */
-    function connectToLlamaDirect(userMessage, callback, skipCompression) {
+    async function connectToLlamaDirect(userMessage, callback, skipCompression) {
         if (typeof userMessage !== 'string' || userMessage.trim().length === 0) {
             if (typeof callback === 'function') { callback(null); }
             return;
         }
         // FIX-BUG-6: Only attempt compression once per send cycle.
         if (!skipCompression) {
-            var currentTokens = getHistoryTokenCount(userMessage);
+            const currentTokens = getHistoryTokenCount(userMessage);
             if (currentTokens > AppState.warningThreshold &&
                     AppState.chatHistory.length > 0) {
-                compressHistoryViaApi(userMessage, function () {
-                    // Pass skipCompression=true to avoid a second compression attempt.
-                    connectToLlamaDirect(userMessage, callback, true);
+                await new Promise((resolve) => {
+                    compressHistoryViaApi(userMessage, () => resolve());
                 });
-                return;
+                return connectToLlamaDirect(userMessage, callback, true);
             }
         }
         // Build the messages array: optional system prompt + history + new user turn.
-        var messages = [];
+        const messages = [];
         if (typeof AppState.systemPrompt === 'string' &&
                 AppState.systemPrompt.length > 0) {
             messages.push({ role: 'system', content: AppState.systemPrompt });
         }
         if (Array.isArray(AppState.chatHistory)) {
-            for (var i = 0; i < AppState.chatHistory.length; i++) {
-                var msg = AppState.chatHistory[i];
+            for (const msg of AppState.chatHistory) {
                 if (isValidMessage(msg)) {
                     messages.push({ role: msg.role, content: msg.content });
                 }
             }
         }
         messages.push({ role: 'user', content: userMessage });
-        var payload;
+        let payload;
         try {
             payload = JSON.stringify({
                 messages: messages,
@@ -1173,183 +1235,149 @@
         }
         // Abort any previous in-flight request.
         abortActiveStream();
-        if ('AbortController' in window) {
-            try {
-                AppState.streamingController = new AbortController();
-            } catch (e) {
-                AppState.streamingController = null;
-            }
-        } else {
-            AppState.streamingController = null;
-        }
-        var streamFetchOpts = {
+        AppState.streamingController = new AbortController();
+        const streamFetchOpts = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
-            body: payload
+            body: payload,
+            signal: AppState.streamingController.signal
         };
-        if (AppState.streamingController && AppState.streamingController.signal) {
-            streamFetchOpts.signal = AppState.streamingController.signal;
+
+        // Double-callback guard so finish_reason=stop AND the natural stream-end
+        // (result.done) cannot both fire the caller's callback. (FIX-BUG-1)
+        let completed = false;
+        let assistantMessage = '';
+
+        // Create the streaming message bubble.
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message chatbot-message';
+        messageDiv.innerHTML =
+            '<div class="bubble">' +
+            '<span class="stream-content"></span>' +
+            '</div>';
+        AppState.streamingMessageDiv = messageDiv;
+        if (DOM.chatBox) {
+            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
         }
-        if (typeof fetch !== 'function') {
-            console.error('[Stream] fetch is not supported in this browser.');
-            if (typeof callback === 'function') { callback(null); }
-            return;
+
+        /**
+         * Finalise the stream: hide the cursor dot, persist the exchange,
+         * and invoke the caller's callback. Idempotent via `completed`.
+         *
+         * @param {ReadableStreamDefaultReader} reader - The reader to cancel.
+         */
+        function finalise(reader) {
+            if (completed) { return; }
+            completed = true;
+            try {
+                const dots = messageDiv.querySelector('.dots');
+                if (dots) { dots.style.display = 'none'; }
+                const shouldSave = (assistantMessage.length > 0 && (!AppState.userStoppedStream));
+                if (shouldSave) {
+                    AppState.chatHistory.push({ role: 'user', content: userMessage });
+                    AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
+                    saveHistoryToStorage();
+                }
+                if (AppState.userStoppedStream) { AppState.userStoppedStream = false; }
+                AppState.streamingMessageDiv = null;
+                if (reader) {
+                    reader.cancel().catch(() => { /* ignore */ });
+                }
+                if (typeof callback === 'function') {
+                    try {
+                        callback(shouldSave ? assistantMessage : null);
+                    } catch (cbErr) {
+                        console.warn('[Stream] Callback error:', cbErr.message);
+                        try { finishProcessing(); } catch (fpErr) { /* ignore */ }
+                    }
+                }
+            } catch (e) {
+                console.warn('[Stream] Finalise error:', e.message);
+                try { finishProcessing(); } catch (fpErr) { /* ignore */ }
+            }
         }
-        fetch(AppState.llmEndpoint, streamFetchOpts)
-        .then(function (res) {
+
+        /**
+         * Process a single decoded SSE line. Returns true if the stream
+         * reached a terminal finish_reason and should stop.
+         */
+        function handleLine(line) {
+            if (typeof line !== 'string') { return false; }
+            line = line.trim();
+            if (line.length < 6 || line.indexOf('data: ') !== 0) { return false; }
+            const dataStr = line.substring(6).trim();
+            // Exact-match the [DONE] sentinel (case-insensitive). (FIX-WARN-2)
+            if (dataStr.toUpperCase() === '[DONE]') { return false; }
+            try {
+                const data    = JSON.parse(dataStr);
+                const choices = data && Array.isArray(data.choices) ? data.choices : null;
+                const choice0 = choices && choices.length > 0 ? choices[0] : null;
+                const delta   = choice0 && isPlainObject(choice0.delta) ? choice0.delta : null;
+                const content = delta && typeof delta.content === 'string' ? delta.content : '';
+                if (content.length > 0) {
+                    assistantMessage += content;
+                    const contentSpan = messageDiv.querySelector('.stream-content');
+                    if (contentSpan) {
+                        contentSpan.innerHTML = nl2br(escapeHtml(assistantMessage));
+                        if (DOM.chatBox && !messageDiv.parentNode) {
+                            DOM.chatBox.appendChild(messageDiv);
+                            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+                        } else if (DOM.chatBox) {
+                            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+                        }
+                    }
+                }
+                const finishReason = choice0 &&
+                    typeof choice0.finish_reason === 'string'
+                    ? choice0.finish_reason
+                    : null;
+                return finishReason === 'stop' ||
+                       finishReason === 'length' ||
+                       finishReason === 'abort';
+            } catch (e) {
+                // Malformed JSON in an SSE line — skip it.
+                return false;
+            }
+        }
+
+        // FIX-BUG-4: res.body is null-checked before calling .getReader().
+        let reader;
+        try {
+            const res = await fetch(AppState.llmEndpoint, streamFetchOpts);
             if (!res.ok) { throw new Error('HTTP ' + res.status); }
             if (!res.body || typeof res.body.getReader !== 'function') {
                 throw new Error('Response body is null; Streams API may not be supported.');
             }
-            return res.body.getReader();
-        })
-        .then(function (reader) {
-            if (typeof TextDecoder !== 'undefined') {
-                var decoder = new TextDecoder();
-            } else {
-                var decoder = null;
-            }
-            var buffer = '';
-            var assistantMessage = '';
-            var completed = false;  // FIX-BUG-1: double-callback guard.
-            // Create the streaming message bubble.
-            var messageDiv = document.createElement('div');
-            messageDiv.className = 'message chatbot-message';
-            messageDiv.innerHTML =
-                '<div class="bubble">' +
-                '<span class="stream-content"></span>' +
-                '<span class="dots">.</span>' +
-                '</div>';
-            AppState.streamingMessageDiv = messageDiv;
-            if (DOM.chatBox) {
-                DOM.chatBox.appendChild(messageDiv);
-                DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
-            }
+            reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            /**
-             * Finalise the stream: hide the cursor dot, persist the exchange,
-             * and invoke the caller's callback. Idempotent via `completed`.
-             *
-             * @param {ReadableStreamDefaultReader} rdr - The reader to cancel.
-             */
-            function finalise(rdr) {
-                if (completed) { return; }
-                completed = true;
-                try {
-                    var dots = messageDiv.querySelector('.dots');
-                    if (dots) { dots.style.display = 'none'; }
-                    var shouldSave = (assistantMessage.length > 0 && (!AppState.userStoppedStream));
-                    if (shouldSave) {
-                        AppState.chatHistory.push({ role: 'user', content: userMessage });
-                        AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
-                        saveHistoryToStorage();
-                    }
-                    if (AppState.userStoppedStream) { AppState.userStoppedStream = false; }
-                    AppState.streamingMessageDiv = null;
-                    if (rdr && typeof rdr.cancel === 'function') {
-                        try {
-                            var cancelResult = rdr.cancel();
-                            if (cancelResult && typeof cancelResult.catch === 'function') {
-                                cancelResult.catch(function () {});
-                            }
-                        } catch (e) { /* ignore */ }
-                    }
-                    if (typeof callback === 'function') {
-                        try {
-                            callback(shouldSave ? assistantMessage : null);
-                        } catch (cbErr) {
-                            console.warn('[Stream] Callback error:', cbErr.message);
-                            try { finishProcessing(); } catch (fpErr) { /* ignore */ }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[Stream] Finalise error:', e.message);
-                    try { finishProcessing(); } catch (fpErr) { /* ignore */ }
+            while (true) {
+                const result = await reader.read();
+                if (result.done) { break; }
+                let chunk = '';
+                if (result.value instanceof Uint8Array ||
+                        (typeof ArrayBuffer !== 'undefined' && result.value instanceof ArrayBuffer)) {
+                    chunk = decoder.decode(result.value, { stream: true });
+                } else {
+                    chunk = String(result.value);
                 }
-            }
-
-            /**
-             * Recursively read chunks from the SSE stream.
-             */
-            function readChunk() {
-                reader.read().then(function (result) {
-                    if (result.done) {
+                buffer += chunk;
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';   // Keep the incomplete tail.
+                for (const line of lines) {
+                    if (handleLine(line)) {
                         finalise(reader);
                         return;
                     }
-                    // Decode the chunk; guard against non-Uint8Array values.
-                    try {
-                        var chunk = '';
-                        if (decoder &&
-                                (result.value instanceof Uint8Array ||
-                                 (typeof ArrayBuffer !== 'undefined' &&
-                                  result.value instanceof ArrayBuffer))) {
-                            chunk = decoder.decode(result.value, { stream: true });
-                        } else {
-                            chunk = String(result.value);
-                        }
-                        buffer += chunk;
-                    } catch (e) {
-                        console.warn('[Stream] Decode error:', e.message);
-                    }
-                    // Process complete SSE lines.
-                    var lines = buffer.split('\n');
-                    buffer = lines.pop() || '';   // Keep the incomplete tail.
-                    for (var j = 0; j < lines.length; j++) {
-                        var line = lines[j];
-                        if (typeof line !== 'string') { continue; }
-                        line = line.trim();
-                        if (line.length < 6 || line.indexOf('data: ') !== 0) { continue; }
-                        var dataStr = line.substring(6).trim();
-                        // FIX-WARN-2: Exact-match the [DONE] sentinel (case-insensitive).
-                        if (dataStr.toUpperCase() === '[DONE]') { continue; }
-                        try {
-                            var data    = JSON.parse(dataStr);
-                            var choices = data && Array.isArray(data.choices) ? data.choices : null;
-                            var choice0 = choices && choices.length > 0 ? choices[0] : null;
-                            // Accumulate delta content.
-                            var delta   = choice0 && isPlainObject(choice0.delta) ? choice0.delta : null;
-                            var content = delta && typeof delta.content === 'string' ? delta.content : '';
-                            if (content.length > 0) {
-                                assistantMessage += content;
-                                var contentSpan = messageDiv.querySelector('.stream-content');
-                                if (contentSpan) {
-                                    contentSpan.innerHTML = nl2br(escapeHtml(assistantMessage));
-                                    if (DOM.chatBox) {
-                                        DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
-                                    }
-                                }
-                            }
-                            // Check for a terminal finish_reason.
-                            var finishReason = choice0 &&
-                                typeof choice0.finish_reason === 'string'
-                                ? choice0.finish_reason
-                                : null;
-                            if (finishReason === 'stop' ||
-                                    finishReason === 'length' ||
-                                    finishReason === 'abort') {
-                                finalise(reader);
-                                return;  // Stop reading; finalise() handles the rest.
-                            }
-                        } catch (e) {
-                            // Malformed JSON in an SSE line — skip it.
-                        }
-                    }
-                    if (!completed) { readChunk(); }
-                }).catch(function (err) {
-                    // Stream read error (includes AbortError on cancellation).
-                    if (err && err.name !== 'AbortError') {
-                        console.warn('[Stream] Read error:', err.message);
-                    }
-                    finalise(reader);
-                });
+                }
             }
-            readChunk();
-        })
-        .catch(function (err) {
+            finalise(reader);
+        } catch (err) {
+            // Stream read error (includes AbortError on cancellation).
             if (err && err.name !== 'AbortError') {
                 console.warn('[Stream] Connection error:', err.message);
             }
@@ -1359,7 +1387,7 @@
                 console.warn('[Stream] Connection callback error:', cbErr.message);
                 try { finishProcessing(); } catch (fpErr) { /* ignore */ }
             }
-        });
+        }
     }
 
     // =============================================================================
@@ -1385,12 +1413,12 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: message })
         })
-        .then(function (res) {
+        .then((res) => {
             if (!res.ok) { throw new Error('HTTP ' + res.status); }
             return res.json();
         })
-        .then(function (data) {
-            var safeData = isPlainObject(data) ? data : {};
+        .then((data) => {
+            const safeData = isPlainObject(data) ? data : {};
             if (AppState.responseMode === 1 && !safeData.error) {
                 AppState.hasSessionConversation = true;
                 updateExportButtonVisibility();
@@ -1399,7 +1427,7 @@
                 try { callback(safeData); } catch (e) { /* ignore */ }
             }
         })
-        .catch(function (err) {
+        .catch((err) => {
             console.warn('[API] Error:', err.message);
             if (typeof callback === 'function') {
                 try { callback({ error: 'Connection error', message: err.message }); } catch (e) { /* ignore */ }
@@ -1419,8 +1447,8 @@
         if (AppState.isProcessing) { return; }
         AppState.userStoppedStream = false;
         if (!DOM.input) { return; }
-        var rawValue = DOM.input.value;
-        var message  = typeof rawValue === 'string' ? rawValue.trim() : '';
+        const rawValue = DOM.input.value;
+        const message  = typeof rawValue === 'string' ? rawValue.trim() : '';
         if (message.length === 0) {
             DOM.input.classList.add('is-invalid');
             DOM.input.focus();
@@ -1437,7 +1465,7 @@
             DOM.stopBtn.disabled = false;
             DOM.stopBtn.style.display = '';
         }
-        var userMsgDiv = appendMessage('user', message);
+        const userMsgDiv = appendMessage('user', message);
         AppState.lastUserMessageDiv = userMsgDiv;
         DOM.input.value = '';
         DOM.input.classList.remove('is-invalid');
@@ -1447,7 +1475,7 @@
         if (AppState.responseMode === 2 &&
                 getHistoryTokenCount(message) > AppState.warningThreshold &&
                 AppState.chatHistory.length > 0) {
-            compressHistoryViaApi(message, function () {
+            compressHistoryViaApi(message, () => {
                 if (!AppState.isProcessing) { return; }
                 proceedWithSend(message);
             });
@@ -1463,20 +1491,18 @@
      * FIX-BUG-5/7: Null/type guard on the API response is now the very first check
      * inside the sendToApi callback, before any property access.
      *
-     * FIX-BUG-2: var replyText was declared three times in the original function
-     * body (all hoisted to the same binding, correct-by-accident). Each usage site
-     * now uses a distinct variable name to make data flow explicit.
+     * FIX-BUG-2: distinct variable names per usage site make data flow explicit.
      *
      * @param {string} message - The validated, trimmed user message.
      */
     function proceedWithSend(message) {
         // Streaming mode without embedding → connect directly to llama.cpp.
         if (AppState.responseMode === 2 && !AppState.embeddingEnabled) {
-            connectToLlamaDirect(message, function () { finishProcessing(); });
+            connectToLlamaDirect(message, () => finishProcessing());
             return;
         }
         showThinkingMessage();
-        sendToApi(message, function (data) {
+        sendToApi(message, (data) => {
             removeThinkingMessage();
             // FIX-BUG-5/7: Guard first, before touching any property.
             if (!isPlainObject(data)) {
@@ -1490,8 +1516,8 @@
             }
             // Error handling
             if (typeof data.error === 'string' && data.error.length > 0) {
-                var errCode   = data.error;
-                var errDetail = typeof data.message === 'string' ? data.message : '';
+                const errCode   = data.error;
+                const errDetail = typeof data.message === 'string' ? data.message : '';
                 if (errCode === 'NO_SERVICES_AVAILABLE') {
                     appendMessage(
                         'chatbot',
@@ -1505,7 +1531,7 @@
                 }
                 if (errCode === 'LLM_PROXY_NOT_AVAILABLE_IN_STREAMING_MODE') {
                     console.log('[API] Streaming mode: using direct connection.');
-                    connectToLlamaDirect(message, function () { finishProcessing(); });
+                    connectToLlamaDirect(message, () => finishProcessing());
                     return;
                 }
                 // Generic / unknown error.
@@ -1518,7 +1544,7 @@
             }
             // Streaming-mode block_request
             if (AppState.responseMode === 2 && data.block_request) {
-                connectToLlamaDirect(message, function () { finishProcessing(); });
+                connectToLlamaDirect(message, () => finishProcessing());
                 return;
             }
             // Optional TTS audio
@@ -1528,12 +1554,12 @@
             // Response with an action verb
             if (typeof data.response_action === 'string' &&
                     data.response_action.trim().length > 0) {
-                var action = data.response_action.trim();
+                const action = data.response_action.trim();
                 if (action === '#LOOP_VIDEO' &&
                         typeof data.media_data === 'string' &&
                         data.media_data.length > 0) {
                     appendVideoMessage(data.media_data);
-                    var videoReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
+                    const videoReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
                     if (videoReply.length > 0) {
                         appendMessage('chatbot', videoReply);
                         if (AppState.responseMode === 2) {
@@ -1546,7 +1572,7 @@
                     return;
                 }
                 // All other action types.
-                var actionReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
+                const actionReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
                 appendMessage('chatbot', actionReply, action);
                 if (AppState.responseMode === 2 && actionReply.length > 0) {
                     AppState.chatHistory.push({ role: 'user',      content: message });
@@ -1558,7 +1584,7 @@
             }
             // Plain text reply
             if (typeof data.reply === 'string') {
-                var plainReply = data.reply.trim();
+                const plainReply = data.reply.trim();
                 if (plainReply.length > 0) {
                     appendMessage('chatbot', plainReply);
                     if (AppState.responseMode === 2) {
@@ -1634,26 +1660,25 @@
     function handleKeydown(e) {
         if (!e) { return; }
         if (e.key === 'Enter' && !e.shiftKey) {
-            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-            if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-            if (typeof e.stopImmediatePropagation === 'function') { e.stopImmediatePropagation(); }
-            e.returnValue = false;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
             handleFormSubmit();
             return;
         }
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             if (!DOM.chatBox) { return; }
-            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-            if (typeof e.stopImmediatePropagation === 'function') { e.stopImmediatePropagation(); }
-            var messages     = DOM.chatBox.querySelectorAll('.message');
-            var messageCount = messages.length;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const messages     = DOM.chatBox.querySelectorAll('.message');
+            const messageCount = messages.length;
             if (messageCount === 0) { return; }
-            var activeEl     = document.activeElement;
-            var currentIndex = -1;
-            for (var i = 0; i < messageCount; i++) {
+            const activeEl     = document.activeElement;
+            let currentIndex = -1;
+            for (let i = 0; i < messageCount; i++) {
                 if (activeEl === messages[i]) { currentIndex = i; break; }
             }
-            var newIndex = e.key === 'ArrowUp'
+            const newIndex = e.key === 'ArrowUp'
                 ? (currentIndex <= 0 ? messageCount - 1 : currentIndex - 1)
                 : (currentIndex >= messageCount - 1 ? 0 : currentIndex + 1);
             messages[newIndex].setAttribute('tabindex', '0');
@@ -1671,9 +1696,8 @@
      */
     function handleSubmit(e) {
         if (e) {
-            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-            if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-            e.returnValue = false;
+            e.preventDefault();
+            e.stopPropagation();
         }
         try {
             handleFormSubmit();
@@ -1706,84 +1730,82 @@
         AppState.chatbotName = getConfigValue(
             'CHATBOT_NAME',
             DEFAULT_CONFIG.CHATBOT_NAME,
-            function (v) { return String(v); }
+            (v) => String(v)
         );
         AppState.responseMode = getConfigValue(
             'RESPONSE_MODE',
             DEFAULT_CONFIG.RESPONSE_MODE,
-            function (v) { return parseIntSafe(v, DEFAULT_CONFIG.RESPONSE_MODE); }
+            (v) => parseIntSafe(v, DEFAULT_CONFIG.RESPONSE_MODE)
         );
         if (AppState.responseMode !== 1 && AppState.responseMode !== 2) {
             AppState.responseMode = DEFAULT_CONFIG.RESPONSE_MODE;
         }
         // Build the full streaming endpoint URL.
-        var rawEndpoint = getConfigValue(
+        const rawEndpoint = getConfigValue(
             'LLM_ENDPOINT',
             DEFAULT_CONFIG.LLM_ENDPOINT,
-            function (v) {
+            (v) => {
                 v = String(v).trim();
                 return v.length > 0 ? v : DEFAULT_CONFIG.LLM_ENDPOINT;
             }
         );
-        var llmHostUrl = getConfigValue(
+        const llmHostUrl = getConfigValue(
             'LLM_HOST_URL',
             '/llamacpp/',
-            function (v) { return String(v); }
+            (v) => String(v)
         );
-        var baseUrl  = llmHostUrl.replace(/\/+$/, '');
-        var endpoint = rawEndpoint.indexOf('/') === 0 ? rawEndpoint : '/' + rawEndpoint;
+        const baseUrl  = llmHostUrl.replace(/\/+$/, '');
+        const endpoint = rawEndpoint.indexOf('/') === 0 ? rawEndpoint : '/' + rawEndpoint;
         AppState.llmEndpoint = baseUrl + endpoint;
         AppState.llmCtxSize = getConfigValue(
             'LLM_CTX_SIZE',
             DEFAULT_CONFIG.LLM_CTX_SIZE,
-            function (v) {
-                var n = parseIntSafe(v, DEFAULT_CONFIG.LLM_CTX_SIZE);
+            (v) => {
+                const n = parseIntSafe(v, DEFAULT_CONFIG.LLM_CTX_SIZE);
                 return n > 0 ? n : DEFAULT_CONFIG.LLM_CTX_SIZE;
             }
         );
         AppState.llmMaxResponseTokens = getConfigValue(
             'LLM_MAX_RESPONSE_TOKENS',
             DEFAULT_CONFIG.LLM_MAX_RESPONSE_TOKENS,
-            function (v) {
-                var n = parseIntSafe(v, DEFAULT_CONFIG.LLM_MAX_RESPONSE_TOKENS);
+            (v) => {
+                const n = parseIntSafe(v, DEFAULT_CONFIG.LLM_MAX_RESPONSE_TOKENS);
                 return n > 0 ? n : DEFAULT_CONFIG.LLM_MAX_RESPONSE_TOKENS;
             }
         );
         AppState.safetyMargin = getConfigValue(
             'SAFETY_MARGIN',
             DEFAULT_CONFIG.SAFETY_MARGIN,
-            function (v) {
-                var n = parseIntSafe(v, DEFAULT_CONFIG.SAFETY_MARGIN);
+            (v) => {
+                const n = parseIntSafe(v, DEFAULT_CONFIG.SAFETY_MARGIN);
                 return n >= 0 ? n : DEFAULT_CONFIG.SAFETY_MARGIN;
             }
         );
         AppState.embeddingEnabled = getConfigValue(
             'EMBEDDING_ENABLED',
             DEFAULT_CONFIG.EMBEDDING_ENABLED,
-            function (v) {
-                return v === true || v === 'true' || v === 1 || v === '1';
-            }
+            (v) => v === true || v === 'true' || v === 1 || v === '1'
         );
         AppState.systemPrompt = getConfigValue(
             'SYSTEM_PROMPT',
             DEFAULT_CONFIG.SYSTEM_PROMPT,
-            function (v) { return v === null ? null : String(v); }
+            (v) => v === null ? null : String(v)
         );
         AppState.apiEndpoint = getConfigValue(
             'API_ENDPOINT',
             DEFAULT_CONFIG.API_ENDPOINT,
-            function (v) { return String(v); }
+            (v) => String(v)
         );
         AppState.requestTimeout = getConfigValue(
             'REQUEST_TIMEOUT',
             DEFAULT_CONFIG.REQUEST_TIMEOUT,
-            function (v) {
-                var n = parseIntSafe(v, DEFAULT_CONFIG.REQUEST_TIMEOUT);
+            (v) => {
+                const n = parseIntSafe(v, DEFAULT_CONFIG.REQUEST_TIMEOUT);
                 return n > 0 ? n : DEFAULT_CONFIG.REQUEST_TIMEOUT;
             }
         );
         // Derive the compression threshold from validated values.
-        var calculated = AppState.llmCtxSize -
+        const calculated = AppState.llmCtxSize -
                          (AppState.llmMaxResponseTokens + AppState.safetyMargin);
         AppState.warningThreshold = Math.max(calculated, 0);
     }
@@ -1791,48 +1813,38 @@
     /** Attach all event listeners. */
     function initEvents() {
         if (DOM.input) {
-            DOM.input.addEventListener('input',   handleInput);
+            DOM.input.addEventListener('input', handleInput);
             DOM.input.addEventListener('keydown', handleKeydown);
         }
         if (DOM.submitBtn) {
-            DOM.submitBtn.addEventListener('click', function (e) {
-                if (e) {
-                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-                    if (typeof e.stopImmediatePropagation === 'function') { e.stopImmediatePropagation(); }
-                    e.returnValue = false;
-                }
+            DOM.submitBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 handleFormSubmit();
             });
         }
-        var exportBtn = document.getElementById('export-conversation-btn');
+        const exportBtn = document.getElementById('export-conversation-btn');
         if (exportBtn) {
-            exportBtn.addEventListener('click', function (e) {
-                if (e) {
-                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-                    e.returnValue = false;
-                }
+            exportBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 exportConversation();
             });
         }
-        var importBtn = document.getElementById('import-conversation-btn');
+        const importBtn = document.getElementById('import-conversation-btn');
         if (importBtn) {
-            importBtn.addEventListener('click', function (e) {
-                if (e) {
-                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-                    e.returnValue = false;
-                }
+            importBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 if (DOM.importInput) { DOM.importInput.click(); }
             });
         }
         if (DOM.importInput) {
-            DOM.importInput.addEventListener('change', function (e) {
-                var files = e.target && e.target.files;
+            DOM.importInput.addEventListener('change', (e) => {
+                const files = e.target && e.target.files;
                 if (!files || files.length === 0) { return; }
-                var file = files[0];
-                var isJson = (typeof file.type === 'string' &&
+                const file = files[0];
+                const isJson = (typeof file.type === 'string' &&
                               file.type === 'application/json') ||
                              (typeof file.name === 'string' &&
                               file.name.slice(-5).toLowerCase() === '.json');
@@ -1840,7 +1852,7 @@
                     ConfirmModal.show(
                         'Are you sure you want to import this conversation? ' +
                         'Current conversation will be replaced.',
-                        function () { importConversation(file); }
+                        () => importConversation(file)
                     );
                 } else {
                     showErrorModal('Please select a valid JSON file.');
@@ -1849,43 +1861,45 @@
                 DOM.importInput.value = '';
             });
         }
-        var newSessionBtn = document.getElementById('new-session-btn');
+        const newSessionBtn = document.getElementById('new-session-btn');
         if (newSessionBtn) {
-            newSessionBtn.addEventListener('click', function () {
+            newSessionBtn.addEventListener('click', () => {
                 ConfirmModal.show(
                     'Are you sure you want to start a new session? ' +
                     'All chat history will be permanently deleted.',
-                    function () { startNewSession(); }
+                    () => startNewSession()
                 );
             });
         }
         if (DOM.stopBtn) {
-            DOM.stopBtn.addEventListener('click', function (e) {
-                if (e) {
-                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-                    e.returnValue = false;
-                }
+            DOM.stopBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 handleStop();
             });
         }
+        // Confirm-modal OK button: bound once (never cloned) so it always keeps a
+        // single, live reference — Enter/Space activate it normally and focus can
+        // never get stranded on a detached clone.
+        const confirmOkBtn = document.getElementById('confirm-ok-btn');
+        if (confirmOkBtn) {
+            confirmOkBtn.addEventListener('click', confirmModalOk);
+        }
         // Abort any active stream if the page is navigated away.
-        window.addEventListener('beforeunload', function () {
+        window.addEventListener('beforeunload', () => {
             abortActiveStream();
         });
-        // EdgeHTML-compatible modal dismiss handler.
-        // Bootstrap's data-bs-dismiss="modal" does not work reliably in Edge,
-        // so we explicitly close modals on click.
-        document.addEventListener('click', function (e) {
-            var dismissBtn = e.target.closest('[data-bs-dismiss="modal"], .btn-close');
+        // Robust modal dismissal for close buttons ([data-bs-dismiss="modal"] /
+        // .btn-close). In some embedded runtimes (e.g. PHP Desktop, Chromium 2025)
+        // Bootstrap's own dismiss handler does not fire reliably, so we explicitly
+        // close the matching modal on click to keep it keyboard- and click-accessible.
+        document.addEventListener('click', (e) => {
+            const dismissBtn = e.target.closest?.('[data-bs-dismiss="modal"], .btn-close');
             if (!dismissBtn) { return; }
-            var modal = dismissBtn.closest('.modal');
+            const modal = dismissBtn.closest('.modal');
             if (modal) {
-                if (e) {
-                    if (typeof e.preventDefault === 'function') { e.preventDefault(); }
-                    if (typeof e.stopPropagation === 'function') { e.stopPropagation(); }
-                    e.returnValue = false;
-                }
+                e.preventDefault();
+                e.stopPropagation();
                 hideModal(modal);
             }
         });
@@ -1896,10 +1910,10 @@
      * Called once per session before history is rendered.
      */
     function displayInitialMessage() {
-        var initialMessage = getConfigValue(
+        const initialMessage = getConfigValue(
             'INITIAL_MESSAGE',
             null,
-            function (v) { return v === null ? null : String(v); }
+            (v) => v === null ? null : String(v)
         );
         if (typeof initialMessage === 'string' && initialMessage.length > 0) {
             appendMessage('chatbot', initialMessage);
@@ -1913,8 +1927,7 @@
     function displayChatHistory() {
         if (!Array.isArray(AppState.chatHistory) ||
                 AppState.chatHistory.length === 0) { return; }
-        for (var i = 0; i < AppState.chatHistory.length; i++) {
-            var msg = AppState.chatHistory[i];
+        for (const msg of AppState.chatHistory) {
             if (isValidMessage(msg)) {
                 appendMessage(msg.role, msg.content);
             }
@@ -1935,9 +1948,7 @@
             AppState.hasSessionConversation = getConfigValue(
                 'HAS_SESSION_CONVERSATION',
                 false,
-                function (v) {
-                    return v === true || v === 'true' || v === 1 || v === '1';
-                }
+                (v) => v === true || v === 'true' || v === 1 || v === '1'
             );
             displayInitialMessage();
             if (AppState.responseMode === 1) {
@@ -1968,12 +1979,11 @@
     // =============================================================================
 
     if (typeof window !== 'undefined') {
-        window.addEventListener('unhandledrejection', function (e) {
+        window.addEventListener('unhandledrejection', (e) => {
             if (e && e.reason) {
-                var msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+                const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
                 console.warn('[Global] Unhandled promise rejection:', msg);
             }
-            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
         });
     }
 
