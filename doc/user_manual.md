@@ -172,7 +172,7 @@ This is the first and most important tab. It configures the core *LLM engine* th
 * **Parameters**: a key-value editor that lets you fine-tune the *LLM engine* parameters. Each row has a parameter name and its value. Common parameters include:
   * **`port`**: the port number the *LLM engine* listens on (default: 8080 for conversational, 8081 for embedding).
   * **`threads`**: number of CPU threads to use.
-  * **`ctx_size`**: context window size in tokens.
+  * **`ctx_size`**: context window size in tokens. If your AI server is slow or unstable, you may want to set this value lower.
   * **`gpu_layers`**: number of layers to offload to *GPU* (for *CUDA/Vulkan* engines).
   * Other engine-specific parameters.
     Hover the mouse over a parameter name to see its description in a tooltip. You can add new parameters using the *Add* button and remove existing ones using the *Remove* button. Parameter names must be unique.
