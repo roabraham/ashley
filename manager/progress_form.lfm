@@ -12,6 +12,7 @@ object ProgressForm: TProgressForm
   FormStyle = fsStayOnTop
   Position = poOwnerFormCenter
   LCLVersion = '4.4.0.0'
+  OnCreate = FormCreate
   object MainBevel: TBevel
     Left = 8
     Height = 136
@@ -53,5 +54,12 @@ object ProgressForm: TProgressForm
     Anchors = [akTop, akLeft, akRight]
     TabOrder = 0
     BarShowText = True
+  end
+  object ProgressTimer: TTimer
+    Enabled = False
+    Interval = 100
+    OnTimer = ProgressTimerTimer
+    Left = 24
+    Top = 24
   end
 end

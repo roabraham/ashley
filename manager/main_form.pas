@@ -8,6 +8,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ExtCtrls,
   ComCtrls, LCLIntf, LCLType, md5, settings_form, process, about_form,
+  progress_form,
   {$IFDEF MSWINDOWS}
   Windows, jwatlhelp32;
   {$ENDIF}
@@ -553,6 +554,11 @@ begin
         MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
         Exit;
       end;
+      ProgressForm.MainProgressBar.Position := 0;
+      ProgressForm.FProgressDirection := 0;
+      ProgressForm.ProgressTimer.Enabled := true;
+      ProgressForm.Show;
+      Application.ProcessMessages;
       LLMserverProcess.Active := false;
       LLMserverProcess.Parameters.Clear;
       LLMserverProcess.CommandLine := '';
@@ -570,6 +576,8 @@ begin
         Application.ProcessMessages;
         Inc(WaitCount);
       end;
+      ProgressForm.ProgressTimer.Enabled := false;
+      ProgressForm.Hide;
       // Check if it's still running or if it exited with an error
       if not(LLMserverProcess.Running) then
       begin
@@ -624,6 +632,11 @@ begin
         MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
         Exit;
       end;
+      ProgressForm.MainProgressBar.Position := 0;
+      ProgressForm.FProgressDirection := 0;
+      ProgressForm.ProgressTimer.Enabled := true;
+      ProgressForm.Show;
+      Application.ProcessMessages;
       if LLMserverProcess.Running then
       begin
         {$IFDEF MSWINDOWS}
@@ -656,6 +669,8 @@ begin
         Application.ProcessMessages;
         Inc(WaitCount);
       end;
+      ProgressForm.ProgressTimer.Enabled := false;
+      ProgressForm.Hide;
       // Check if it's still running or if it exited with an error
       if not(LLMserverProcess.Running) then
       begin
@@ -672,6 +687,11 @@ begin
   except
     on E: Exception do
     begin
+      if ProgressForm.Visible then
+      begin
+        ProgressForm.ProgressTimer.Enabled := false;
+        ProgressForm.Hide;
+      end;
       MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' service: ' + E.Message;
       MessageDlg('Service Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
     end;

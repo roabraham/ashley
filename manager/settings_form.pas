@@ -770,6 +770,7 @@ begin
   DstStream := nil;
   try
     try
+      ProgressForm.ProgressTimer.Enabled := false;
       ProgressForm.MainProgressBar.Position := 0;
       ProgressForm.Show;
       Application.ProcessMessages;
