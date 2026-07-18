@@ -831,78 +831,79 @@
 
         function attempt(attemptNo) {
             showThinkingMessage();
-            var controller = ('AbortController' in window) ? new AbortController() : null;
-            var timer = null;
-            if (controller && typeof controller.signal !== 'undefined') {
-                timer = setTimeout(function () {
-                    try { controller.abort(); } catch (e) { /* ignore */ }
-                }, CLIENT_TIMEOUT_MS);
-            }
-            var fetchOpts = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            };
-            if (controller) { fetchOpts.signal = controller.signal; }
-            return fetch(getApiUrl(), fetchOpts)
-                .then(function (res) {
-                    if (!res.ok) { throw new Error('HTTP ' + res.status); }
-                    return res.json();
-                })
-                .then(function (data) {
-                    removeThinkingMessage();
-                    if (isPlainObject(data) && data.success === true && Array.isArray(data.summarized_history)) {
-                        AppState.chatHistory = data.summarized_history.filter(isValidMessage);
-                        saveHistoryToStorage();
-                        return { done: true };
-                    }
-                    if (isPlainObject(data) && data.error === 'NOT_NEEDED') {
-                        return { done: true };
-                    }
-                    // Unknown/unexpected response — log and continue rather than freeze.
-                    // FIX-BUG-3b: Original code omitted cb() here.
-                    console.warn(
-                        '[History] Compression returned unexpected response:',
-                        isPlainObject(data) ? data.error : 'non-object'
-                    );
+            return new Promise(function (resolve, reject) {
+                try {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', getApiUrl(), true);
+                    xhr.setRequestHeader('Content-Type', 'application/json');
+                    xhr.timeout = CLIENT_TIMEOUT_MS;
+                    xhr.onload = function () {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                resolve(JSON.parse(xhr.responseText));
+                            } catch (e) {
+                                reject(new Error('Invalid JSON response'));
+                            }
+                        } else {
+                            reject(new Error('HTTP ' + xhr.status));
+                        }
+                    };
+                    xhr.onerror = function () { reject(new Error('Network error')); };
+                    xhr.ontimeout = function () {
+                        var err = new Error('timeout');
+                        err.name = 'AbortError';
+                        reject(err);
+                    };
+                    xhr.send(JSON.stringify(payload));
+                } catch (e) {
+                    reject(e);
+                }
+            })
+            .then(function (data) {
+                removeThinkingMessage();
+                if (isPlainObject(data) && data.success === true && Array.isArray(data.summarized_history)) {
+                    AppState.chatHistory = data.summarized_history.filter(isValidMessage);
+                    saveHistoryToStorage();
                     return { done: true };
-                })
-                .catch(function (err) {
-                    // AbortError => our own client timeout (handled as retryable).
-                    var isAbort = err && err.name === 'AbortError';
-                    if (attemptNo < MAX_ATTEMPTS) {
-                        console.warn(
-                            '[History] Compression request failed (attempt ' +
-                            attemptNo + '), retrying:',
-                            err.message
-                        );
-                        // Wait out the back-off, then retry with a fresh controller.
-                        return new Promise(function (resolve) {
-                            setTimeout(resolve, RETRY_BACKOFF_MS);
-                        }).then(function () {
-                            return attempt(attemptNo + 1);
-                        });
-                    }
-                    // FIX-BUG-3: Original code omitted cb() here.
-                    removeThinkingMessage();
-                    console.warn('[History] Compression request failed:', err.message);
-                    return { done: true, error: isAbort ? 'timeout' : 'error' };
-                })
-                .then(function (result) {
-                    if (timer) { clearTimeout(timer); }
-                    return result;
-                });
+                }
+                if (isPlainObject(data) && data.error === 'NOT_NEEDED') {
+                    return { done: true };
+                }
+                console.warn(
+                    '[History] Compression returned unexpected response:',
+                    isPlainObject(data) ? data.error : 'non-object'
+                );
+                return { done: true };
+            })
+            .catch(function (err) {
+                var isAbort = err && err.name === 'AbortError';
+                if (attemptNo < MAX_ATTEMPTS) {
+                    console.warn(
+                        '[History] Compression request failed (attempt ' +
+                        attemptNo + '), retrying:',
+                        err.message
+                    );
+                    return new Promise(function (resolve) {
+                        setTimeout(resolve, RETRY_BACKOFF_MS);
+                    }).then(function () {
+                        return attempt(attemptNo + 1);
+                    });
+                }
+                removeThinkingMessage();
+                console.warn('[History] Compression request failed:', err.message);
+                return { done: true, error: isAbort ? 'timeout' : 'error' };
+            });
         }
 
         _compressionInFlight = attempt(1).then(function (result) {
             _compressionInFlight = null;
-            cb();
+            try { cb(); } catch (e) { /* ignore */ }
             return result;
         }, function (err) {
             _compressionInFlight = null;
             removeThinkingMessage();
             console.warn('[History] Compression request failed:', err && err.message);
-            cb();
+            try { cb(); } catch (e) { /* ignore */ }
         });
     }
 
@@ -1172,27 +1173,45 @@
         }
         // Abort any previous in-flight request.
         abortActiveStream();
-        AppState.streamingController = new AbortController();
-        fetch(AppState.llmEndpoint, {
+        if ('AbortController' in window) {
+            try {
+                AppState.streamingController = new AbortController();
+            } catch (e) {
+                AppState.streamingController = null;
+            }
+        } else {
+            AppState.streamingController = null;
+        }
+        var streamFetchOpts = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
-            body: payload,
-            signal: AppState.streamingController.signal
-        })
+            body: payload
+        };
+        if (AppState.streamingController && AppState.streamingController.signal) {
+            streamFetchOpts.signal = AppState.streamingController.signal;
+        }
+        if (typeof fetch !== 'function') {
+            console.error('[Stream] fetch is not supported in this browser.');
+            if (typeof callback === 'function') { callback(null); }
+            return;
+        }
+        fetch(AppState.llmEndpoint, streamFetchOpts)
         .then(function (res) {
             if (!res.ok) { throw new Error('HTTP ' + res.status); }
-            // FIX-BUG-4: res.body can be null in some environments.
-            if (!res.body) {
+            if (!res.body || typeof res.body.getReader !== 'function') {
                 throw new Error('Response body is null; Streams API may not be supported.');
             }
-
             return res.body.getReader();
         })
         .then(function (reader) {
-            var decoder = new TextDecoder();
+            if (typeof TextDecoder !== 'undefined') {
+                var decoder = new TextDecoder();
+            } else {
+                var decoder = null;
+            }
             var buffer = '';
             var assistantMessage = '';
             var completed = false;  // FIX-BUG-1: double-callback guard.
@@ -1219,31 +1238,36 @@
             function finalise(rdr) {
                 if (completed) { return; }
                 completed = true;
-                var dots = messageDiv.querySelector('.dots');
-                if (dots) { dots.style.display = 'none'; }
-                var shouldSave = (assistantMessage.length > 0 && (!AppState.userStoppedStream));
-                if (shouldSave) {
-                    AppState.chatHistory.push({ role: 'user',      content: userMessage });
-                    AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
-                    saveHistoryToStorage();
-                }
-                if (AppState.userStoppedStream) { AppState.userStoppedStream = false; }
-                AppState.streamingMessageDiv = null;
-                if (rdr && typeof rdr.cancel === 'function') {
-                    try {
-                        var cancelResult = rdr.cancel();
-                        if (cancelResult && typeof cancelResult.catch === 'function') {
-                            cancelResult.catch(function () {});
-                        }
-                    } catch (e) { /* ignore */ }
-                }
-                if (typeof callback === 'function') {
-                    try {
-                        callback(shouldSave ? assistantMessage : null);
-                    } catch (cbErr) {
-                        console.warn('[Stream] Callback error:', cbErr.message);
-                        finishProcessing();
+                try {
+                    var dots = messageDiv.querySelector('.dots');
+                    if (dots) { dots.style.display = 'none'; }
+                    var shouldSave = (assistantMessage.length > 0 && (!AppState.userStoppedStream));
+                    if (shouldSave) {
+                        AppState.chatHistory.push({ role: 'user', content: userMessage });
+                        AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
+                        saveHistoryToStorage();
                     }
+                    if (AppState.userStoppedStream) { AppState.userStoppedStream = false; }
+                    AppState.streamingMessageDiv = null;
+                    if (rdr && typeof rdr.cancel === 'function') {
+                        try {
+                            var cancelResult = rdr.cancel();
+                            if (cancelResult && typeof cancelResult.catch === 'function') {
+                                cancelResult.catch(function () {});
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                    if (typeof callback === 'function') {
+                        try {
+                            callback(shouldSave ? assistantMessage : null);
+                        } catch (cbErr) {
+                            console.warn('[Stream] Callback error:', cbErr.message);
+                            try { finishProcessing(); } catch (fpErr) { /* ignore */ }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Stream] Finalise error:', e.message);
+                    try { finishProcessing(); } catch (fpErr) { /* ignore */ }
                 }
             }
 
@@ -1258,11 +1282,15 @@
                     }
                     // Decode the chunk; guard against non-Uint8Array values.
                     try {
-                        var chunk = (result.value instanceof Uint8Array ||
-                                     (typeof ArrayBuffer !== 'undefined' &&
-                                      result.value instanceof ArrayBuffer))
-                            ? decoder.decode(result.value, { stream: true })
-                            : String(result.value);
+                        var chunk = '';
+                        if (decoder &&
+                                (result.value instanceof Uint8Array ||
+                                 (typeof ArrayBuffer !== 'undefined' &&
+                                  result.value instanceof ArrayBuffer))) {
+                            chunk = decoder.decode(result.value, { stream: true });
+                        } else {
+                            chunk = String(result.value);
+                        }
                         buffer += chunk;
                     } catch (e) {
                         console.warn('[Stream] Decode error:', e.message);
@@ -1325,7 +1353,12 @@
             if (err && err.name !== 'AbortError') {
                 console.warn('[Stream] Connection error:', err.message);
             }
-            if (typeof callback === 'function') { callback(null); }
+            try {
+                if (typeof callback === 'function') { callback(null); }
+            } catch (cbErr) {
+                console.warn('[Stream] Connection callback error:', cbErr.message);
+                try { finishProcessing(); } catch (fpErr) { /* ignore */ }
+            }
         });
     }
 
@@ -1357,18 +1390,19 @@
             return res.json();
         })
         .then(function (data) {
-            // Ensure we always pass a plain object to the callback.
             var safeData = isPlainObject(data) ? data : {};
             if (AppState.responseMode === 1 && !safeData.error) {
                 AppState.hasSessionConversation = true;
                 updateExportButtonVisibility();
             }
-            if (typeof callback === 'function') { callback(safeData); }
+            if (typeof callback === 'function') {
+                try { callback(safeData); } catch (e) { /* ignore */ }
+            }
         })
         .catch(function (err) {
             console.warn('[API] Error:', err.message);
             if (typeof callback === 'function') {
-                callback({ error: 'Connection error', message: err.message });
+                try { callback({ error: 'Connection error', message: err.message }); } catch (e) { /* ignore */ }
             }
         });
     }
@@ -1927,6 +1961,20 @@
         } catch (e) {
             console.error('[Init] Fatal error during initialisation:', e.message, e);
         }
+    }
+
+    // =============================================================================
+    // GLOBAL ERROR SAFEGUARDS
+    // =============================================================================
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('unhandledrejection', function (e) {
+            if (e && e.reason) {
+                var msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+                console.warn('[Global] Unhandled promise rejection:', msg);
+            }
+            if (typeof e.preventDefault === 'function') { e.preventDefault(); }
+        });
     }
 
     // =============================================================================
