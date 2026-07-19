@@ -554,6 +554,7 @@ begin
         MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
         Exit;
       end;
+      ProgressForm.MainProgressBar.BarShowText := false;
       ProgressForm.MainProgressBar.Position := 0;
       ProgressForm.FProgressDirection := 0;
       ProgressForm.ProgressTimer.Enabled := true;
@@ -632,6 +633,7 @@ begin
         MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
         Exit;
       end;
+      ProgressForm.MainProgressBar.BarShowText := false;
       ProgressForm.MainProgressBar.Position := 0;
       ProgressForm.FProgressDirection := 0;
       ProgressForm.ProgressTimer.Enabled := true;

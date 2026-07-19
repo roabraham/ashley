@@ -771,6 +771,7 @@ begin
   try
     try
       ProgressForm.ProgressTimer.Enabled := false;
+      ProgressForm.MainProgressBar.BarShowText := true;
       ProgressForm.MainProgressBar.Position := 0;
       ProgressForm.Show;
       Application.ProcessMessages;
