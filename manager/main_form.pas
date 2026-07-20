@@ -516,186 +516,202 @@ var
   ActionFixed: string;
   WrapperPath: string;
   WaitCount: Integer;
+  PForm: TProgressForm;
 begin
+  PForm := nil;
   try
-    //Check action parameter
-    ActionFixed := UpperCase(trim(ServiceAction));
-    if not(length(ActionFixed)>0) then
-    begin
-      MainStatusBar.SimpleText := 'Action not specified!';
-      MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-      Exit;
-    end;
-    //Check wrapper binary
-    {$IFDEF WINDOWS}
-    WrapperPath := appdir + 'wrapper.exe';
-    {$ELSE}
-    WrapperPath := appdir + 'wrapper';
-    {$ENDIF}
-    //Start LLM service
-    if ActionFixed = 'START' then
-    begin
-      if LLMserverProcess.Running then
+    try
+      //Check action parameter
+      ActionFixed := UpperCase(trim(ServiceAction));
+      if not(length(ActionFixed)>0) then
       begin
-        MainStatusBar.SimpleText := 'The LLM Service is already running.';
-        MessageDlg('Warning', MainStatusBar.SimpleText, mtWarning, [mbOK], 0);
-        Exit;
-      end;
-      if SSLcertificateProcess.Running then
-      begin
-        MainStatusBar.SimpleText := 'Cannot start until SSL certificate generation is finished!';
+        MainStatusBar.SimpleText := 'Action not specified!';
         MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
         Exit;
       end;
-      chdir(appdir);
-      if not(FileExists(WrapperPath)) then
-      begin
-        MainStatusBar.SimpleText := 'Wrapper binary not found: ' + WrapperPath;
-        MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-        Exit;
-      end;
-      ProgressForm.MainProgressBar.BarShowText := false;
-      ProgressForm.MainProgressBar.Position := 0;
-      ProgressForm.FProgressDirection := 0;
-      ProgressForm.ProgressTimer.Enabled := true;
-      ProgressForm.Show;
-      Application.ProcessMessages;
-      LLMserverProcess.Active := false;
-      LLMserverProcess.Parameters.Clear;
-      LLMserverProcess.CommandLine := '';
-      LLMserverProcess.ApplicationName := '';
-      LLMserverProcess.Executable := WrapperPath;
-      LLMserverProcess.CurrentDirectory := appdir;
-      LLMserverProcess.Options := [poNewConsole];
-      LLMserverProcess.ShowWindow := swoHide;
-      LLMserverProcess.Execute;
-      // Wait a moment to see if it crashes immediately (e.g., port already in use, DB locked)
-      WaitCount := 0;
-      while LLMserverProcess.Running and (WaitCount < 10) do // Wait up to 1 second
-      begin
-        Sleep(100);
-        Application.ProcessMessages;
-        Inc(WaitCount);
-      end;
-      ProgressForm.ProgressTimer.Enabled := false;
-      ProgressForm.Hide;
-      // Check if it's still running or if it exited with an error
-      if not(LLMserverProcess.Running) then
-      begin
-        ProcessLLMserviceError(LLMserverProcess.ExitStatus);
-        Exit;
-      end;
-      MainStatusBar.SimpleText := 'LLM Service started.';
-      Exit;
-    end;
-    //Stop LLM service
-    if ActionFixed = 'STOP' then
-    begin
-      if not(LLMserverProcess.Running) then
-      begin
-        MainStatusBar.SimpleText := 'The service is not currently running.';
-        MessageDlg('Information', MainStatusBar.SimpleText, mtInformation, [mbOK], 0);
-        Exit;
-      end;
-      if EmbeddingGenerationProcess.Running then
-      begin
-        MainStatusBar.SimpleText := 'Cannot stop until embedding vector generation is finished!';
-        MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-        Exit;
-      end;
-      {$IFDEF MSWINDOWS}
-      KillProcessTree(LLMserverProcess.ProcessID);
+      //Check wrapper binary
+      {$IFDEF WINDOWS}
+      WrapperPath := appdir + 'wrapper.exe';
       {$ELSE}
-      LLMserverProcess.Terminate(0);
+      WrapperPath := appdir + 'wrapper';
       {$ENDIF}
-      MainStatusBar.SimpleText := 'LLM Service stopped.';
-      Exit;
-    end;
-    //Restart LLM service
-    if ActionFixed = 'RESTART' then
-    begin
-      if SSLcertificateProcess.Running then
+      //Start LLM service
+      if ActionFixed = 'START' then
       begin
-        MainStatusBar.SimpleText := 'Cannot restart until SSL certificate generation is finished!';
-        MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-        Exit;
-      end;
-      if EmbeddingGenerationProcess.Running then
-      begin
-        MainStatusBar.SimpleText := 'Cannot restart until embedding vector generation is finished!';
-        MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-        Exit;
-      end;
-      chdir(appdir);
-      if not(FileExists(WrapperPath)) then
-      begin
-        MainStatusBar.SimpleText := 'Wrapper binary not found: ' + WrapperPath;
-        MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-        Exit;
-      end;
-      ProgressForm.MainProgressBar.BarShowText := false;
-      ProgressForm.MainProgressBar.Position := 0;
-      ProgressForm.FProgressDirection := 0;
-      ProgressForm.ProgressTimer.Enabled := true;
-      ProgressForm.Show;
-      Application.ProcessMessages;
-      if LLMserverProcess.Running then
-      begin
-        {$IFDEF MSWINDOWS}
-        KillProcessTree(LLMserverProcess.ProcessID);
-        {$ELSE}
-        LLMserverProcess.Terminate(0);
-        {$ENDIF}
+        if LLMserverProcess.Running then
+        begin
+          MainStatusBar.SimpleText := 'The LLM Service is already running.';
+          MessageDlg('Warning', MainStatusBar.SimpleText, mtWarning, [mbOK], 0);
+          Exit;
+        end;
+        if SSLcertificateProcess.Running then
+        begin
+          MainStatusBar.SimpleText := 'Cannot start until SSL certificate generation is finished!';
+          MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+          Exit;
+        end;
+        chdir(appdir);
+        if not(FileExists(WrapperPath)) then
+        begin
+          MainStatusBar.SimpleText := 'Wrapper binary not found: ' + WrapperPath;
+          MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+          Exit;
+        end;
+        PForm := TProgressForm.Create(Application);
+        PForm.ProgressTimer.Enabled := true;
+        PForm.Show;
+        Application.ProcessMessages;
+        LLMserverProcess.Active := false;
+        LLMserverProcess.Parameters.Clear;
+        LLMserverProcess.CommandLine := '';
+        LLMserverProcess.ApplicationName := '';
+        LLMserverProcess.Executable := WrapperPath;
+        LLMserverProcess.CurrentDirectory := appdir;
+        LLMserverProcess.Options := [poNewConsole];
+        LLMserverProcess.ShowWindow := swoHide;
+        LLMserverProcess.Execute;
+        // Wait a moment to see if it crashes immediately (e.g., port already in use, DB locked)
         WaitCount := 0;
-        while (LLMserverProcess.Running) and (WaitCount < 100) do
+        while LLMserverProcess.Running and (WaitCount < 10) do // Wait up to 1 second
         begin
           Sleep(100);
           Application.ProcessMessages;
           Inc(WaitCount);
         end;
-      end;
-      LLMserverProcess.Active := false;
-      LLMserverProcess.Parameters.Clear;
-      LLMserverProcess.CommandLine := '';
-      LLMserverProcess.ApplicationName := '';
-      LLMserverProcess.Executable := WrapperPath;
-      LLMserverProcess.CurrentDirectory := appdir;
-      LLMserverProcess.Options := [poNewConsole];
-      LLMserverProcess.ShowWindow := swoHide;
-      LLMserverProcess.Execute;
-      // Wait a moment to see if it crashes immediately (e.g., port already in use, DB locked)
-      WaitCount := 0;
-      while LLMserverProcess.Running and (WaitCount < 10) do // Wait up to 1 second
-      begin
-        Sleep(100);
-        Application.ProcessMessages;
-        Inc(WaitCount);
-      end;
-      ProgressForm.ProgressTimer.Enabled := false;
-      ProgressForm.Hide;
-      // Check if it's still running or if it exited with an error
-      if not(LLMserverProcess.Running) then
-      begin
-        ProcessLLMserviceError(LLMserverProcess.ExitStatus);
+        PForm.ProgressTimer.Enabled := false;
+        PForm.Hide;
+        FreeAndNil(PForm);
+        // Check if it's still running or if it exited with an error
+        if not(LLMserverProcess.Running) then
+        begin
+          ProcessLLMserviceError(LLMserverProcess.ExitStatus);
+          Exit;
+        end;
+        MainStatusBar.SimpleText := 'LLM Service started.';
         Exit;
       end;
-      MainStatusBar.SimpleText := 'LLM Service restarted.';
-      Exit;
-    end;
-    //Invalid action
-    MainStatusBar.SimpleText := 'Invalid action: ' + ActionFixed + '!';
-    MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
-    Exit;
-  except
-    on E: Exception do
-    begin
-      if ProgressForm.Visible then
+      //Stop LLM service
+      if ActionFixed = 'STOP' then
       begin
-        ProgressForm.ProgressTimer.Enabled := false;
-        ProgressForm.Hide;
+        if not(LLMserverProcess.Running) then
+        begin
+          MainStatusBar.SimpleText := 'The service is not currently running.';
+          MessageDlg('Information', MainStatusBar.SimpleText, mtInformation, [mbOK], 0);
+          Exit;
+        end;
+        if EmbeddingGenerationProcess.Running then
+        begin
+          MainStatusBar.SimpleText := 'Cannot stop until embedding vector generation is finished!';
+          MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+          Exit;
+        end;
+        {$IFDEF MSWINDOWS}
+        KillProcessTree(LLMserverProcess.ProcessID);
+        {$ELSE}
+        LLMserverProcess.Terminate(0);
+        {$ENDIF}
+        MainStatusBar.SimpleText := 'LLM Service stopped.';
+        Exit;
       end;
-      MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' service: ' + E.Message;
-      MessageDlg('Service Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+      //Restart LLM service
+      if ActionFixed = 'RESTART' then
+      begin
+        if SSLcertificateProcess.Running then
+        begin
+          MainStatusBar.SimpleText := 'Cannot restart until SSL certificate generation is finished!';
+          MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+          Exit;
+        end;
+        if EmbeddingGenerationProcess.Running then
+        begin
+          MainStatusBar.SimpleText := 'Cannot restart until embedding vector generation is finished!';
+          MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+          Exit;
+        end;
+        chdir(appdir);
+        if not(FileExists(WrapperPath)) then
+        begin
+          MainStatusBar.SimpleText := 'Wrapper binary not found: ' + WrapperPath;
+          MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+          Exit;
+        end;
+        PForm := TProgressForm.Create(Application);
+        PForm.ProgressTimer.Enabled := true;
+        PForm.Show;
+        Application.ProcessMessages;
+        if LLMserverProcess.Running then
+        begin
+          {$IFDEF MSWINDOWS}
+          KillProcessTree(LLMserverProcess.ProcessID);
+          {$ELSE}
+          LLMserverProcess.Terminate(0);
+          {$ENDIF}
+          WaitCount := 0;
+          while (LLMserverProcess.Running) and (WaitCount < 100) do
+          begin
+            Sleep(100);
+            Application.ProcessMessages;
+            Inc(WaitCount);
+          end;
+        end;
+        LLMserverProcess.Active := false;
+        LLMserverProcess.Parameters.Clear;
+        LLMserverProcess.CommandLine := '';
+        LLMserverProcess.ApplicationName := '';
+        LLMserverProcess.Executable := WrapperPath;
+        LLMserverProcess.CurrentDirectory := appdir;
+        LLMserverProcess.Options := [poNewConsole];
+        LLMserverProcess.ShowWindow := swoHide;
+        LLMserverProcess.Execute;
+        // Wait a moment to see if it crashes immediately (e.g., port already in use, DB locked)
+        WaitCount := 0;
+        while LLMserverProcess.Running and (WaitCount < 10) do // Wait up to 1 second
+        begin
+          Sleep(100);
+          Application.ProcessMessages;
+          Inc(WaitCount);
+        end;
+        PForm.ProgressTimer.Enabled := false;
+        PForm.Hide;
+        FreeAndNil(PForm);
+        // Check if it's still running or if it exited with an error
+        if not(LLMserverProcess.Running) then
+        begin
+          ProcessLLMserviceError(LLMserverProcess.ExitStatus);
+          Exit;
+        end;
+        MainStatusBar.SimpleText := 'LLM Service restarted.';
+        Exit;
+      end;
+      //Invalid action
+      MainStatusBar.SimpleText := 'Invalid action: ' + ActionFixed + '!';
+      MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+      Exit;
+    except
+      on E: Exception do
+      begin
+        if Assigned(PForm) then
+        begin
+          if PForm.Visible then
+          begin
+            PForm.ProgressTimer.Enabled := false;
+            PForm.Hide;
+          end;
+          FreeAndNil(PForm);
+        end;
+        MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' service: ' + E.Message;
+        MessageDlg('Service Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+      end;
+    end;
+  finally
+    if Assigned(PForm) then
+    begin
+      if PForm.Visible then
+      begin
+        PForm.ProgressTimer.Enabled := false;
+        PForm.Hide;
+      end;
+      FreeAndNil(PForm);
     end;
   end;
 end;

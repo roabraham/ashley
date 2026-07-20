@@ -764,22 +764,23 @@ var
   Buffer: array[0..65535] of Byte;
   TotalSize, Copied, ReadBytes: Int64;
   Percent: Integer;
+  PForm: TProgressForm;
 begin
   Result := false;
   SrcStream := nil;
   DstStream := nil;
+  PForm := nil;
   try
     try
-      ProgressForm.ProgressTimer.Enabled := false;
-      ProgressForm.MainProgressBar.BarShowText := true;
-      ProgressForm.MainProgressBar.Position := 0;
-      ProgressForm.Show;
+      PForm := TProgressForm.Create(Application);
+      PForm.MainProgressBar.BarShowText := true;
+      PForm.Show;
       Application.ProcessMessages;
       SrcStream := TFileStream.Create(SourceFile, fmOpenRead or fmShareDenyWrite);
       TotalSize := SrcStream.Size;
       if TotalSize <= 0 then
       begin
-        ProgressForm.Hide;
+        PForm.Hide;
         MessageDlg('Error', 'Cannot import empty file: ' + SourceFile, mtError, [mbOK], 0);
         Exit;
       end;
@@ -793,29 +794,30 @@ begin
         DstStream.Write(Buffer, ReadBytes);
         Inc(Copied, ReadBytes);
         Percent := Min(Round((Copied / TotalSize) * 100), 100);
-        ProgressForm.MainProgressBar.Position := Percent;
+        PForm.MainProgressBar.Position := Percent;
         Application.ProcessMessages;
       end;
       if Copied = TotalSize then
       begin
         Result := true;
-        ProgressForm.Hide;
+        PForm.Hide;
         ShowMessage('File successfully imported to: ' + DestFile);
         Exit;
       end;
-      ProgressForm.Hide;
+      PForm.Hide;
       MessageDlg('Error', 'Failed to import file: ' + SourceFile, mtError, [mbOK], 0);
     except
       on x: Exception do
       begin
-        if ProgressForm.Visible then ProgressForm.Hide;
+        if PForm.Visible then PForm.Hide;
         MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
       end;
     end;
   finally
-    if ProgressForm.Visible then ProgressForm.Hide;
+    if PForm.Visible then PForm.Hide;
     if Assigned(SrcStream) then FreeAndNil(SrcStream);
     if Assigned(DstStream) then FreeAndNil(DstStream);
+    if Assigned(PForm) then FreeAndNil(PForm);
   end;
 end;
 
