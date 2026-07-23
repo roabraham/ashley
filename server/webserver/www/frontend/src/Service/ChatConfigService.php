@@ -281,6 +281,14 @@ class ChatConfigService {
                     if ($proxyPortJson > 0) { $config['proxy_port'] = $proxyPortJson; }
                     $proxyTimeoutJson = intval(trim($json['proxy_timeout'] ?? 0));
                     if ($proxyTimeoutJson > 0) { $config['request_timeout'] = $proxyTimeoutJson; }
+                    if (isset($json['llm_enabled'])) {
+                        $llm = $json['llm_enabled'];
+                        if (is_numeric($llm)) {
+                            $config['llm_enabled'] = (intval($llm) !== 0);
+                        } else {
+                            $config['llm_enabled'] = (!in_array(strtolower(trim(strval($llm))), ['0', 'false', 'no']));
+                        }
+                    }
                     if (isset($json['embedding'])) {
                         $emb = $json['embedding'];
                         if (is_numeric($emb)) {

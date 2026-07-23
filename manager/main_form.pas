@@ -454,15 +454,15 @@ begin
     repeat
       SettingsForm.MainLLMserverProcessRunning := LLMserverProcess.Running;
       if SettingsForm.showModal = mrOk then SettingsForm.SaveConfigData;
-    until not(SettingsForm.portUniqueError);
+    until not(SettingsForm.saveSettingsError);
     if not(SettingsForm.configDataSaved) then Exit;
     MainStatusBar.SimpleText := 'Config data saved.';
     if LLMserverProcessPreviousState then
     begin
       {$IFDEF DEBUG}
-      MainStatusBar.SimpleText := 'LLM service restart skipped.';
+      MainStatusBar.SimpleText := 'Service restart skipped.';
       {$ELSE}
-      MainStatusBar.SimpleText := 'Config changed, restarting LLM service...';
+      MainStatusBar.SimpleText := 'Config changed, restarting services...';
       LLMserviceControl('RESTART');
       {$ENDIF}
     end;
@@ -475,7 +475,7 @@ begin
   end;
 end;
 
-//Process LLM service error
+//Process service errors
 procedure TMainForm.ProcessLLMserviceError(ErrorCode: integer);
 begin
   try
@@ -510,7 +510,7 @@ begin
   end;
 end;
 
-//LLM Service Controller
+//Service Controller
 procedure TMainForm.LLMserviceControl(ServiceAction: string);
 var
   ActionFixed: string;
@@ -535,12 +535,12 @@ begin
       {$ELSE}
       WrapperPath := appdir + 'wrapper';
       {$ENDIF}
-      //Start LLM service
+      //Start services
       if ActionFixed = 'START' then
       begin
         if LLMserverProcess.Running then
         begin
-          MainStatusBar.SimpleText := 'The LLM Service is already running.';
+          MainStatusBar.SimpleText := 'The services are already running.';
           MessageDlg('Warning', MainStatusBar.SimpleText, mtWarning, [mbOK], 0);
           Exit;
         end;
@@ -587,7 +587,7 @@ begin
           ProcessLLMserviceError(LLMserverProcess.ExitStatus);
           Exit;
         end;
-        MainStatusBar.SimpleText := 'LLM Service started.';
+        MainStatusBar.SimpleText := 'All services started.';
         Exit;
       end;
       //Stop LLM service
@@ -595,7 +595,7 @@ begin
       begin
         if not(LLMserverProcess.Running) then
         begin
-          MainStatusBar.SimpleText := 'The service is not currently running.';
+          MainStatusBar.SimpleText := 'The services are not currently running.';
           MessageDlg('Information', MainStatusBar.SimpleText, mtInformation, [mbOK], 0);
           Exit;
         end;
@@ -610,10 +610,10 @@ begin
         {$ELSE}
         LLMserverProcess.Terminate(0);
         {$ENDIF}
-        MainStatusBar.SimpleText := 'LLM Service stopped.';
+        MainStatusBar.SimpleText := 'All services stopped.';
         Exit;
       end;
-      //Restart LLM service
+      //Restart services
       if ActionFixed = 'RESTART' then
       begin
         if SSLcertificateProcess.Running then
@@ -680,7 +680,7 @@ begin
           ProcessLLMserviceError(LLMserverProcess.ExitStatus);
           Exit;
         end;
-        MainStatusBar.SimpleText := 'LLM Service restarted.';
+        MainStatusBar.SimpleText := 'All services restarted.';
         Exit;
       end;
       //Invalid action
@@ -699,7 +699,7 @@ begin
           end;
           FreeAndNil(PForm);
         end;
-        MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' service: ' + E.Message;
+        MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' services: ' + E.Message;
         MessageDlg('Service Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
       end;
     end;
@@ -716,7 +716,7 @@ begin
   end;
 end;
 
-//LLM Service Controller (interactive mode)
+//Service Controller (interactive mode)
 procedure TMainForm.LLMserviceControlQuery(ServiceAction: string);
 var ActionFixed, ActionQuery: string;
 begin
@@ -758,7 +758,7 @@ begin
   except
     on E: Exception do
     begin
-      MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' service: ' + E.Message;
+      MainStatusBar.SimpleText := 'Failed to ' + LowerCase(ActionFixed) + ' services: ' + E.Message;
       MessageDlg('Service Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
     end;
   end;
@@ -905,7 +905,7 @@ begin
     end;
     if not(LLMserverProcess.Running) then
     begin
-      MainStatusBar.SimpleText := 'You have to start the LLM service first!';
+      MainStatusBar.SimpleText := 'You have to start the services first!';
       MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
       Exit;
     end;
@@ -941,7 +941,7 @@ begin
   end;
 end;
 
-//Restart LLM service from system tray
+//Restart services from system tray
 procedure TMainForm.RestartLLMservicePopupMenuClick(Sender: TObject);
 begin
   LLMserviceControlQuery('RESTART');
@@ -952,7 +952,7 @@ procedure TMainForm.FormDestroy(Sender: TObject);
 begin
   try
     ReleaseInstanceLock;
-    //Shutdown LLM Service
+    //Shutdown Services
     if Assigned(LLMserverProcess) and LLMserverProcess.Running then
     begin
       {$IFDEF MSWINDOWS}
@@ -1104,7 +1104,7 @@ begin
   end;
 end;
 
-//Restart LLM service
+//Restart Services
 procedure TMainForm.RestartLLMserviceMenuClick(Sender: TObject);
 begin
   LLMserviceControlQuery('RESTART');
@@ -1142,10 +1142,10 @@ begin
       CanClose := false;
       Exit;
     end;
-    //Shutdown LLM Service
+    //Shutdown Services
     if LLMserverProcess.Running then
     begin
-      MainStatusBar.SimpleText := 'Stopping LLM Service...';
+      MainStatusBar.SimpleText := 'Stopping services...';
       {$IFDEF MSWINDOWS}
       KillProcessTree(LLMserverProcess.ProcessID);
       {$ELSE}
@@ -1314,7 +1314,7 @@ begin
     EmbeddingGenerationProcess.Options := [poWaitOnExit,poNewConsole];
     DelayedStartUpQuery := false;
     {$IFDEF DEBUG}
-    MainStatusBar.SimpleText := 'Debug mode, not starting LLM service.';
+    MainStatusBar.SimpleText := 'Debug mode, not starting services.';
     {$ELSE}
     if FileExists(wrapperConfigFile) then
       LLMserviceControl('START')
@@ -1375,25 +1375,25 @@ begin
   SaveConfigData;
 end;
 
-//Start LLM service
+//Start services
 procedure TMainForm.StartLLMserviceMenuClick(Sender: TObject);
 begin
   LLMserviceControlQuery('START');
 end;
 
-//Start LLM service from system tray
+//Start services from system tray
 procedure TMainForm.StartLLMservicePopupMenuClick(Sender: TObject);
 begin
   LLMserviceControlQuery('START');
 end;
 
-//Stop LLM service
+//Stop services
 procedure TMainForm.StopLLMserviceMenuClick(Sender: TObject);
 begin
   LLMserviceControlQuery('STOP');
 end;
 
-//Stop LLM service from system tray
+//Stop service from system tray
 procedure TMainForm.StopLLMservicePopupMenuClick(Sender: TObject);
 begin
   LLMserviceControlQuery('STOP');

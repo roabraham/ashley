@@ -92,6 +92,7 @@
         LLM_MAX_RESPONSE_TOKENS: 2048,
         SAFETY_MARGIN: 256,
         EMBEDDING_ENABLED: true,
+        LLM_ENABLED: true,
         SYSTEM_PROMPT: null,
         API_ENDPOINT: '/api/chat',
         REQUEST_TIMEOUT: 300 // server-configured request timeout (seconds)
@@ -119,6 +120,7 @@
         llmMaxResponseTokens: DEFAULT_CONFIG.LLM_MAX_RESPONSE_TOKENS,
         safetyMargin: DEFAULT_CONFIG.SAFETY_MARGIN,
         embeddingEnabled: DEFAULT_CONFIG.EMBEDDING_ENABLED,
+        llmEnabled: DEFAULT_CONFIG.LLM_ENABLED,
         warningThreshold: 0,
         systemPrompt: DEFAULT_CONFIG.SYSTEM_PROMPT,
         chatbotName: DEFAULT_CONFIG.CHATBOT_NAME,
@@ -1498,7 +1500,12 @@
     function proceedWithSend(message) {
         // Streaming mode without embedding → connect directly to llama.cpp.
         if (AppState.responseMode === 2 && !AppState.embeddingEnabled) {
-            connectToLlamaDirect(message, () => finishProcessing());
+            if (AppState.llmEnabled) {
+                connectToLlamaDirect(message, () => finishProcessing());
+            } else {
+                appendMessage('chatbot', "I'm sorry, I don't understand. Can you, please, be more specific?");
+                finishProcessing();
+            }
             return;
         }
         showThinkingMessage();
@@ -1531,7 +1538,15 @@
                 }
                 if (errCode === 'LLM_PROXY_NOT_AVAILABLE_IN_STREAMING_MODE') {
                     console.log('[API] Streaming mode: using direct connection.');
-                    connectToLlamaDirect(message, () => finishProcessing());
+                    if (AppState.llmEnabled) {
+                        connectToLlamaDirect(message, () => finishProcessing());
+                    } else if (typeof data.reply === 'string' && data.reply.trim().length > 0) {
+                        appendMessage('chatbot', data.reply.trim());
+                        finishProcessing();
+                    } else {
+                        appendMessage('chatbot', "I'm sorry, I don't understand. Can you, please, be more specific?");
+                        finishProcessing();
+                    }
                     return;
                 }
                 // Generic / unknown error.
@@ -1784,6 +1799,11 @@
         AppState.embeddingEnabled = getConfigValue(
             'EMBEDDING_ENABLED',
             DEFAULT_CONFIG.EMBEDDING_ENABLED,
+            (v) => v === true || v === 'true' || v === 1 || v === '1'
+        );
+        AppState.llmEnabled = getConfigValue(
+            'LLM_ENABLED',
+            DEFAULT_CONFIG.LLM_ENABLED,
             (v) => v === true || v === 'true' || v === 1 || v === '1'
         );
         AppState.systemPrompt = getConfigValue(

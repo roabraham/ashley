@@ -601,6 +601,11 @@ class ChatController extends AbstractController
         }
         // Streaming mode (response mode 2)
         if ($responseMode == 2) {
+            if (!$llmEnabled) {
+                return $this->json([
+                    'reply' => "I'm sorry, I don't understand. Can you, please, be more specific?"
+                ]);
+            }
             return $this->json([
                 'response_mode' => 2,
                 'error'         => 'LLM_PROXY_NOT_AVAILABLE_IN_STREAMING_MODE',

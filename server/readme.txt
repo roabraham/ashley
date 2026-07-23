@@ -40,7 +40,7 @@ Note: ROCm is officially supported on Linux; Windows support is experimental.
 
 5. When configuration or fine-tuning needed, right-click the tray icon and choose `Settings` to open the Settings window
 
-6. The first thing to do is pick an LLM ENGINE. The engine selection is on the very first tab in the Settings window. Choose the engine that matches your hardware:
+6. The first thing to do is pick an LLM/EMBEDDING ENGINE. The engine selection is on the very first tab in the Settings window. Choose the engine that matches your hardware:
 * CPU: works on every Windows PC; no extra software needed
 * CUDA: NVIDIA GPU required (faster than CPU)
 * Vulkan: AMD / Intel / NVIDIA GPU (no CUDA toolkit needed)
@@ -70,7 +70,7 @@ Changing the Model or compute device:
 3. Change the engine or pick a different model file, then click `OK`
 
 Adding a new Model:
-1. In `Settings > Engine Settings`, click `Add`
+1. In `Settings > Engine Settings`, click `Add Model...`
 2. Select a `.gguf` file from your computer
 3. The model is copied into Ashley's `model\` folder and appears in the drop-down list immediately
 4. Click `OK`
@@ -90,13 +90,13 @@ Viewing and clearing log files:
 
 Stopping Ashley: right-click the tray icon and choose `Exit`. Ashley will ask for confirmation and then stop the AI service and close all windows. Always use the tray icon to stop Ashley.  Do NOT just end the process in Task Manager - this can leave temporary files behind and corrupt the configuration.
 
-Restarting the AI service: right-click the tray icon and choose `Restart`. The AI service is restarted automatically without closing the Settings window.
+Restarting the AI service: right-click the tray icon and choose `Restart services`. All services are restarted automatically without closing the Settings window.
 
 -----------------------------------
   TABS OVERVIEW (Settings window)
 -----------------------------------
 
-* `Engine Settings`: select the LLM engine (CPU / CUDA / Vulkan / Radeon) and choose the model file that the engine will use. This is the first tab and the most important setup step.
+* `Engine Settings`: select the LLM/Embedding engine (CPU / CUDA / Vulkan / Radeon) and choose the model file that the engine will use. This is the first tab and the most important setup step.
 * `Embedding`: enable or disable the embedding engine and choose an embedding model file for behaviour matching.
 * `Logging and Proxy`: view or clear log files, and adjust the internal API proxy settings (port, timeout, max connections).
 * `Web Server`: configure the built-in web server ports (HTTP / HTTPS) and the SSL certificate. Normally leave these at their default values.
@@ -136,13 +136,13 @@ A common cause is that the selected model file is missing or corrupted. Open Set
 Also check that no other application is using port 8080 or 8081. This can happen if a previous instance of Ashley is still running. Open Task Manager, look for `manager.exe` and `wrapper.exe`, end them, then try again.
 
 Chatbot says `Both AI Services Disabled`:
-At least one service (the conversational LLM and/or the embedding engine) has been disabled. Open `Settings > Embedding` and make sure `Enable embedding` is checked, and that a model is selected on `Engine Settings`.
+At least one service (the conversational LLM and/or the embedding engine) must be running. Open `Settings` and make sure `Enable LLM server` on the `Engine Settings` tab or `Enable embedding` on the `Embedding` tab is checked, and that a model is selected for all enabled servers.
 
 Chatbot is slow / delays in responses:
 On CPU-only hardware, responses are naturally slower than on a GPU. If you have a CUDA-capable NVIDIA GPU, open `Settings` and change the engine to CUDA (Engine Settings tab). Large context window sizes also need more RAM - reduce the context size at the parameters if you are running out of memory.
 
 `Web UI cannot open` / `Connection refused`:
-make sure the LLM service is running - check the system tray icon. If the service is running but the Web UI window still fails to open, try opening the chatbot directly in a browser at:
+make sure the services are running - check the system tray icon. If the service is running but the Web UI window still fails to open, try opening the chatbot directly in a browser at:
 `http://localhost/`
 Port 80 or 443 may also be in use by another program (IIS, Apache, Skype, etc.). Open `Settings > Web Server` and change the ports or access the interface directly at:
 http://localhost:8080/ (conversational AI)

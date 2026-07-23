@@ -80,6 +80,7 @@
     var LLM_MAX_RESPONSE_TOKENS = {{ llm_max_response_tokens }};
     var SAFETY_MARGIN = {{ safety_margin }};
     var EMBEDDING_ENABLED = {{ embeddingEnabled ? 'true' : 'false' }};
+    var LLM_ENABLED = {{ llmEnabled ? 'true' : 'false' }};
     var SYSTEM_PROMPT = {{ persona.active_prompt|json_encode|raw }};
     var WARNING_THRESHOLD = {{ warning_threshold }};
     var REQUEST_TIMEOUT = {{ request_timeout }};

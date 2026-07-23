@@ -16,7 +16,7 @@
 - [Settings Window](#settings-window)
 - [Engine Settings Tab](#engine-settings-tab)
   - [Engine Group](#engine-group)
-  - [Engine Parameters Group](#engine-parameters-group)
+  - [LLM Parameters Group](#llm-parameters-group)
   - [Engine Change Behavior](#engine-change-behavior)
 - [Embedding Tab](#embedding-tab)
   - [Embedding Model Group](#embedding-model-group)
@@ -69,7 +69,7 @@ Before running Ashley, ensure the following prerequisites are installed on your 
 3. On first startup or when no configuration file is detected, the application opens the *Settings* window so you can make sure everything is configured properly before starting the actual services.
 4. When running the application normally with the services configured properly, the application will start the services automatically.
 5. If you need to change configuration or fine-tune settings, right-click the *tray icon* and choose *Settings* to open the *Settings window*.
-6. The first thing to do is pick an *LLM engine*. The engine selection is on the very first tab in the *Settings window*. Choose the engine that matches your hardware.
+6. The first thing to do is pick an *LLM/Embedding engine*. The engine selection is on the very first tab in the *Settings window*. Choose the engine that matches your hardware.
    * **CPU** works on every Windows PC and no extra software is needed.
    * **CUDA** requires an **NVIDIA GPU** and is faster than CPU.
    * **Vulkan** works on **AMD**, **Intel**, or **NVIDIA** GPUs without requiring the *CUDA toolkit*.
@@ -96,10 +96,10 @@ The main window is primarily used for service control, tool execution, and acces
 
 * **Minimize to System Tray**: minimizes the window to the system tray.
 * **Open Web UI**: Launches the *CEF*-based chat window application (`webclient.exe`). The chat window opens as a separate standalone browser window. You can open and close it as many times as you like while the service runs.
-* **Start LLM service**: starts the *LLM service* (`wrapper.exe`). A confirmation dialog appears before starting.
-* **Stop LLM service**: stops the running *LLM service*. A confirmation dialog appears before stopping.
-* **Restart LLM service**: restarts the *LLM service*. A confirmation dialog appears before restarting.
-* **Exit**: stops the services and closes the application.
+* **Start services**: starts all services (`wrapper.exe`). A confirmation dialog appears before starting.
+* **Stop services**: stops all running services. A confirmation dialog appears before stopping.
+* **Restart services**: restarts all services. A confirmation dialog appears before restarting.
+* **Exit**: stops all services and closes the application.
 
 ### Tools Menu
 
@@ -134,7 +134,7 @@ Restores the *Service Manager* window from the *system tray*. This option is ava
 
 <img title="Settings Window" src="../media/screenshot/settings_window.jpg" alt="Settings Window" data-align="center">
 
-The *Settings window* is the main configuration interface for Ashley. It contains five tabs organized in a tab control at the top. The tabs are:
+The *Settings window* is the main configuration interface for Ashley. It contains the following tabs organized in a tab control at the top. The tabs are:
 
 1. **Engine Settings**
 2. **Embedding**
@@ -144,32 +144,33 @@ The *Settings window* is the main configuration interface for Ashley. It contain
 
 At the bottom of the *Settings window* are the following buttons:
 
-* **OK**: saves all changes and closes the *Settings window*. If the *LLM service* was running before the changes, it will be automatically restarted.
+* **OK**: saves all changes and closes the *Settings window*. If any of the services were running before the changes, they will be automatically restarted.
 * **Cancel**: closes the *Settings window* without saving any changes.
-* **Apply**: saves all changes without closing the *Settings window*. The *LLM service* will be restarted if it was running.
-* **Load Defaults for LLM engine**: loads the default configuration for the currently selected *LLM engine* from the database. A confirmation dialog appears before discarding changes.
+* **Apply**: saves all changes without closing the *Settings window*. All running services will be restarted.
+* **Load Defaults for engine**: loads the default configuration for the currently selected *LLM/embedding engine* from the database. A confirmation dialog appears before discarding changes.
 
 Changes are not saved automatically. You must click *OK* or *Apply* to save your changes.
 
 ### Engine Settings Tab
 
-This is the first and most important tab. It configures the core *LLM engine* that processes your prompts.
+This is the first and most important tab. It configures the core engine (for both *LLM* and *embedding* servers) that processes your prompts.
 
 #### Engine Group
 
-* **LLM engine**: a drop-down list that lets you select the *LLM engine* to use. The available engines are loaded from the `database/wrapper.db` file and depend on which engine binaries are present in the `llama/` folder. The available options are:
+* **LLM/Embedding engine**: a drop-down list that lets you select the *LLM* and/or *embedding engine* to use. The available engines are loaded from the `database/wrapper.db` file and depend on which engine binaries are present in the `llama/` folder. The available options are:
   * **CPU**: works on every Windows PC. No extra software needed. Slowest option but universally compatible.
   * **Vulkan**: works on *AMD*, *Intel*, and *NVIDIA GPU*s without requiring the *CUDA toolkit*. Good cross-vendor alternative.
   * **CUDA**: requires an *NVIDIA GPU* with *CUDA toolkit* installed. Provides significant performance improvements over CPU.
   * **HIP Radeon**: requires a *Radeon GPU* with *ROCm* support. Windows support is experimental.
     The engine choice highly affects performance. Select the engine that matches your hardware.
-* **Device**: a drop-down list that lets you select which specific device (*GPU*) the *LLM engine* should use. When you select an engine that supports multiple devices, the application queries the engine binary for available devices and populates this list. *N/A* will be selected for CPU or when device selection is not applicable. This choice also highly affects performance.
-* **Model**: a drop-down list that lets you select which `.gguf` model file the engine will load. The list is populated from the `model/` folder. Only one model can be selected at a time. The selected model determines the AI's capabilities and response quality.
+* **Device**: a drop-down list that lets you select which specific device (*GPU*) the *LLM* and/or *embedding engine* should use. When you select an engine that supports multiple devices, the application queries the engine binary for available devices and populates this list. *N/A* will be selected for CPU or when device selection is not applicable. This choice also highly affects performance.
+* **Enable LLM server**: a checkbox that lets you enable or disable *LLM server*. Disabling LLM server may significantly improve response time but only rule-based responses will be returned (if embedding engine is enabled). This means a significant loss in the intelligence.
+* **Model**: a drop-down list that lets you select which `.gguf` model file the *LLM server* will load. The list is populated from the `model/` folder. Only one model can be selected at a time. The selected model determines the AI's capabilities and response quality.
 * **Add Model**: opens a file dialog to import a new `.gguf` model file into the `model/` folder. The file is copied into the model directory, and its name is sanitized (special characters and spaces are replaced with underscores). After importing, the model appears in the Model drop-down list.
 
-#### Engine Parameters Group
+#### LLM Parameters Group
 
-* **Parameters**: a key-value editor that lets you fine-tune the *LLM engine* parameters. Each row has a parameter name and its value. Common parameters include:
+* **Parameters**: a key-value editor that lets you fine-tune the *LLM server* parameters. Each row has a parameter name and its value. Common parameters include:
   * **`port`**: the port number the *LLM engine* listens on (default: 8080 for conversational, 8081 for embedding).
   * **`threads`**: number of CPU threads to use.
   * **`ctx_size`**: context window size in tokens. If your AI server is slow or unstable, you may want to set this value lower.
@@ -181,7 +182,7 @@ This is the first and most important tab. It configures the core *LLM engine* th
 
 #### Engine Change Behavior
 
-When you change the *LLM engine* selection, a confirmation dialog appears: *"Load default configuration for the selected LLM engine?"* If you click *Yes*, the default configuration for that engine is loaded from the database, which may change the available parameters, model selection, and device options.
+When you change the engine selection, a confirmation dialog appears: *"Load default configuration for the selected engine?"* If you click *Yes*, the default configuration for that engine is loaded from the database, which may change the available parameters, model selection, and device options.
 
 ### Embedding Tab
 
@@ -192,12 +193,12 @@ This tab configures the embedding engine, which is used for behavior matching. T
 #### Embedding Model Group
 
 * **Enable Embedding**: a checkbox that enables or disables the *embedding engine*. When enabled, the embedding model and parameters below become active. When disabled, the embedding server is not started.
-* **Embedding Model**: a drop-down list that lets you select which `.gguf` embedding model file to use. The list is populated from the `model/embedding/` folder.
+* **Model**: a drop-down list that lets you select which `.gguf` embedding model file to use. The list is populated from the `model/embedding/` folder.
 * **Add Model**: opens a file dialog to import a new `.gguf` embedding model file into the `model/embedding/` folder. The file is copied and sanitized the same way as conversational models.
 
 #### Embedding Parameters Group
 
-* **Parameters**: a key-value editor for *embedding engine* parameters. Works the same way as the *LLM parameters* editor. Common parameters include:
+* **Parameters**: a key-value editor for *embedding server* parameters. Works the same way as the *LLM parameters* editor. Common parameters include:
   * **`port`**: the port the embedding engine listens on.
   * **`threads`**: number of threads.
   * **`ctx_size`**: context size.
@@ -217,11 +218,11 @@ This tab controls logging behavior and the LLM proxy service settings.
 * **Open Log Folder**: opens the `log/` folder in *File Explorer*. This button is enabled when the log directory exists.
 * **Clear Log**: clears the log files. When the *LLM service* is running, this deletes the current `wrapper.log` file. When the service is stopped, this clears the entire `log/` directory recursively. A confirmation dialog appears before clearing.
 
-#### LLM Proxy Service Group
+#### LLM/Embedding Proxy Service Group
 
-* **LLM proxy service port number**: the port number the proxy service listens on. Web applications use this port to access the *LLM service* through a normal *REST API*. Default depends on the selected engine. Only numeric values are accepted.
-* **LLM proxy service timeout in seconds**: the timeout for proxy requests, in seconds. Range: 1-3600. Default: 60.
-* **Maximal connections for LLM proxy service**: the maximum number of simultaneous connections the proxy will accept. Range: 1-20000. Default: 200.
+* **Port number**: the port number the proxy service listens on. Web applications use this port to access the *LLM* or *embedding* server through a normal *REST API*. Default depends on the selected engine. Only numeric values are accepted.
+* **Timeout in seconds**: the timeout for proxy requests, in seconds. Range: 1-3600. Default: 60.
+* **Maximal connections**: the maximum number of simultaneous connections the proxy will accept. Range: 1-20000. Default: 200.
 * **Maximal package size for requests (bytes)**: the maximum size of a single request package in bytes. Range: 1-1073741824 (1 GB). Default: 2097152 (2 MB).
 
 The timeout, max connections, and max package size settings are only enabled when a proxy port number is specified.
@@ -249,7 +250,7 @@ This tab configures the built-in *NGINX web server* and *PHP runtime*.
 #### Temporary Files and Folders Group
 
 * **Open Folder**: opens the `temp/` folder in *File Explorer*. This folder contains temporary files created by the *PHP runtime*, *web server* and other services. This button is enabled when the service is stopped and the temp directory exists.
-* **Clear Folder**: clears all temporary files and folders in the `temp/` directory recursively (when the *LLM service* is stopped) and the cache directory. A confirmation dialog appears before clearing.
+* **Clear Folder**: clears all temporary files and folders in the `temp/` directory recursively (when the *LLM service* is stopped) and the frontend cache directory. A confirmation dialog appears before clearing.
 
 ### Persona Tab
 
@@ -297,11 +298,11 @@ The *About* dialog is accessible from the *Help* menu (both in the main window a
 * **Opening and closing the chatbot**: right-click the *Ashley tray icon* in the taskbar and choose *Open Web UI*. The chat window is a standalone application that you can close and reopen at any time. The AI service keeps running in the background.
 * **Changing the Personality**: right-click the *Ashley tray icon* and choose *Settings*. Go to the *Persona* tab. Pick a personality from the drop-down list at the top of the tab. Optionally edit the personality *name*, *description*, *avatar image*, *background image* or *CSS theme*. Click *OK* to save and close.
 * **Changing the Model or compute device**: open *Settings* from the *tray menu*. Go to the *Engine Settings* tab. Change the engine or pick a different model file, then click *OK*.
-* **Adding a new Model**: in *Settings*, go to the *Engine Settings* tab and click *Add*. Select a `.gguf` file from your computer. The model is copied into Ashley's `model` folder and appears in the drop-down list immediately. Click *OK*.
+* **Adding a new Model**: in *Settings*, go to the *Engine Settings* tab and click *Add Model...*. Select a `.gguf` file from your computer. The model is copied into Ashley's `model` folder and appears in the drop-down list immediately. Click *OK*.
 * **Enabling and disabling the embedding engine**: open *Settings* from the *tray menu*. Go to the *Embedding* tab. Check or uncheck the *Enable embedding* option. Optionally select an *embedding model* and adjust its parameters. Click *OK*. Embedding models are used for smart *behavior matching*. Ashley can recognize what kind of question you are asking and respond more naturally as a result.
 * **Viewing and clearing log files**: open *Settings* from the *tray menu*. Go to the *Logging and Proxy* tab. Click *Open Log Folder* to open the log folder in File Explorer or click *Clear Log* to empty the log file.
-* **Stopping Ashley**: right-click the *tray icon* and choose *Exit*. Ashley will ask for confirmation and then stop the AI service and close all windows. **Always use the tray icon to stop Ashley. Do NOT just end the process in Task Manager as this can leave temporary files behind and corrupt the configuration.**
-* **Restarting the AI service**: right-click the *tray icon* and choose *Restart*. The AI service is restarted automatically.
+* **Stopping Ashley**: right-click the *tray icon* and choose *Exit*. Ashley will ask for confirmation and then stop all running services and close all windows. **Always use the tray icon to stop Ashley. Do NOT just end the process in Task Manager as this can leave temporary files behind and corrupt the configuration.**
+* **Restarting services**: right-click the *tray icon* and choose *Restart services*. All running services will be restarted automatically.
 
 ## Directory Structure
 
@@ -333,14 +334,14 @@ Ashley consists of three main components working together:
 
 1. **Service Manager (`manager.exe`)**: runs in the *system tray* and provides the graphical interface for configuration. It manages the lifecycle of the background services.
 2. **The Service Wrapper (`wrapper.exe`)**: background process that starts and monitors the AI services. It launches the *LLM server*, *embedding server*, *PHP FastCGI*, and *NGINX web server*. It also includes a *watchdog* that automatically restarts any crashed services.
-3. **Frontend**: web-based chatbot interface that runs in the *CEF browser* window or any *web browser*. It communicates with the *LLM* through the *proxy* managed by the *wrapper* or directly the *LLM engine*.
+3. **Frontend**: web-based chatbot interface that runs in the *CEF browser* window or any *web browser*. It communicates with the *LLM* and/or *embedding* server through the *proxy* managed by the *wrapper* or directly the *LLM server*.
 
 The AI interaction flow works as follows:
 
-1. When you send a message in the chat window, the *frontend* sends the message to the *NGINX web server* which handles the *PHP code* and/or redirects the message to the *LLM engine*.
-2. The *ChatController* sends the *request* through the *proxy* to the *LLM engine*.
-3. The *LLM engine* processes your input and generates a *response*.
-   * If *embedding* is enabled, your message may be analyzed for *behavior matching* before being sent to the *LLM engine*.
+1. When you send a message in the chat window, the *frontend* sends the message to the *NGINX web server* which handles the *PHP code* and/or redirects the message to the *LLM* and/or *embedding server*.
+2. The *ChatController* sends the *request* through the *proxy* to the *LLM* and/or *embedding server*.
+3. The *LLM* and/or *embedding server* processes your input and generates a *response*.
+   * If *embedding* is enabled, your message may be analyzed for *behavior matching* before being sent to the *embedding server*.
 4. The *response* flows back through the same path to be displayed in the chat window.
 
 ---
@@ -367,9 +368,9 @@ The **Service Manager Documentation** option in the *Help* menu opens the *devel
 ## Troubleshooting
 
 * **The service failed to start**: a common cause is that the selected model file is missing or corrupted. Open *Settings* and check the *Engine Settings* tab to confirm a model file is selected and the path is correct. If you added a model manually, make sure the `.gguf` file is inside the model folder. Also check that no other application is using port **8080** or **8081** (or the HTTP[S] ports selected for the *LLM- and embedding engine*). This can happen if a previous instance of Ashley is still running. Open Task Manager, look for `manager.exe` and `wrapper.exe`, end them, then try again.
-* **Chatbot says Both AI Services Disabled**: at least one service (the *conversational LLM* and/or the *embedding engine*) must be enabled. Open *Settings*, go to the *Embedding* tab and make sure *Enable embedding* is checked and/or go to the *Engine Settings* tab to confirm a model is selected.
+* **Chatbot says Both AI Services Disabled**: At least one service (the *conversational LLM* and/or the *embedding server*) must be running. Open *Settings* and make sure *Enable LLM server* on the *Engine Settings* tab or *Enable embedding* on the *Embedding* tab is checked, and that a model is selected for all enabled servers.
 * **Chatbot is slow or delays in responses**: on CPU-only hardware, responses are naturally slower than on a GPU. If you have a *CUDA*-capable *NVIDIA GPU*, open *Settings* and change the engine to *CUDA* on the *Engine Settings* tab. Large context window sizes also need more *RAM*. Reduce the context size at the parameters if you are running out of memory.
-* **Web UI cannot open or Connection refused**: make sure the *LLM service* is running by checking the *system tray icon*. If the service is running but the *Web UI window* still fails to open, try opening the chatbot directly in a *browser* at `http://localhost/`. Port 80 or 443 may also be in use by another program such as *IIS*, *Apache* or *Skype*. Open *Settings*, go to the *Web Server* tab and change the ports or access the interface directly at `http://localhost:8080/` for *conversational* AI or `http://localhost:8081/` for the *embedding engine*.
+* **Web UI cannot open or Connection refused**: make sure the services are running by checking the *system tray icon*. If the services are running but the *Web UI window* still fails to open, try opening the chatbot directly in a *browser* at `http://localhost/`. Port 80 or 443 may also be in use by another program such as *IIS*, *Apache* or *Skype*. Open *Settings*, go to the *Web Server* tab and change the ports or access the interface directly at `http://localhost:8080/` for *conversational* AI or `http://localhost:8081/` for the *embedding engine*.
 * **Chatbot says the model cannot be found**: the model file was moved, renamed, or deleted after Ashley was configured. Open *Settings*, go to the *Engine Settings* tab, select the correct `.gguf` file from the drop-down list and click *OK*.
 * **SSL or HTTPS error**: Ashley generates a *self-signed security certificate* on first start. If it becomes corrupted or expired, Ashley regenerates it automatically the next time the AI service starts. If the problem persists, delete the files `webserver\conf\ssl\nginx.crt` and `webserver\conf\ssl\nginx.key`, then restart the AI service from the *tray icon*.
 * **Error loading database**: the files `database\wrapper.db` or `database\personality.db` may have been deleted or moved. Do NOT delete or move anything inside the database folder while Ashley is not running. If a database file is truly missing, re-extract Ashley from the original archive and copy your model folder back into it.
@@ -382,11 +383,11 @@ The **Service Manager Documentation** option in the *Help* menu opens the *devel
 * For best results with the *CUDA* engine on *NVIDIA GPU*s, install the latest *NVIDIA driver*s from https://www.nvidia.com/drivers first.
 * The *Open Web UI* button launches a separate chat window. You can open and close it as many times as you like while the service runs.
 * When importing *models*, ensure the files have the `.gguf` extension and do not contain spaces or special characters in the filename.
-* Use the *Load Defaults for LLM engine* button to restore engine-specific default parameters if you have customized them and want to start over.
+* Use the *Load Defaults for Engine* button to restore engine-specific default parameters if you have customized them and want to start over.
 * The *Behavior Similarity Threshold* in the *Persona* tab affects how the embedding engine matches user intent. Adjust it carefully: too high and the persona becomes rigid; too low and it becomes inconsistent.
-* The `temp/` folder can be safely cleared when the service is stopped to free up disk space.
-* If you experience port conflicts, check the *Logging and Proxy* tab for the proxy port and the *Web Server* tab for HTTP/HTTPS/PHP ports. Common conflicting applications include *IIS*, *Apache*, *Skype* and other web servers.
-* The *About* dialog shows the exact version of the Service Manager. Use this when reporting issues.
+* The `temp/` and `log/` folders can be safely cleared when the services are stopped to free up disk space.
+* If you experience port conflicts, check the *Engine Settings*, *Embedding* and *Logging and Proxy* tabs for the LLM, embedding and proxy ports and the *Web Server* tab for HTTP/HTTPS/PHP ports. Common conflicting applications include *IIS*, *Apache*, *Skype* and other web servers.
+* The *About* dialog shows the exact version of the *Service Manager*. Use this when reporting issues.
 
 ---
 

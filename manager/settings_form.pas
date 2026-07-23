@@ -76,6 +76,8 @@ type
 
   { TSettingsForm: settings dialog form for configuring LLM engines, proxy settings, models, and personas. }
   TSettingsForm = class(TForm)
+    { Checkbox to enable or disable the LLM service. }
+    EnableLLMcheckBox: TCheckBox;
     { Button to clear the temporary directory contents. }
     ClearTempDirButton: TButton;
     { Label for the PHP time zone combobox. }
@@ -284,6 +286,8 @@ type
     LoggingAndProxyTabSheet: TTabSheet;
     { Spin edit control for the LLM proxy service timeout in seconds. }
     LLMproxyServiceTimeout: TSpinEdit;
+    { Enables or disables LLM parameters based on checkbox. }
+    procedure EnableLLMcheckBoxChange(Sender: TObject);
     { Opens a folder in the system default file explorer. }
     function OpenFolder(const FolderName: AnsiString): Boolean;
     { Converts an image control's picture to a Base64 encoded string. }
@@ -327,7 +331,7 @@ type
     { Handles mouse move over embedding parameter grid for tooltip display. }
     procedure EmbeddingParameterListEditorMouseMove(Sender: TObject;
       Shift: TShiftState; X, Y: Integer);
-    { Enables or disables embedding model group box based on checkbox. }
+    { Enables or disables embedding parameters based on checkbox. }
     procedure EnableEmbeddingCheckBoxChange(Sender: TObject);
     { Initializes the form display and enables buttons. }
     procedure FormShow(Sender: TObject);
@@ -446,8 +450,8 @@ type
     CacheDirectory: AnsiString;
     { Indicates whether configuration was saved successfully. }
     configDataSaved: boolean;
-    { Indicates whether a port uniqueness error occurred during save. }
-    portUniqueError: boolean;
+    { Indicates whether an error occurred during save. }
+    saveSettingsError: boolean;
     { Indicates whether the LLM server process is currently running. }
     MainLLMserverProcessRunning: boolean;
     { Stores the default PHP time zone read from the database. }
@@ -486,6 +490,22 @@ begin
     end;
     OpenDocument(FolderNameFixed);
     Result := true;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+//Enable or disable LLM server
+procedure TSettingsForm.EnableLLMcheckBoxChange(Sender: TObject);
+var enable_llm: boolean;
+begin
+  try
+    enable_llm := EnableLLMcheckBox.Checked;
+    ModelLabel.Enabled := enable_llm;
+    ModelComboBox.Enabled := enable_llm;
+    AddModelButton.Enabled := enable_llm;
+    ParameterGroupBox.Enabled := enable_llm;
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
@@ -591,9 +611,9 @@ begin
       begin
         if length(DefaultFileFixed) >= 1 then FoundIndex := ModelComboBox.Items.IndexOf(DefaultFileFixed);
         ModelComboBox.ItemIndex := max(FoundIndex, 0);
-        if ModelComboBox.Items.Count > 1 then ModelComboBox.Enabled := true;
+        if (ModelComboBox.Items.Count > 1) and EnableLLMcheckBox.Checked then ModelComboBox.Enabled := true;
       end;
-      if ModelComboBox.Items.Count <= 1 then ModelComboBox.Enabled := false;
+      if (ModelComboBox.Items.Count <= 1) or not(EnableLLMcheckBox.Checked) then ModelComboBox.Enabled := false;
       Exit;
     end;
     //Load embedding models
@@ -1075,7 +1095,8 @@ var
   SL: TStringList;
 begin
   try
-    portUniqueError := false;
+    saveSettingsError := false;
+    EnableLLMcheckBox.Checked := true;
     EnableEmbeddingCheckBox.Checked := true;
     LLMloggingCheckBox.Checked := true;
     LLMproxyServicePort.Text := '';
@@ -2041,7 +2062,7 @@ begin
     begin
       if MessageDlg(
            'Load Defaults',
-           'Load default configuration for the selected LLM engine?',
+           'Load default configuration for the selected engine?',
            mtConfirmation,
            [mbYes, mbNo],
            0
@@ -2078,7 +2099,7 @@ var SR: TSearchRec;
 begin
   try
     chdir(appdir);
-    portUniqueError := false;
+    saveSettingsError := false;
     OpenLogFolderButton.Enabled := false;
     ClearLogButton.Enabled := false;
     if length(logDirectory) >= 1 then
@@ -2160,7 +2181,7 @@ end;
 //Load JSON Configuration
 procedure TSettingsForm.LoadConfigData;
 var
-  JSONData, EngineNode, EmbeddingNode, LogNode: TJSONData;
+  JSONData, EngineNode, LLMnode, EmbeddingNode, LogNode: TJSONData;
   WebServerData, ProxyPortNode, ProxyTimeoutNode, ProxyMaxConnectionsNode, ProxyMaxPackageSizeNode: TJSONData;
   httpPortNode, httpsPortNode, sslCertNode, sslKeyNode, phpPortNode: TJSONData;
   RootObj, ParamsObj, WebServerObj: TJSONObject;
@@ -2171,7 +2192,7 @@ var
   paramFound: boolean;
   paramName, paramValue: String;
 begin
-  portUniqueError := false;
+  saveSettingsError := false;
   JSONList := TStringList.Create;
   JSONData := nil;
   try
@@ -2252,6 +2273,14 @@ begin
         end
         else
           EmbeddingModelComboBox.ItemIndex := foundIndex;
+      end;
+      LLMnode := RootObj.Find('llm_enabled');
+      if Assigned(LLMnode) then
+      begin
+        if LLMnode.JSONType = jtNumber then
+          EnableLLMcheckBox.Checked := not(LLMnode.AsInteger = 0)
+        else
+          EnableLLMcheckBox.Checked := (IndexStr(LowerCase(trim(LLMnode.AsString)), ['0', 'false', 'no']) = -1);
       end;
       EmbeddingNode := RootObj.Find('embedding');
       if Assigned(EmbeddingNode) then
@@ -2439,7 +2468,7 @@ begin
   PortsReserved := nil;
   redirectFileContent := nil;
   configDataSaved := false;
-  portUniqueError := false;
+  saveSettingsError := false;
   RootObj := TJSONObject.Create;
   JSONList := TStringList.Create;
   PortsReserved := TStringList.Create;
@@ -2449,6 +2478,12 @@ begin
   try
     try
       chdir(appdir);
+      if not(EnableLLMcheckBox.Checked) and not(EnableEmbeddingCheckBox.Checked) then
+        raise SaveSettingsFatal.Create('Error: no LLM/embedding server enabled! Unable to run server!');
+      if EnableLLMcheckBox.Checked then
+        RootObj.Add('llm_enabled', 1)
+      else
+        RootObj.Add('llm_enabled', 0);
       if not(LlamaEngineComboBox.ItemIndex = -1) then
       begin
         if Assigned(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]) then
@@ -2753,7 +2788,7 @@ begin
     except
       on x: SaveSettingsFatal do
       begin
-        portUniqueError := true;
+        saveSettingsError := true;
         MessageDlg('Error', x.Message, mtError, [mbOK], 0);
       end;
       on x: Exception do MessageDlg('Error', 'Failed to save config: ' + x.Message, mtError, [mbOK], 0);
@@ -2802,7 +2837,7 @@ begin
     EmbeddingTitleList.Duplicates := dupIgnore;
     canHandleEngineChange := false;
     configDataSaved := false;
-    portUniqueError := false;
+    saveSettingsError := false;
     MainLLMserverProcessRunning := false;
     DefaultPHPtimezone := -1;
     {$IFDEF MSWINDOWS}

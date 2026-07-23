@@ -4456,7 +4456,7 @@ object MainForm: TMainForm
         Caption = '-'
       end
       object StartLLMserviceMenu: TMenuItem
-        Caption = 'Start LLM service'
+        Caption = 'Start services'
         Bitmap.Data = {
           36040000424D3604000000000000360000002800000010000000100000000100
           2000000000000004000064000000640000000000000000000000000000000000
@@ -4493,11 +4493,12 @@ object MainForm: TMainForm
           0000000000000000000000000000000000000000000000000000000000000000
           00000000000000000000041C12220833221F0000000000000000
         }
+        Hint = 'Start all services'
         ShortCut = 16467
         OnClick = StartLLMserviceMenuClick
       end
       object StopLLMserviceMenu: TMenuItem
-        Caption = 'Stop LLM service'
+        Caption = 'Stop services'
         Bitmap.Data = {
           36040000424D3604000000000000360000002800000010000000100000000100
           2000000000000004000064000000640000000000000000000000000000000000
@@ -4534,11 +4535,12 @@ object MainForm: TMainForm
           00000000000000000000000000001B256402080C2B3110135E551217725E080C
           403F161D4B0C0000000000000000000000000000000000000000
         }
+        Hint = 'Stop all services'
         ShortCut = 24659
         OnClick = StopLLMserviceMenuClick
       end
       object RestartLLMserviceMenu: TMenuItem
-        Caption = 'Restart LLM service'
+        Caption = 'Restart services'
         Bitmap.Data = {
           36040000424D3604000000000000360000002800000010000000100000000100
           2000000000000004000064000000640000000000000000000000000000000000
@@ -4575,6 +4577,7 @@ object MainForm: TMainForm
           000000000000000000001C6D4E0209291E2B0200004F0457365F09472E51082D
           2121000000000000000000000000000000000000000000000000
         }
+        Hint = 'Restart all services'
         ShortCut = 16466
         OnClick = RestartLLMserviceMenuClick
       end
@@ -4664,6 +4667,7 @@ object MainForm: TMainForm
           00003736330A403F3C438E8E8C76A7A6A490ACABA8919F9E9B8B949390805250
           4E5823211E25817E760100000000000000000000000000000000
         }
+        Hint = 'Generate embedding vectors'
         ShortCut = 24645
         OnClick = GenerateEmbeddingsMenuClick
       end
@@ -4705,6 +4709,7 @@ object MainForm: TMainForm
           0000000000000000000000000000000000001F2A31119295957FA3A8A99D878D
           8E6D586E7D010000000000000000000000000000000000000000
         }
+        Hint = 'Generate SSL certificate'
         ShortCut = 24647
         OnClick = GenerateCertificateMenuClick
       end
@@ -4832,6 +4837,7 @@ object MainForm: TMainForm
             000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
             607307281B320000000000000000000000000000000000000000
           }
+          Hint = 'Open Service Wrapper Database Documentation'
           OnClick = WrapperDBdocMenuClick
         end
         object PersonalityDBdocMenu: TMenuItem
@@ -4872,6 +4878,7 @@ object MainForm: TMainForm
             000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
             607307281B320000000000000000000000000000000000000000
           }
+          Hint = 'Open Personality Database Documentation'
           OnClick = PersonalityDBdocMenuClick
         end
       end
@@ -4913,6 +4920,7 @@ object MainForm: TMainForm
           000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
           607307281B320000000000000000000000000000000000000000
         }
+        Hint = 'Open Frontend Documentation'
         OnClick = FrontendDocMenuClick
       end
       object ServiceManagerDocMenu: TMenuItem
@@ -4953,6 +4961,7 @@ object MainForm: TMainForm
           000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
           607307281B320000000000000000000000000000000000000000
         }
+        Hint = 'Open Service Manager Documentation'
         OnClick = ServiceManagerDocMenuClick
       end
       object Separator9: TMenuItem
@@ -4996,6 +5005,7 @@ object MainForm: TMainForm
           000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
           607307281B320000000000000000000000000000000000000000
         }
+        Hint = 'Open User Manual'
         ShortCut = 112
         OnClick = UserManualMenuClick
       end
@@ -5040,6 +5050,7 @@ object MainForm: TMainForm
           0000000000000000000000000000302717194C351452946A247C9D7429767451
           19642D200E2A0000000000000000000000000000000000000000
         }
+        Hint = 'Show version information'
         OnClick = AboutMenuClick
       end
     end
@@ -5587,7 +5598,7 @@ object MainForm: TMainForm
         4E5823211E25817E760100000000000000000000000000000000
       }
       object StartLLMservicePopupMenu: TMenuItem
-        Caption = 'Start LLM service'
+        Caption = 'Start services'
         Bitmap.Data = {
           36040000424D3604000000000000360000002800000010000000100000000100
           2000000000000004000064000000640000000000000000000000000000000000
@@ -5624,10 +5635,11 @@ object MainForm: TMainForm
           0000000000000000000000000000000000000000000000000000000000000000
           00000000000000000000041C12220833221F0000000000000000
         }
+        Hint = 'Start all services'
         OnClick = StartLLMservicePopupMenuClick
       end
       object StopLLMservicePopupMenu: TMenuItem
-        Caption = 'Stop LLM service'
+        Caption = 'Stop services'
         Bitmap.Data = {
           36040000424D3604000000000000360000002800000010000000100000000100
           2000000000000004000064000000640000000000000000000000000000000000
@@ -5664,10 +5676,11 @@ object MainForm: TMainForm
           00000000000000000000000000001B256402080C2B3110135E551217725E080C
           403F161D4B0C0000000000000000000000000000000000000000
         }
+        Hint = 'Stop all services'
         OnClick = StopLLMservicePopupMenuClick
       end
       object RestartLLMservicePopupMenu: TMenuItem
-        Caption = 'Restart LLM service'
+        Caption = 'Restart services'
         Bitmap.Data = {
           36040000424D3604000000000000360000002800000010000000100000000100
           2000000000000004000064000000640000000000000000000000000000000000
@@ -5704,6 +5717,7 @@ object MainForm: TMainForm
           000000000000000000001C6D4E0209291E2B0200004F0457365F09472E51082D
           2121000000000000000000000000000000000000000000000000
         }
+        Hint = 'Restart all services'
         OnClick = RestartLLMservicePopupMenuClick
       end
     end
@@ -5783,6 +5797,7 @@ object MainForm: TMainForm
           00003736330A403F3C438E8E8C76A7A6A490ACABA8919F9E9B8B949390805250
           4E5823211E25817E760100000000000000000000000000000000
         }
+        Hint = 'Generate embedding vectors'
         OnClick = GenerateEmbeddingsPopupMenuClick
       end
       object GenerateCertificatePopupMenu: TMenuItem
@@ -5823,6 +5838,7 @@ object MainForm: TMainForm
           0000000000000000000000000000000000001F2A31119295957FA3A8A99D878D
           8E6D586E7D010000000000000000000000000000000000000000
         }
+        Hint = 'Generate SSL certificate'
         OnClick = GenerateCertificatePopupMenuClick
       end
       object Separator3: TMenuItem
@@ -5866,6 +5882,7 @@ object MainForm: TMainForm
           00000000000000000000B1B1B105B9B9B90F00000000A9A9A914B3B3B3320000
           0000000000000000000000000000000000000000000000000000
         }
+        Hint = 'Open Settings menu'
         OnClick = SettingsPopupMenuClick
       end
     end
@@ -5983,6 +6000,7 @@ object MainForm: TMainForm
             000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
             607307281B320000000000000000000000000000000000000000
           }
+          Hint = 'Open Service Wrapper Database Documentation'
           OnClick = WrapperDBdocPopupMenuClick
         end
         object PersonalityDBdocPopupMenu: TMenuItem
@@ -6023,6 +6041,7 @@ object MainForm: TMainForm
             000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
             607307281B320000000000000000000000000000000000000000
           }
+          Hint = 'Open Personality Database Documentation'
           OnClick = PersonalityDBdocPopupMenuClick
         end
       end
@@ -6064,6 +6083,7 @@ object MainForm: TMainForm
           000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
           607307281B320000000000000000000000000000000000000000
         }
+        Hint = 'Open Frontend Documentation'
         OnClick = FrontendDocPopupMenuClick
       end
       object ServiceManagerDocPopupMenu: TMenuItem
@@ -6104,6 +6124,7 @@ object MainForm: TMainForm
           000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
           607307281B320000000000000000000000000000000000000000
         }
+        Hint = 'Open Service Manager Documentation'
         OnClick = ServiceManagerDocPopupMenuClick
       end
       object Separator10: TMenuItem
@@ -6147,6 +6168,7 @@ object MainForm: TMainForm
           000000000000000000000000000009291D291D7D676A3BA8939234AB94941B7B
           607307281B320000000000000000000000000000000000000000
         }
+        Hint = 'Open User Manual'
         OnClick = UserManualPopupMenuClick
       end
       object Separator12: TMenuItem
@@ -6190,6 +6212,7 @@ object MainForm: TMainForm
           0000000000000000000000000000302717194C351452946A247C9D7429767451
           19642D200E2A0000000000000000000000000000000000000000
         }
+        Hint = 'Show version information'
         OnClick = AboutPopupMenuClick
       end
     end

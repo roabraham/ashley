@@ -207,6 +207,8 @@ type
     FParams: TStringList;
     { FEmbeddingParams: Command-line parameters for the embedding LLM server. }
     FEmbeddingParams: TStringList;
+    { FLLMenabled: Flag indicating whether LLM service is enabled. }
+    FLLMenabled: Boolean;
     { FEmbeddingEnabled: Flag indicating whether embedding service is enabled. }
     FEmbeddingEnabled: Boolean;
     { FUseLogFile: Flag indicating whether to log to file. }
@@ -1101,7 +1103,7 @@ procedure TServiceWrapper.LoadConfiguration;
 var
   SL: TStringList;
   FModelFile, FEmbeddingModelFile, JsonFile: AnsiString;
-  JsonData, EngineNode, DeviceNode, ModelNode, EmbeddingModelNode, EmbeddingNode, LogNode: TJSONData;
+  JsonData, EngineNode, DeviceNode, ModelNode, EmbeddingModelNode, LLMnode, EmbeddingNode, LogNode: TJSONData;
   WebServerData, ProxyPortNode, ProxyTimeoutNode, ProxyMaxConnectionsNode, MaxPackageSizeNode: TJSONData;
   httpPortNode, httpsPortNode, sslCertNode, sslKeyNode, phpPortNode: TJSONData;
   Root, ParamsObj, WebServerObj: TJSONObject;
@@ -1125,6 +1127,7 @@ begin
   FinalFModelFile := '';
   FEmbeddingModelFile := '';
   FinalFEmbeddingModelFile := '';
+  FLLMenabled := true;
   FEmbeddingEnabled := true;
   FUseLogFile := true; // Default
   FProxyPort := -1; // Default
@@ -1287,15 +1290,30 @@ begin
           Root := TJSONObject(JsonData);
           FParams.Clear; //Clear the DB-loaded params because we are overriding
           FEmbeddingParams.Clear; //Clear the DB-loaded embedding params because we are overriding
+          //Get device
           DeviceNode := Root.Find('llama_device');
           if Assigned(DeviceNode) then
           begin
             if not(AllowedParams.Values['device'] = '0') then
               FDeviceID := trim(DeviceNode.AsString);
           end;
-          ModelNode := Root.Find('model');
-          if Assigned(ModelNode) then
-            FModelFile := trim(ModelNode.AsString)
+          // Enable or Disable LLM server
+          LLMnode := Root.Find('llm_enabled');
+          if Assigned(LLMnode) then
+          begin
+            if LLMnode.JSONType = jtNumber then
+              FLLMenabled := not(LLMnode.AsInteger = 0)
+            else
+              FLLMenabled := (IndexStr(LowerCase(trim(LLMnode.AsString)), ['0', 'false', 'no']) = -1);
+          end;
+          if FLLMenabled then
+          begin
+            ModelNode := Root.Find('model');
+            if Assigned(ModelNode) then
+              FModelFile := trim(ModelNode.AsString)
+            else
+              FModelFile := '';
+          end
           else
             FModelFile := '';
           LogNode := Root.Find('logging');
@@ -1328,26 +1346,29 @@ begin
             end;
           end;
           // Parameter Loop with DB validation
-          ParamsObj := Root.Get('parameters', TJSONObject(nil));
-          if Assigned(ParamsObj) then
+          if not(FModelFile = '') then
           begin
-            if ParamsObj.Count > 0 then
+            ParamsObj := Root.Get('parameters', TJSONObject(nil));
+            if Assigned(ParamsObj) then
             begin
-              for i := 0 to ParamsObj.Count - 1 do
+              if ParamsObj.Count > 0 then
               begin
-                ParamName := trim(ParamsObj.Names[i]);
-                if ParamName = '' then continue;
-                if ParamName = 'device' then continue;
-                if ParamName = 'model' then continue;
-                if ParamName = 'host' then
+                for i := 0 to ParamsObj.Count - 1 do
                 begin
-                  FHost := trim(ParamsObj.Items[i].AsString);
-                  continue;
+                  ParamName := trim(ParamsObj.Names[i]);
+                  if ParamName = '' then continue;
+                  if ParamName = 'device' then continue;
+                  if ParamName = 'model' then continue;
+                  if ParamName = 'host' then
+                  begin
+                    FHost := trim(ParamsObj.Items[i].AsString);
+                    continue;
+                  end;
+                  if AllowedParams.Values[ParamName] = '0' then continue;
+                  FParams.Add('--' + ParamName); //Flag
+                  if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
+                    FParams.Add(trim(ParamsObj.Items[i].AsString)); // Value
                 end;
-                if AllowedParams.Values[ParamName] = '0' then continue;
-                FParams.Add('--' + ParamName); //Flag
-                if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
-                  FParams.Add(trim(ParamsObj.Items[i].AsString)); // Value
               end;
             end;
           end;
