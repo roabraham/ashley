@@ -75,6 +75,7 @@
     var LLM_ENDPOINT = {{ llm_config.llm_endpoint|json_encode|raw }};
     var LLM_HOST_URL = {{ (llm_config.proxy_location ?? '/llamacpp/')|json_encode|raw }};
     var API_ENDPOINT = '/api/chat';
+    var MEMORY_MODE = {{ persona.memory_mode ?? 1 }};
     var RESPONSE_MODE = {{ persona.response_mode ?? 1 }};
     var LLM_CTX_SIZE = {{ llm_ctx_size }};
     var LLM_MAX_RESPONSE_TOKENS = {{ llm_max_response_tokens }};

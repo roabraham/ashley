@@ -71,6 +71,14 @@ type
     Title: string;
   end;
 
+  { TMemoryModeComboBoxItem: item in the memory mode combo box for selecting chat completion behavior. }
+  TMemoryModeComboBoxItem = class
+    { Numeric identifier for the memory mode. }
+    ID: integer;
+    { Display title for the memory mode. }
+    Title: string;
+  end;
+
   { SaveSettingsFatal: exception raised when invalid settings prevent saving configuration. }
   SaveSettingsFatal = class(Exception);
 
@@ -134,6 +142,10 @@ type
     OpenSSLkeyButton: TButton;
     { Input field for the SSL certificate file path. }
     SSLcertificate: TLabeledEdit;
+    { Combo box for selecting the persona memory mode. }
+    PersonaMemoryMode: TComboBox;
+    { Label for the persona memory mode combo box. }
+    PersonaMemoryModeLabel: TLabel;
     { Combo box for selecting the persona response mode. }
     PersonaResponseMode: TComboBox;
     { Label for the persona response mode combo box. }
@@ -286,8 +298,6 @@ type
     LoggingAndProxyTabSheet: TTabSheet;
     { Spin edit control for the LLM proxy service timeout in seconds. }
     LLMproxyServiceTimeout: TSpinEdit;
-    { Enables or disables LLM parameters based on checkbox. }
-    procedure EnableLLMcheckBoxChange(Sender: TObject);
     { Opens a folder in the system default file explorer. }
     function OpenFolder(const FolderName: AnsiString): Boolean;
     { Converts an image control's picture to a Base64 encoded string. }
@@ -296,6 +306,8 @@ type
     function GetImageFileName(ImageControl: TImage): string;
     { Converts a stream to its string representation. }
     function StreamToString(Stream: TStream): string;
+    { Enables or disables LLM parameters based on checkbox. }
+    procedure EnableLLMcheckBoxChange(Sender: TObject);
     { Clears all temporary files and directories. }
     procedure ClearTempDir;
     { Handles clear temp dir button click event. }
@@ -1418,6 +1430,8 @@ var
   JSONList: TStringList;
   paramValue: String;
   i, foundIndex: Integer;
+  memoryModeID: integer;
+  memoryModeNode: TJSONData;
   responseModeID: integer;
   responseModeNode: TJSONData;
 begin
@@ -1485,6 +1499,28 @@ begin
       if length(paramValue) >= 1 then PersonaCSSoverride.Lines.Text := paramValue;
       paramValue := trim(RootObj.Get('behavior_similarity_threshold', ''));
       if length(paramValue) >= 1 then PersonaBehaviorSimilarityThreshold.Value := StrToIntDef(paramValue, 80);
+      if PersonaMemoryMode.Items.Count >= 1 then
+      begin
+        PersonaMemoryMode.ItemIndex := 0;
+        memoryModeNode := RootObj.Find('memory_mode');
+        if Assigned(memoryModeNode) then
+        begin
+          foundIndex := -1;
+          if memoryModeNode.JSONType = jtNumber then
+            memoryModeID := memoryModeNode.AsInteger
+          else
+            memoryModeID := StrToIntDef(trim(memoryModeNode.AsString), 1);
+          for i := 0 to PersonaMemoryMode.Items.Count - 1 do
+          begin
+            if not(Assigned(PersonaMemoryMode.Items.Objects[i])) then continue;
+            if not(PersonaMemoryMode.Items.Objects[i] is TMemoryModeComboBoxItem) then continue;
+            if not(TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[i]).ID = memoryModeID) then continue;
+            foundIndex := i;
+            break;
+          end;
+          if foundIndex >= 0 then PersonaMemoryMode.ItemIndex := foundIndex;
+        end;
+      end;
       if PersonaResponseMode.Items.Count >= 1 then
       begin
         PersonaResponseMode.ItemIndex := 0;
@@ -2722,6 +2758,15 @@ begin
         if length(summaryPrompt) >= 1 then PersonaObj.Add('summary_prompt', summaryPrompt);
         PersonaObj.Add('initial_message', trim(PersonaInitialMessage.Text));
         PersonaObj.Add('behavior_similarity_threshold', PersonaBehaviorSimilarityThreshold.Value);
+        if PersonaMemoryMode.ItemIndex >= 0 then
+        begin
+          if Assigned(PersonaMemoryMode.Items.Objects[PersonaMemoryMode.ItemIndex]) then
+            PersonaObj.Add('memory_mode', TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[PersonaMemoryMode.ItemIndex]).ID)
+          else
+            PersonaObj.Add('memory_mode', 1);
+        end
+        else
+          PersonaObj.Add('memory_mode', 1);
         if PersonaResponseMode.ItemIndex >= 0 then
         begin
           if Assigned(PersonaResponseMode.Items.Objects[PersonaResponseMode.ItemIndex]) then
@@ -2953,6 +2998,13 @@ begin
       MessageDlg('Error', 'No LLM engine not found! Unable to run LLM server!', mtError, [mbOK], 0);
     LoadLLMfiles('CONVERSATIONAL');
     LoadLLMfiles('EMBEDDING');
+    PersonaMemoryMode.Items.AddObject('Delete old (default)', TMemoryModeComboBoxItem.Create);
+    TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[0]).ID := 1;
+    TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[0]).Title := 'Delete old (default)';
+    PersonaMemoryMode.Items.AddObject('Summarize', TMemoryModeComboBoxItem.Create);
+    TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[1]).ID := 2;
+    TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[1]).Title := 'Summarize';
+    PersonaMemoryMode.ItemIndex := 0;
     PersonaResponseMode.Items.AddObject('Legacy (default)', TResponseModeComboBoxItem.Create);
     TResponseModeComboBoxItem(PersonaResponseMode.Items.Objects[0]).ID := 1;
     TResponseModeComboBoxItem(PersonaResponseMode.Items.Objects[0]).Title := 'Legacy (default)';
@@ -3088,6 +3140,20 @@ begin
     ClearEngineComboBox;
     ClearDeviceComboBox;
     ClearPersonaComboBox;
+    if PersonaMemoryMode.Items.Count >= 1 then
+    begin
+      for i := 0 to PersonaMemoryMode.Items.Count - 1 do
+      begin
+        try
+          if not(Assigned(PersonaMemoryMode.Items.Objects[i])) then continue;
+          PersonaMemoryMode.Items.Objects[i].Free;
+        except
+          on x: Exception do
+            MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+        end;
+      end;
+      PersonaMemoryMode.Items.Clear;
+    end;
     if PersonaResponseMode.Items.Count >= 1 then
     begin
       for i := 0 to PersonaResponseMode.Items.Count - 1 do

@@ -280,6 +280,9 @@ This tab configures the AI chatbot's personality, appearance and behavior.
 * **Response mode**: a drop-down list that controls how the *LLM server* generates responses:
   * **Legacy (default)**: the original response generation mode.
   * **Modern (stream)**: streaming response mode that delivers tokens as they are generated, providing a faster perceived response time.
+* **Memory mode**: a drop-down list that controls how the *LLM server* remembers previous messages (to avoid errors due to token-overflow):
+  * **Delete old (default)**: a fast and easy way to keep the chat history within the *context size*. When the total *token count* in the chat history goes above the *warning threshold*, the oldest messages are deleted until it is safe to continue the chat. This method will let you use a larger *context window* but will result in a potentially greater loss of information than *summarizing* the chat history.
+  * **Summarize**: this provides a *pseudo-infinite context window*. When the total *token count* in the chat history goes above the *warning threshold*, the entire chat history is sent to the *API* for *summarization* (which means the entire chat will be summarized in a few brief sentences) before the actual chat can continue. Basically, the chat history is compressed minimalizing the loss of information so the chat can remain more accurate than deleting the oldest messages. This is a slow method and it requires you to adjust the *context size* properly to avoid *timeout* errors when summarization is taking place.
 
 ## About Dialog
 

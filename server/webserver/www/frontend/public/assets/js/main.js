@@ -86,6 +86,7 @@
     const DEFAULT_CONFIG = {
         CHATBOT_NAME: 'ChatBot',
         INITIAL_MESSAGE: null,
+        MEMORY_MODE: 1, // 1 = prune (default), 2 = summarize (pseudo-infinite)
         RESPONSE_MODE: 1, // 1 = legacy (proxy), 2 = streaming (direct)
         LLM_ENDPOINT: '/v1/chat/completions',
         LLM_CTX_SIZE: 8192,
@@ -112,6 +113,7 @@
         streamingMessageDiv: null,
         lastUserMessageDiv: null,
         userStoppedStream: false,
+        memoryMode: DEFAULT_CONFIG.MEMORY_MODE,
         responseMode: DEFAULT_CONFIG.RESPONSE_MODE,
         chatHistory: [],
         hasSessionConversation: false,
@@ -504,6 +506,9 @@
     /**
      * Calculate the total estimated token count of the current chat history,
      * optionally including a pending user message that has not yet been appended.
+     * Also includes the system prompt because it is always prepended to the
+     * message payload sent to the LLM. Uses the same content-only heuristic
+     * as the PHP backend (no role prefix).
      *
      * @param {string} [pendingMessage] - Message about to be sent.
      * @returns {number}
@@ -513,10 +518,13 @@
         if (!Array.isArray(AppState.chatHistory)) { return 0; }
         for (const msg of AppState.chatHistory) {
             if (!isValidMessage(msg)) { continue; }
-            total += estimateTokens(`${msg.role}: ${msg.content}`);
+            total += estimateTokens(msg.content);
         }
         if (typeof pendingMessage === 'string' && pendingMessage.length > 0) {
-            total += estimateTokens(`user: ${pendingMessage}`);
+            total += estimateTokens(pendingMessage);
+        }
+        if (typeof AppState.systemPrompt === 'string' && AppState.systemPrompt.length > 0) {
+            total += estimateTokens(AppState.systemPrompt);
         }
         return total;
     }
@@ -832,6 +840,29 @@
      * @type {Promise|null}
      */
     let _compressionInFlight = null;
+
+    /**
+     * Delete the oldest chat history items until the total estimated token
+     * count (including an optional pending message) is at or below the
+     * configured warning threshold. Used in memory mode 1 where server-side
+     * summarisation is disabled and the conversation is kept short by
+     * discarding the oldest turns instead.
+     *
+     * Cross-browser: uses Array.shift() which is ES3 and supported by every
+     * browser that can run this application.
+     *
+     * @param {string} [pendingMessage] - Message about to be sent.
+     */
+    function pruneHistoryByTokenCount(pendingMessage) {
+        if (!Array.isArray(AppState.chatHistory) || AppState.chatHistory.length === 0) { return; }
+        let total = getHistoryTokenCount(pendingMessage);
+        const maxTokens = AppState.warningThreshold;
+        while (total > maxTokens && AppState.chatHistory.length > 0) {
+            AppState.chatHistory.shift();
+            total = getHistoryTokenCount(pendingMessage);
+        }
+        saveHistoryToStorage();
+    }
 
     /**
      * Request the server to compress/summarise the current chat history when it
@@ -1201,12 +1232,15 @@
         // FIX-BUG-6: Only attempt compression once per send cycle.
         if (!skipCompression) {
             const currentTokens = getHistoryTokenCount(userMessage);
-            if (currentTokens > AppState.warningThreshold &&
-                    AppState.chatHistory.length > 0) {
-                await new Promise((resolve) => {
-                    compressHistoryViaApi(userMessage, () => resolve());
-                });
-                return connectToLlamaDirect(userMessage, callback, true);
+            if (currentTokens > AppState.warningThreshold && AppState.chatHistory.length > 0) {
+                if (AppState.memoryMode === 1) {
+                    pruneHistoryByTokenCount(userMessage);
+                } else {
+                    await new Promise((resolve) => {
+                        compressHistoryViaApi(userMessage, () => resolve());
+                    });
+                    return connectToLlamaDirect(userMessage, callback, true);
+                }
             }
         }
         // Build the messages array: optional system prompt + history + new user turn.
@@ -1474,14 +1508,16 @@
         DOM.input.style.height = 'auto';
         // In streaming mode, history is entirely client-side. Check compression here
         // before either the embedding or direct-LLM paths.
-        if (AppState.responseMode === 2 &&
-                getHistoryTokenCount(message) > AppState.warningThreshold &&
-                AppState.chatHistory.length > 0) {
-            compressHistoryViaApi(message, () => {
-                if (!AppState.isProcessing) { return; }
-                proceedWithSend(message);
-            });
-            return;
+        if (AppState.responseMode === 2 && getHistoryTokenCount(message) > AppState.warningThreshold && AppState.chatHistory.length > 0) {
+            if (AppState.memoryMode === 1) {
+                pruneHistoryByTokenCount(message);
+            } else {
+                compressHistoryViaApi(message, () => {
+                    if (!AppState.isProcessing) { return; }
+                    proceedWithSend(message);
+                });
+                return;
+            }
         }
         proceedWithSend(message);
     }
@@ -1747,6 +1783,11 @@
             DEFAULT_CONFIG.CHATBOT_NAME,
             (v) => String(v)
         );
+        AppState.memoryMode = getConfigValue(
+            'MEMORY_MODE',
+            DEFAULT_CONFIG.MEMORY_MODE,
+            (v) => parseIntSafe(v, DEFAULT_CONFIG.MEMORY_MODE)
+        );
         AppState.responseMode = getConfigValue(
             'RESPONSE_MODE',
             DEFAULT_CONFIG.RESPONSE_MODE,
@@ -1982,6 +2023,7 @@
             updateExportButtonVisibility();
             initEvents();
             console.log('[Init] Chatbot initialised successfully');
+            console.log('[Init] Memory mode:',         AppState.memoryMode);
             console.log('[Init] Response mode:',       AppState.responseMode);
             console.log('[Init] Chatbot name:',        AppState.chatbotName);
             console.log('[Config] llmCtxSize:',        AppState.llmCtxSize);

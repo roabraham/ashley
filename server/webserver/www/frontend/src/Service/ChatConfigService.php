@@ -384,18 +384,19 @@ class ChatConfigService {
      */
     public function getPersonaConfig(): array {
         $persona = [
-            'personality_name'             => null,
-            'chatbot_name'                 => 'ChatBot',
-            'description'                  => null,
-            'initial_message'              => null,
-            'avatar_img'                   => null,
-            'background_img'               => null,
-            'css_override'                 => null,
-            'active_prompt'                => null,
-            'summary_prompt'               => null,
-            'personality_id'               => null,
+            'personality_name'              => null,
+            'chatbot_name'                  => 'ChatBot',
+            'description'                   => null,
+            'initial_message'               => null,
+            'avatar_img'                    => null,
+            'background_img'                => null,
+            'css_override'                  => null,
+            'active_prompt'                 => null,
+            'summary_prompt'                => null,
+            'personality_id'                => null,
             'behavior_similarity_threshold' => 80,
-            'response_mode'                => 1
+            'memory_mode'                   => 1,
+            'response_mode'                 => 1
         ];
         $personalityName = null;
         // personality.json - read selectors (personality name, full_name, etc.)
@@ -467,6 +468,10 @@ class ChatConfigService {
             if ($css_override) { $persona['css_override'] = $css_override; }
             $summary_prompt = trim($jsonData['summary_prompt'] ?? '');
             if ($summary_prompt) { $persona['summary_prompt'] = $summary_prompt; }
+            if (isset($jsonData['memory_mode'])) {
+                $mm = intval($jsonData['memory_mode']);
+                if (in_array($mm, [1, 2], true)) { $persona['memory_mode'] = $mm; }
+            }
             if (isset($jsonData['response_mode'])) {
                 $rm = intval($jsonData['response_mode']);
                 if (in_array($rm, [1, 2], true)) { $persona['response_mode'] = $rm; }

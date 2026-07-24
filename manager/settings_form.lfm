@@ -524,6 +524,7 @@ object SettingsForm: TSettingsForm
             Top = 240
             Width = 566
             Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
             Enabled = False
             ItemHeight = 25
             ParentShowHint = False
@@ -539,6 +540,7 @@ object SettingsForm: TSettingsForm
             Top = 40
             Width = 725
             Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
             Enabled = False
             ItemHeight = 25
             ParentShowHint = False
@@ -563,6 +565,7 @@ object SettingsForm: TSettingsForm
             Top = 120
             Width = 725
             Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
             Enabled = False
             ItemHeight = 25
             ItemIndex = 0
@@ -681,6 +684,7 @@ object SettingsForm: TSettingsForm
           Top = 8
           Width = 584
           Anchors = [akTop, akLeft, akRight]
+          AutoSize = False
           Enabled = False
           ItemHeight = 25
           ReadOnly = True
@@ -1091,6 +1095,7 @@ object SettingsForm: TSettingsForm
             AutoComplete = True
             AutoCompleteText = [cbactEnabled, cbactEndOfLineComplete, cbactSearchAscending]
             AutoDropDown = True
+            AutoSize = False
             ItemHeight = 25
             TabOrder = 1
           end
@@ -1146,8 +1151,8 @@ object SettingsForm: TSettingsForm
         Height = 436
         Top = 0
         Width = 778
-        HorzScrollBar.Increment = 46
-        HorzScrollBar.Page = 468
+        HorzScrollBar.Increment = 26
+        HorzScrollBar.Page = 269
         HorzScrollBar.Smooth = True
         HorzScrollBar.Tracking = True
         VertScrollBar.Increment = 43
@@ -1177,6 +1182,7 @@ object SettingsForm: TSettingsForm
             Top = 8
             Width = 528
             Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
             Enabled = False
             ItemHeight = 25
             Style = csDropDownList
@@ -1867,29 +1873,52 @@ object SettingsForm: TSettingsForm
             Height = 33
             Hint = 'Edit persona behavior similarity threshold'
             Top = 40
-            Width = 320
+            Width = 299
+            Anchors = [akTop, akLeft, akRight]
             MaxValue = 100
             MinValue = 1
             TabOrder = 0
             Value = 80
           end
           object PersonaResponseModeLabel: TLabel
-            Left = 336
+            Left = 315
             Height = 25
             Top = 8
             Width = 128
+            Anchors = [akTop, akRight]
             Caption = 'Response mode'
           end
           object PersonaResponseMode: TComboBox
-            Left = 336
+            Left = 315
             Height = 33
             Hint = 'Edit the response mode of the persona'
             Top = 40
-            Width = 392
-            Anchors = [akTop, akLeft, akRight]
+            Width = 200
+            Anchors = [akTop, akRight]
+            AutoSize = False
             ItemHeight = 25
             Style = csDropDownList
             TabOrder = 1
+          end
+          object PersonaMemoryMode: TComboBox
+            Left = 527
+            Height = 33
+            Hint = 'Edit the memory mode of the persona'
+            Top = 40
+            Width = 200
+            Anchors = [akTop, akRight]
+            AutoSize = False
+            ItemHeight = 25
+            Style = csDropDownList
+            TabOrder = 2
+          end
+          object PersonaMemoryModeLabel: TLabel
+            Left = 527
+            Height = 25
+            Top = 8
+            Width = 119
+            Anchors = [akTop, akRight]
+            Caption = 'Memory mode'
           end
         end
       end

@@ -394,9 +394,7 @@ class ChatController extends AbstractController
             $history = $data['conversation_history'] ?? [];
             if (empty($history)) { $history = []; }
             if (!is_array($history)) { $history = []; }
-            // Count history tokens
             $tokenCount = $this->estimateTokenCount($history);
-            // Also count pending message if provided
             if (isset($data['pending_message'])) {
                 if (is_string($data['pending_message'])) {
                     $pendingMsg = trim($data['pending_message']);
@@ -404,6 +402,16 @@ class ChatController extends AbstractController
                         $tokenCount += intval(ceil(mb_strlen($pendingMsg, 'UTF-8') / 2.5));
                     }
                 }
+            }
+            $active_prompt = trim($persona['active_prompt'] ?? '');
+            if (!empty($active_prompt)) {
+                $string_replacements = $this->getStringReplacements($persona);
+                if (!empty($string_replacements)) {
+                    foreach($string_replacements as $variable => $replacement) {
+                        $active_prompt = trim(str_replace($variable, $replacement, $active_prompt));
+                    }
+                }
+                if (!empty($active_prompt)) { $tokenCount += intval(ceil(mb_strlen($active_prompt, 'UTF-8') / 2.5)); }
             }
             $llmCtxSize = intval($llmConfig['llm_ctx_size'] ?? self::DEFAULT_LLM_CTX_SIZE);
             $safetyMargin = intval($llmConfig['token_safety_margin'] ?? self::DEFAULT_TOKEN_SAFETY_MARGIN);
@@ -434,6 +442,24 @@ class ChatController extends AbstractController
             $total += intval(ceil(mb_strlen($text, 'UTF-8') / 2.5));
         }
         return $total;
+    }
+
+    /**
+     * Prune conversation history by removing the oldest items until the total token count (history plus the incoming user message plus the system prompt) is within the configured warning threshold. Used in memory mode 1 where server-side summarisation is disabled.
+     *
+     * @param array<string,array<string,mixed>>  $history            Conversation history array
+     * @param int                                $inputTokens        Estimated token count of the incoming user message
+     * @param int                                $systemPromptTokens Estimated token count of the active system prompt
+     * @param int                                $warningThreshold   Maximum allowed token count
+     * @return array<string,array<string,mixed>> Pruned history array
+     */
+    protected function pruneHistoryByTokenCount(array $history, int $inputTokens, int $systemPromptTokens, int $warningThreshold): array {
+        $total = $this->estimateTokenCount($history) + $inputTokens + $systemPromptTokens;
+        while ($total > $warningThreshold && !empty($history)) {
+            array_shift($history);
+            $total = $this->estimateTokenCount($history) + $inputTokens + $systemPromptTokens;
+        }
+        return $history;
     }
 
     /**
@@ -641,9 +667,15 @@ class ChatController extends AbstractController
         // History compression check
         $historyTokens = $this->estimateTokenCount($history);
         $inputTokens = intval(ceil(mb_strlen($userMessage, 'UTF-8') / 2.5));
-        if (($historyTokens + $inputTokens) > $warningThreshold && !empty($history)) {
-            $summarized = $this->doSummarize($history, $llmConfig, $persona);
-            if (!empty($summarized)) { $history = $summarized; }
+        $systemPromptTokens = empty($active_prompt) ? 0 : intval(ceil(mb_strlen($active_prompt, 'UTF-8') / 2.5));
+        if (($historyTokens + $inputTokens + $systemPromptTokens) > $warningThreshold && !empty($history)) {
+            $memoryMode = intval($persona['memory_mode'] ?? 1);
+            if ($memoryMode === 1) {
+                $history = $this->pruneHistoryByTokenCount($history, $inputTokens, $systemPromptTokens, $warningThreshold);
+            } else {
+                $summarized = $this->doSummarize($history, $llmConfig, $persona);
+                if (!empty($summarized)) { $history = $summarized; }
+            }
         }
         $messages = array_merge($messages, $history);
         $messages[] = ['role' => 'user', 'content' => $userMessage];
