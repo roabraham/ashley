@@ -120,6 +120,7 @@ body {
     border-radius: 15px;
     max-width: 75%;
     word-wrap: break-word;
+    white-space: pre-wrap;
 }
 
 /** User message bubble color (green tint) */
@@ -135,6 +136,51 @@ body {
     color: #856404;
     font-style: italic;
     border: 1px solid #ffeaa7;
+}
+
+/**
+ * Fenced code block styling inside chat bubbles.
+ *
+ * Provides a scrollable, monospaced container for multi-line source code returned by the assistant. Preserves indentation via white-space: pre and clips overflow horizontally to avoid breaking the chat layout.
+ */
+.bubble pre {
+    background-color: #f6f8fa;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+    width: 100%;
+    max-width: 100%;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.45;
+    white-space: pre;
+    margin: 8px 0;
+}
+
+/**
+ * Inline code styling inside chat bubbles.
+ *
+ * Renders inline source references with a fixed-width font and subtle background highlight for readability against normal bubble text.
+ */
+.bubble code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    background-color: rgba(175, 184, 193, 0.2);
+    padding: 0.2em 0.4em;
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+/**
+ * Reset nested <code> inside <pre> blocks.
+ *
+ * Prevents double padding, background, and rounded corners when a <pre> already provides the full code-block chrome.
+ */
+.bubble pre code {
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    font-size: inherit;
 }
 
 /** Avatar container styling. Centered avatar with top margin */

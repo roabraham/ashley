@@ -216,15 +216,43 @@
     }
 
     /**
-     * Convert newline characters to HTML <br/> tags.
-     * Non-string input returns an empty string.
+     * Convert markdown-style text to HTML for chat bubbles.
      *
-     * @param {*} text
-     * @returns {string}
+     * Fenced code blocks (``` ... ```) are rendered as <pre><code> blocks
+     * with preserved indentation. Inline code (`...`) is rendered as <code>.
+     * All other text is HTML-escaped and newlines become <br/>.
+     *
+     * @param {string} text - Raw message text.
+     * @returns {string} Safe HTML string for insertion into a bubble.
      */
-    function nl2br(text) {
-        if (typeof text !== 'string') { return ''; }
-        return text.replace(/\n/g, '<br/>');
+    function formatMessageText(text) {
+        if (typeof text !== 'string' || text.length === 0) { return ''; }
+        const segments = text.split(/```/g);
+        const result = [];
+        for (let i = 0; i < segments.length; i++) {
+            if (i % 2 === 1) {
+                let code = segments[i];
+                const firstLineEnd = code.indexOf('\n');
+                if (firstLineEnd > -1) {
+                    const possibleLang = code.substring(0, firstLineEnd).trim();
+                    if (possibleLang.length > 0 && possibleLang.indexOf(' ') === -1) {
+                        code = code.substring(firstLineEnd + 1);
+                    }
+                }
+                if (code.length > 0 && code.charAt(code.length - 1) === '\n') {
+                    code = code.slice(0, -1);
+                }
+                result.push('<pre><code>' + escapeHtml(code) + '</code></pre>');
+                continue;
+            }
+            let segment = segments[i];
+            segment = segment.replace(/`([^`]+)`/g, function(_, code) {
+                return '<code>' + escapeHtml(code) + '</code>';
+            });
+            segment = segment.replace(/\n/g, '<br/>');
+            result.push(segment);
+        }
+        return result.join('');
     }
 
     /**
@@ -1035,7 +1063,7 @@
         if (typeof text === 'string' && text.length > 0) {
             // Unescape literal \n sequences that some LLMs emit as the two characters \n.
             const fixedText = text.replace(/\\n/g, '\n');
-            html += nl2br(escapeHtml(fixedText));
+            html += formatMessageText(fixedText);
         }
         messageDiv.innerHTML = `<div class="bubble">${html}</div>`;
         try {
@@ -1145,7 +1173,7 @@
                 return;
             }
             dots = (dots % 3) + 1;
-            span.textContent = Array(dots + 1).join('.');
+            span.textContent = '.'.repeat(dots);
         }, 500);
     }
 
@@ -1357,7 +1385,7 @@
                     assistantMessage += content;
                     const contentSpan = messageDiv.querySelector('.stream-content');
                     if (contentSpan) {
-                        contentSpan.innerHTML = nl2br(escapeHtml(assistantMessage));
+                        contentSpan.innerHTML = formatMessageText(assistantMessage);
                         if (DOM.chatBox && !messageDiv.parentNode) {
                             DOM.chatBox.appendChild(messageDiv);
                             DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
@@ -1955,7 +1983,7 @@
         // Bootstrap's own dismiss handler does not fire reliably, so we explicitly
         // close the matching modal on click to keep it keyboard- and click-accessible.
         document.addEventListener('click', (e) => {
-            const dismissBtn = e.target.closest?.('[data-bs-dismiss="modal"], .btn-close');
+            const dismissBtn = e.target.closest ? e.target.closest('[data-bs-dismiss="modal"], .btn-close') : null;
             if (!dismissBtn) { return; }
             const modal = dismissBtn.closest('.modal');
             if (modal) {
