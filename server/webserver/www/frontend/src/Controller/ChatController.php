@@ -49,7 +49,7 @@ class ChatController extends AbstractController
     protected const DEFAULT_SUMMARY_TEMPERATURE = 0.3;
 
     /** Request timeout in seconds */
-    protected const DEFAULT_REQUEST_TIMEOUT = 300;
+    protected const DEFAULT_REQUEST_TIMEOUT = 60;
 
     /** Valid chat roles */
     protected const VALID_ROLES = ['user', 'assistant', 'system'];

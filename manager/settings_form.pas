@@ -2692,6 +2692,10 @@ begin
           webserverConfigLines[i] := regexp.Replace(webserverConfigLines[i], '${1}' + IntToStr(llmConversationalPort) + '${3}', true);
           regexp.Expression := '(^\s*proxy_pass\s+http://127\.0\.0\.1:)(\d+)(/\s*;)';
           webserverConfigLines[i] := regexp.Replace(webserverConfigLines[i], '${1}' + IntToStr(llmConversationalPort) + '${3}', true);
+          regexp.Expression := '(^\s*proxy_read_timeout\s+)([^;]+)(;[ \t]*$)';
+          webserverConfigLines[i] := regexp.Replace(webserverConfigLines[i], '${1}' + IntToStr(LLMproxyServiceTimeout.Value) + 's${3}', true);
+          regexp.Expression := '(^\s*proxy_send_timeout\s+)([^;]+)(;[ \t]*$)';
+          webserverConfigLines[i] := regexp.Replace(webserverConfigLines[i], '${1}' + IntToStr(LLMproxyServiceTimeout.Value) + 's${3}', true);
         end;
         if length(trim(SSLcertificate.Text)) > 0 then
         begin
@@ -2700,7 +2704,7 @@ begin
           sslRelPath := StringReplace(sslRelPath, PathDelim, '/', [rfReplaceAll]);
           for i := 0 to webserverConfigLines.Count - 1 do
           begin
-            regexp.Expression := '(^\s*ssl_certificate\s+)([^;]+)(;$)';
+            regexp.Expression := '(^\s*ssl_certificate\s+)([^;]+)(;[ \t]*$)';
             webserverConfigLines[i] := regexp.Replace(webserverConfigLines[i], '${1}' + sslRelPath + '${3}', true);
           end;
         end;
@@ -2711,7 +2715,7 @@ begin
           sslRelPath := StringReplace(sslRelPath, PathDelim, '/', [rfReplaceAll]);
           for i := 0 to webserverConfigLines.Count - 1 do
           begin
-            regexp.Expression := '(^\s*ssl_certificate_key\s+)([^;]+)(;$)';
+            regexp.Expression := '(^\s*ssl_certificate_key\s+)([^;]+)(;[ \t]*$)';
             webserverConfigLines[i] := regexp.Replace(webserverConfigLines[i], '${1}' + sslRelPath + '${3}', true);
           end;
         end;

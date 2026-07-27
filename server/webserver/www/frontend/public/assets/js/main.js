@@ -96,7 +96,7 @@
         LLM_ENABLED: true,
         SYSTEM_PROMPT: null,
         API_ENDPOINT: '/api/chat',
-        REQUEST_TIMEOUT: 300 // server-configured request timeout (seconds)
+        REQUEST_TIMEOUT: 60 // server-configured request timeout (seconds)
     };
 
     /** Allowed message role values. Anything else is rejected on import/load. */
@@ -2059,6 +2059,7 @@
             console.log('[Config] safetyMargin:',      AppState.safetyMargin);
             console.log('[Config] warningThreshold:',  AppState.warningThreshold);
             console.log('[Config] llmEndpoint:',       AppState.llmEndpoint);
+            console.log('[Config] requestTimeout:',    AppState.requestTimeout);
         } catch (e) {
             console.error('[Init] Fatal error during initialisation:', e.message, e);
         }

@@ -156,7 +156,7 @@ class ChatConfigService {
             'proxy_location'       => '/llamacpp/',
             'proxy_port'           => 5123,
             'memory_limit'         => '1G',
-            'request_timeout'      => 300,
+            'request_timeout'      => 60,
             'max_media_session'    => 255,
             'token_safety_margin'  => 256,
             'max_summary_tokens'   => 256,
