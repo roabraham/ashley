@@ -445,17 +445,17 @@ class ChatController extends AbstractController
     }
 
     /**
-     * Prune conversation history by removing the oldest items until the total token count (history plus the incoming user message plus the system prompt) is within the configured warning threshold. Used in memory mode 1 where server-side summarisation is disabled.
+     * Prune conversation history by removing the oldest items until the total token count (history plus the incoming user message plus the system prompt) is within the configured pruning threshold. Used in memory mode 1 where server-side summarisation is disabled.
      *
      * @param array<string,array<string,mixed>>  $history            Conversation history array
      * @param int                                $inputTokens        Estimated token count of the incoming user message
      * @param int                                $systemPromptTokens Estimated token count of the active system prompt
-     * @param int                                $warningThreshold   Maximum allowed token count
+     * @param int                                $pruningThreshold   Maximum allowed token count
      * @return array<string,array<string,mixed>> Pruned history array
      */
-    protected function pruneHistoryByTokenCount(array $history, int $inputTokens, int $systemPromptTokens, int $warningThreshold): array {
+    protected function pruneHistoryByTokenCount(array $history, int $inputTokens, int $systemPromptTokens, int $pruningThreshold): array {
         $total = $this->estimateTokenCount($history) + $inputTokens + $systemPromptTokens;
-        while ($total > $warningThreshold && !empty($history)) {
+        while ($total > $pruningThreshold && !empty($history)) {
             array_shift($history);
             $total = $this->estimateTokenCount($history) + $inputTokens + $systemPromptTokens;
         }
@@ -671,7 +671,8 @@ class ChatController extends AbstractController
         if (($historyTokens + $inputTokens + $systemPromptTokens) > $warningThreshold && !empty($history)) {
             $memoryMode = intval($persona['memory_mode'] ?? 1);
             if ($memoryMode === 1) {
-                $history = $this->pruneHistoryByTokenCount($history, $inputTokens, $systemPromptTokens, $warningThreshold);
+                $pruningThreshold = round($warningThreshold / 2);
+                $history = $this->pruneHistoryByTokenCount($history, $inputTokens, $systemPromptTokens, $pruningThreshold);
             } else {
                 $summarized = $this->doSummarize($history, $llmConfig, $persona);
                 if (!empty($summarized)) { $history = $summarized; }

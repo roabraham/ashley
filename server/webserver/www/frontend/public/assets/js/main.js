@@ -884,7 +884,7 @@
     function pruneHistoryByTokenCount(pendingMessage) {
         if (!Array.isArray(AppState.chatHistory) || AppState.chatHistory.length === 0) { return; }
         let total = getHistoryTokenCount(pendingMessage);
-        const maxTokens = AppState.warningThreshold;
+        const maxTokens = Math.round(AppState.warningThreshold / 2);
         while (total > maxTokens && AppState.chatHistory.length > 0) {
             AppState.chatHistory.shift();
             total = getHistoryTokenCount(pendingMessage);
