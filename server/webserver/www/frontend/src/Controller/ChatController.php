@@ -671,7 +671,7 @@ class ChatController extends AbstractController
         if (($historyTokens + $inputTokens + $systemPromptTokens) > $warningThreshold && !empty($history)) {
             $memoryMode = intval($persona['memory_mode'] ?? 1);
             if ($memoryMode === 1) {
-                $pruningThreshold = round($warningThreshold / 2);
+                $pruningThreshold = round($warningThreshold * 0.7);
                 $history = $this->pruneHistoryByTokenCount($history, $inputTokens, $systemPromptTokens, $pruningThreshold);
             } else {
                 $summarized = $this->doSummarize($history, $llmConfig, $persona);
