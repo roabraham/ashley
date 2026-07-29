@@ -1300,6 +1300,7 @@
         // Abort any previous in-flight request.
         abortActiveStream();
         AppState.streamingController = new AbortController();
+        showThinkingMessage();
         const streamFetchOpts = {
             method: 'POST',
             headers: {
@@ -1416,6 +1417,7 @@
                 throw new Error('Response body is null; Streams API may not be supported.');
             }
             reader = res.body.getReader();
+            removeThinkingMessage();
             const decoder = new TextDecoder();
             let buffer = '';
 
@@ -1441,6 +1443,7 @@
             }
             finalise(reader);
         } catch (err) {
+            removeThinkingMessage();
             // Stream read error (includes AbortError on cancellation).
             if (err && err.name !== 'AbortError') {
                 console.warn('[Stream] Connection error:', err.message);
