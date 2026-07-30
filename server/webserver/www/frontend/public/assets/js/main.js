@@ -58,6 +58,12 @@
  * transformer try-catch, sender validation, idempotent finishProcessing, stream
  * abort on new session.
  *
+ * AUDIT LOG (features added):
+ * - Light/Dark mode toggle with localStorage persistence (key: 'chat_theme').
+ *   Case-insensitive config value handling with trim() on all read/write paths.
+ * - First-visit defaults to light mode; respects stored preference on return.
+ * - System theme media query listener removed; explicit user choice always wins.
+ *
  * This module is written as a single IIFE that loads directly via a <script> tag
  * (no bundler/transpilation), so it stays 100% ES6: const/let, arrow functions,
  * template literals, for...of, classes-free modules, async/await, and the native
@@ -146,7 +152,123 @@
     let activeModalEl = null;
 
     // =============================================================================
-    // SECTION 2: UTILITY FUNCTIONS
+    // SECTION 2.5: THEME TOGGLE — Light/Dark Mode
+    // =============================================================================
+    // Persists the user's theme preference in localStorage under the key
+    // 'chat_theme'. Values are stored lowercase ('light' or 'dark'),
+    // and all read/write operations are case-insensitive and trimmed of
+    // surrounding whitespace so that no stray characters can break the
+    // logic. On first visit (no stored value), light mode is used.
+    // Cross-browser: try/catch around all localStorage and matchMedia
+    // calls; graceful fallback to light mode on any error.
+    // =============================================================================
+
+    /** localStorage key for persisting the user's theme preference. */
+    const THEME_STORAGE_KEY = 'chat_theme';
+
+    /**
+     * Apply a theme by adding or removing the .dark-mode class on <body>.
+     *
+     * @param {'light'|'dark'} theme
+     */
+    function applyTheme (theme) {
+        if (typeof theme !== 'string') { return; }
+        try {
+            if (theme.toLowerCase().trim() === 'dark') {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.remove('dark-mode');
+            }
+        } catch (e) {
+            console.warn('[Theme] Failed to apply theme:', e.message);
+        }
+    }
+
+    /**
+     * Return the stored theme from localStorage, or null if absent/invalid.
+     *
+     * @returns {'light'|'dark'|null}
+     */
+    function getStoredTheme() {
+        try {
+            const stored = localStorage.getItem(THEME_STORAGE_KEY);
+            if (typeof stored !== 'string') { return null; }
+            const stored_fixed = stored.toLowerCase().trim();
+            if (stored_fixed === 'light' || stored_fixed === 'dark') { return stored_fixed; }
+        } catch (e) {
+            console.warn('[Theme] Failed to read localStorage:', e.message);
+        }
+        return null;
+    }
+
+    /**
+     * Store the theme preference in localStorage.
+     *
+     * @param {'light'|'dark'} theme
+     * @returns {boolean} true if stored successfully
+     */
+    function storeTheme(theme) {
+        try {
+            const theme_fixed = theme.toLowerCase().trim();
+            localStorage.setItem(THEME_STORAGE_KEY, theme_fixed);
+            return true;
+        } catch (e) {
+            console.warn('[Theme] Failed to write localStorage:', e.message);
+            return false;
+        }
+    }
+
+    /**
+     * Return the default theme when no stored preference exists.
+     * Light mode is the default on first visit.
+     *
+     * @returns {'light'}
+     */
+    function getDefaultTheme() { return 'light'; }
+
+    /**
+     * Initialise the theme on page load.
+     * Applies the stored preference, or falls back to light mode.
+     */
+    function initTheme() {
+        const stored = getStoredTheme();
+        const theme = (stored === null ? getDefaultTheme() : stored);
+        applyTheme(theme);
+        updateThemeToggleButton(theme);
+    }
+
+    /**
+     * Toggle between light and dark mode, save the new preference and update the toggle button icon.
+     */
+    function toggleTheme() {
+        const isCurrentlyDark = document.body.classList.contains('dark-mode');
+        const newTheme = isCurrentlyDark ? 'light' : 'dark';
+        applyTheme(newTheme);
+        storeTheme(newTheme);
+        updateThemeToggleButton(newTheme);
+    }
+
+    /**
+     * Update the theme toggle button text/icons to reflect the current theme.
+     *
+     * @param {'light'|'dark'} theme
+     */
+    function updateThemeToggleButton(theme) {
+        const btn = document.getElementById('theme-toggle-btn');
+        if (!btn) { return; }
+        const sunSpan = btn.querySelector('.theme-icon-sun');
+        const moonSpan = btn.querySelector('.theme-icon-moon');
+        if (theme.toLowerCase().trim() === 'dark') {
+            if (sunSpan) { sunSpan.style.display = 'none'; }
+            if (moonSpan) { moonSpan.style.display = 'inline'; }
+        } else {
+            if (sunSpan) { sunSpan.style.display = 'inline'; }
+            if (moonSpan) { moonSpan.style.display = 'none'; }
+        }
+    }
+
+    // =============================================================================
+    // SECTION 3: TOKEN ESTIMATION & HISTORY MANAGEMENT
     // =============================================================================
 
     /**
@@ -1998,6 +2120,19 @@
     }
 
     /**
+     * Bind the theme toggle button click handler.
+     */
+    function bindThemeToggle() {
+        const btn = document.getElementById('theme-toggle-btn');
+        if (!btn) { return; }
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleTheme();
+        });
+    }
+
+    /**
      * Display the configured initial greeting from the chatbot (if set).
      * Called once per session before history is rendered.
      */
@@ -2042,6 +2177,8 @@
                 false,
                 (v) => v === true || v === 'true' || v === 1 || v === '1'
             );
+            initTheme();
+            bindThemeToggle();
             displayInitialMessage();
             if (AppState.responseMode === 1) {
                 if (AppState.hasSessionConversation) {

@@ -61,7 +61,12 @@ class ChatConfigService {
      * @param string|null $wrapperJsonPath Injected `WRAPPER_JSON_PATH` value
      * @param string|null $personalityJsonPath Injected `PERSONALITY_JSON_PATH` value
      */
-    public function __construct(?string $wrapperDbPath = null, ?string $personalityDbPath = null, ?string $wrapperJsonPath = null, ?string $personalityJsonPath = null) {
+    public function __construct (
+        ?string $wrapperDbPath = null,
+        ?string $personalityDbPath = null,
+        ?string $wrapperJsonPath = null,
+        ?string $personalityJsonPath = null
+    ) {
         $this->serverRoot = realpath(dirname(__DIR__, 5));
         if (!$this->serverRoot) { throw new \RuntimeException('Could not reliably determine the server root directory!'); }
         $this->wrapperDbPath = "{$this->serverRoot}/database/wrapper.db";

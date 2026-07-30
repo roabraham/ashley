@@ -281,6 +281,226 @@ body {
     66% { content: "..."; }
 }
 
+/**
+ * Dark Mode Styles
+ *
+ * Applied when the <body> element has the .dark-mode class.
+ * All color values are chosen to provide an elegant dark theme while preserving the same layout and visual hierarchy as light mode.
+ *
+ * Storage key used by JS: 'chat_theme'. Accepted values (case-insensitive, whitespace-trimmed): 'light' (default on first visit) and 'dark'.
+ *
+ * Selector convention: 'body.dark-mode' prefix isolates all overrides so they never accidentally affect light mode.
+ */
+
+/** Dark body background and default text color */
+body.dark-mode {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+/** Dark card background with subtle border */
+body.dark-mode .card {
+    background-color: rgba(30, 30, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/** Dark sidebar background */
+body.dark-mode .sidebar { background-color: rgba(25, 25, 25, 0.9); }
+
+/** Chat box remains transparent to show body background */
+body.dark-mode .chat-box { background-color: transparent; }
+
+/** User message bubble: dark green tint with light text */
+body.dark-mode .user-message .bubble {
+    background-color: #1a4c32;
+    color: #d4edda;
+}
+
+/** Chatbot message bubble: dark gray with light text */
+body.dark-mode .chatbot-message .bubble {
+    background-color: #3a3a3a;
+    color: #e0e0e0;
+}
+
+/** Cancel/warning message bubble: dark amber with golden text */
+body.dark-mode .message.cancel-message .bubble {
+    background-color: #3d3320;
+    color: #fce4b0;
+    border-color: #5c4a1e;
+}
+
+/** Fenced code block inside chat bubbles: dark editor-like background */
+body.dark-mode .bubble pre {
+    background-color: #1e1e1e;
+    border-color: #444;
+    color: #d4d4d4;
+}
+
+/** Inline code inside chat bubbles: subtle dark highlight */
+body.dark-mode .bubble code {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #d4d4d4;
+}
+
+/** Reset nested code inside pre blocks for dark mode */
+body.dark-mode .bubble pre code {
+    background: transparent;
+    color: inherit;
+}
+
+/** Avatar description text: muted gray for dark backgrounds */
+body.dark-mode .description-text { color: #aaa; }
+
+/** Thinking indicator bubble: dark gray with italic muted text */
+body.dark-mode .message.thinking .bubble {
+    background-color: #2a2a2a;
+    color: #aaa;
+}
+
+/** Video player border: dark gray */
+body.dark-mode .chat-video { border-color: #555; }
+
+/** Alert boxes: subtle dark background with light text */
+body.dark-mode .alert {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #e0e0e0;
+}
+
+/** User input textarea: dark background with light text */
+body.dark-mode #user-input {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+/** Input placeholder text: muted gray */
+body.dark-mode #user-input::placeholder { color: #888; }
+
+/** Invalid input border: keep red for accessibility */
+body.dark-mode #user-input.is-invalid { border-color: #dc3545; }
+
+/** Card header with primary color: slightly transparent blue */
+body.dark-mode .card-header.text-white { background-color: rgba(13, 110, 253, 0.85) !important; }
+
+/** Modal dialog: dark background with subtle border */
+body.dark-mode .modal-content {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/** Modal header border: subtle separator */
+body.dark-mode .modal-header { border-color: rgba(255, 255, 255, 0.1); }
+
+/** Modal footer border: subtle separator */
+body.dark-mode .modal-footer { border-color: rgba(255, 255, 255, 0.1); }
+
+/** Secondary buttons: dark gray with light text */
+body.dark-mode .btn-secondary {
+    background-color: #444;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+/** Secondary button hover: lighter gray */
+body.dark-mode .btn-secondary:hover {
+    background-color: #555;
+    border-color: #666;
+    color: #fff;
+}
+
+/** Success buttons: dark green tint */
+body.dark-mode .btn-success {
+    background-color: #1a6b3a;
+    border-color: #28a745;
+}
+
+/** Danger buttons: dark red tint */
+body.dark-mode .btn-danger {
+    background-color: #7a1a1a;
+    border-color: #dc3545;
+}
+
+/** Form controls: dark background with light text */
+body.dark-mode .form-control {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+/** Form control focus: blue glow ring */
+body.dark-mode .form-control:focus {
+    background-color: #333;
+    color: #e0e0e0;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/** Dropdown menus: dark background with subtle border */
+body.dark-mode .dropdown-menu {
+    background-color: #1e1e1e;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+/** Dropdown items: light text color */
+body.dark-mode .dropdown-item { color: #e0e0e0; }
+
+/** Dropdown item hover: slightly lighter background */
+body.dark-mode .dropdown-item:hover { background-color: #333; }
+
+/** Muted text: lighter gray for visibility on dark backgrounds */
+body.dark-mode .text-muted { color: #999 !important; }
+
+/** Visually hidden: keep as-is, no visual change needed */
+body.dark-mode .visually-hidden {
+    /* keep as-is, utility class */
+}
+
+/** Spinner secondary color: visible gray on dark background */
+body.dark-mode .spinner-border.text-secondary { color: #888 !important; }
+
+/** Shadows: stronger shadows for dark backgrounds */
+body.dark-mode .shadow-lg,
+body.dark-mode .shadow { box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.4) !important; }
+
+/** Card header with primary background: ensure visibility in dark mode */
+body.dark-mode .card-header.bg-primary.text-white { background-color: rgba(13, 110, 253, 0.85) !important; }
+
+/** Card header bottom border: subtle separator */
+body.dark-mode .card-header { border-bottom-color: rgba(255, 255, 255, 0.08); }
+
+/** Theme toggle button: subtle glass-like background */
+body.dark-mode .theme-toggle-btn {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ccc;
+}
+
+/** Theme toggle icon: invert SVG colors for dark background */
+body.dark-mode .theme-toggle-btn img { filter: invert(1); }
+
+/** Theme toggle button hover: brighter glass effect */
+body.dark-mode .theme-toggle-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+/** Theme toggle button focus: blue glow ring */
+body.dark-mode .theme-toggle-btn:focus { box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.4); }
+
+/** Hide sun icon in dark mode */
+body.dark-mode .theme-toggle-btn .theme-icon-sun { display: none; }
+
+/** Show moon icon in dark mode */
+body.dark-mode .theme-toggle-btn .theme-icon-moon { display: inline; }
+
+/** Show sun icon in light mode */
+body:not(.dark-mode) .theme-toggle-btn .theme-icon-sun { display: inline; }
+
+/** Hide moon icon in light mode */
+body:not(.dark-mode) .theme-toggle-btn .theme-icon-moon { display: none; }
+
 /** Tablet/desktop video max-height increase */
 @media (min-width: 768px) {
     .chat-video { max-height: 360px; }

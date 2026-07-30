@@ -45,6 +45,14 @@
             </div>
             {% endif %}
             <div class="sidebar-menu d-flex flex-column">
+                <button id="theme-toggle-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100 theme-toggle-btn" style="border-radius: 15px; font-size: 0.8rem;" title="Toggle light / dark theme">
+                    <span class="theme-icon-sun">
+                        <img src="{{ asset('media/bootstrap_icons/sun.svg') }}" alt="" width="16" height="16" style="vertical-align: -2px; margin-right: 4px;"> Light
+                    </span>
+                    <span class="theme-icon-moon" style="display:none;">
+                        <img src="{{ asset('media/bootstrap_icons/moon.svg') }}" alt="" width="16" height="16" style="vertical-align: -3px; margin-right: 4px;"> Dark
+                    </span>
+                </button>
                 {% if llmEnabled %}
                 <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank" title="Open llama.cpp interface">llama.cpp</a>
                 {% endif %}
