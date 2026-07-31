@@ -395,6 +395,7 @@ class ChatConfigService {
             'initial_message'               => null,
             'avatar_img'                    => null,
             'background_img'                => null,
+            'default_theme'                 => 'LIGHT',
             'css_override'                  => null,
             'active_prompt'                 => null,
             'summary_prompt'                => null,
@@ -442,6 +443,7 @@ class ChatConfigService {
                     $persona['initial_message'] = trim($data['initial_message'] ?? '');
                     $persona['active_prompt'] = trim($data['system_prompt'] ?? '');
                     $persona['summary_prompt'] = trim($data['summary_prompt'] ?? '');
+                    $persona['default_theme'] = strtoupper(trim($data['default_theme'] ?? ''));
                     $persona['css_override'] = trim($data['css_override'] ?? '');
                     $similarity_threshold = intval(trim($data['behavior_similarity_threshold'] ?? 0));
                     if ($similarity_threshold >= 1) { $persona['behavior_similarity_threshold']  = $similarity_threshold; }
@@ -469,6 +471,8 @@ class ChatConfigService {
             if ($initial_message) { $persona['initial_message'] = $initial_message; }
             $system_prompt = trim($jsonData['system_prompt'] ?? '');
             if ($system_prompt) { $persona['active_prompt'] = $system_prompt; }
+            $default_theme = strtoupper(trim($jsonData['default_theme'] ?? ''));
+            if ($default_theme) { $persona['default_theme'] = $default_theme; }
             $css_override = trim($jsonData['css_override'] ?? '');
             if ($css_override) { $persona['css_override'] = $css_override; }
             $summary_prompt = trim($jsonData['summary_prompt'] ?? '');

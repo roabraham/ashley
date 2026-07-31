@@ -267,6 +267,9 @@ This tab configures the AI chatbot's personality, appearance and behavior.
 
 * **Avatar**: a clickable image area that shows the persona's avatar. Click on it to open a file browser and select an image file (JPG, JPEG, PNG, BMP, GIF, TIFF). The image is embedded into the persona configuration.
 * **Background**: a clickable image area that shows the persona's background image. Click on it to open a file browser and select an image file. The image is embedded into the persona configuration.
+* **Default theme**: a radio button group that controls the basic appearance of the frontpage:
+  * **Light color theme**: use light colors on the frontpage. This is an elegant and friendly theme.
+  * **Dark color theme**: use dark colors on the frontpage. This theme is better to use at night or in dark rooms.
 * **Full name**: the full display name of the persona. Maximum 255 characters.
 * **Description**: a short description of the persona. Maximum 255 characters.
 * **Initial message**: the greeting message the persona sends when a new conversation starts.

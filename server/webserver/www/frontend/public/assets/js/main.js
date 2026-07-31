@@ -61,7 +61,9 @@
  * AUDIT LOG (features added):
  * - Light/Dark mode toggle with localStorage persistence (key: 'chat_theme').
  *   Case-insensitive config value handling with trim() on all read/write paths.
- * - First-visit defaults to light mode; respects stored preference on return.
+ * - First-visit default theme comes from the admin-configured 'default_theme'
+ *   persona setting; only 'DARK' (case-insensitive) enables dark mode, all
+ *   other values default to light.
  * - System theme media query listener removed; explicit user choice always wins.
  *
  * This module is written as a single IIFE that loads directly via a <script> tag
@@ -102,7 +104,8 @@
         LLM_ENABLED: true,
         SYSTEM_PROMPT: null,
         API_ENDPOINT: '/api/chat',
-        REQUEST_TIMEOUT: 60 // server-configured request timeout (seconds)
+        REQUEST_TIMEOUT: 60,
+        DEFAULT_THEME: 'LIGHT'
     };
 
     /** Allowed message role values. Anything else is rejected on import/load. */
@@ -133,7 +136,8 @@
         systemPrompt: DEFAULT_CONFIG.SYSTEM_PROMPT,
         chatbotName: DEFAULT_CONFIG.CHATBOT_NAME,
         apiEndpoint: DEFAULT_CONFIG.API_ENDPOINT,
-        requestTimeout: DEFAULT_CONFIG.REQUEST_TIMEOUT
+        requestTimeout: DEFAULT_CONFIG.REQUEST_TIMEOUT,
+        defaultTheme: DEFAULT_CONFIG.DEFAULT_THEME
     };
 
     /**
@@ -155,10 +159,13 @@
     // SECTION 2.5: THEME TOGGLE — Light/Dark Mode
     // =============================================================================
     // Persists the user's theme preference in localStorage under the key
-    // 'chat_theme'. Values are stored lowercase ('light' or 'dark'),
+    // 'chat_theme'. Values are stored UPPERCASE ('LIGHT' or 'DARK'),
     // and all read/write operations are case-insensitive and trimmed of
     // surrounding whitespace so that no stray characters can break the
-    // logic. On first visit (no stored value), light mode is used.
+    // logic. On first visit (no stored value), the admin-configured
+    // 'default_theme' persona setting is consulted: only 'DARK'
+    // (case-insensitive) enables dark mode; any other value falls back
+    // to light mode, keeping the door open for future theme additions.
     // Cross-browser: try/catch around all localStorage and matchMedia
     // calls; graceful fallback to light mode on any error.
     // =============================================================================
@@ -169,12 +176,12 @@
     /**
      * Apply a theme by adding or removing the .dark-mode class on <body>.
      *
-     * @param {'light'|'dark'} theme
+     * @param {'LIGHT'|'DARK'} theme
      */
     function applyTheme (theme) {
         if (typeof theme !== 'string') { return; }
         try {
-            if (theme.toLowerCase().trim() === 'dark') {
+            if (theme.toUpperCase().trim() === 'DARK') {
                 document.body.classList.add('dark-mode');
             } else {
                 document.body.classList.remove('dark-mode');
@@ -185,16 +192,20 @@
     }
 
     /**
-     * Return the stored theme from localStorage, or null if absent/invalid.
+     * Return the stored theme from localStorage, or null if absent/error.
      *
-     * @returns {'light'|'dark'|null}
+     * The value is normalized (case-insensitive, trimmed, UPPERCASE) and
+     * returned as-is — no theme whitelist. The caller (applyTheme) is the
+     * single place that checks for 'DARK' to enable dark mode, so future
+     * theme names are preserved here instead of being rejected.
+     *
+     * @returns {string|null}
      */
     function getStoredTheme() {
         try {
             const stored = localStorage.getItem(THEME_STORAGE_KEY);
             if (typeof stored !== 'string') { return null; }
-            const stored_fixed = stored.toLowerCase().trim();
-            if (stored_fixed === 'light' || stored_fixed === 'dark') { return stored_fixed; }
+            return stored.toUpperCase().trim();
         } catch (e) {
             console.warn('[Theme] Failed to read localStorage:', e.message);
         }
@@ -204,12 +215,12 @@
     /**
      * Store the theme preference in localStorage.
      *
-     * @param {'light'|'dark'} theme
+     * @param {'LIGHT'|'DARK'} theme
      * @returns {boolean} true if stored successfully
      */
     function storeTheme(theme) {
         try {
-            const theme_fixed = theme.toLowerCase().trim();
+            const theme_fixed = theme.toUpperCase().trim();
             localStorage.setItem(THEME_STORAGE_KEY, theme_fixed);
             return true;
         } catch (e) {
@@ -219,16 +230,32 @@
     }
 
     /**
-     * Return the default theme when no stored preference exists.
-     * Light mode is the default on first visit.
+     * Return the default theme applied when no stored user preference exists.
      *
-     * @returns {'light'}
+     * Reads the admin-configured `default_theme` persona setting (injected as
+     * window.DEFAULT_THEME). The raw value is normalized (case-insensitive +
+     * whitespace-trimmed, UPPERCASE) so it is safe to hand directly to
+     * applyTheme() / updateThemeToggleButton(), which only enable dark mode
+     * when the value equals 'DARK'. Any other value — 'LIGHT', a future theme
+     * name, or an invalid/absent setting — renders as light mode.
+     *
+     * @returns {string} The normalized default theme value; 'LIGHT' is the
+     *                   ultimate fallback when the setting is absent/invalid.
      */
-    function getDefaultTheme() { return 'light'; }
+    function getDefaultTheme() {
+        try {
+            const t = AppState.defaultTheme;
+            if (typeof t !== 'string') { return DEFAULT_CONFIG.DEFAULT_THEME; }
+            return t.toUpperCase().trim();
+        } catch (e) {
+            console.warn('[Theme] Failed to read default theme:', e.message);
+        }
+        return DEFAULT_CONFIG.DEFAULT_THEME;
+    }
 
     /**
      * Initialise the theme on page load.
-     * Applies the stored preference, or falls back to light mode.
+     * Applies the stored preference, or falls back to the configured default theme.
      */
     function initTheme() {
         const stored = getStoredTheme();
@@ -242,7 +269,7 @@
      */
     function toggleTheme() {
         const isCurrentlyDark = document.body.classList.contains('dark-mode');
-        const newTheme = isCurrentlyDark ? 'light' : 'dark';
+        const newTheme = isCurrentlyDark ? 'LIGHT' : 'DARK';
         applyTheme(newTheme);
         storeTheme(newTheme);
         updateThemeToggleButton(newTheme);
@@ -251,14 +278,14 @@
     /**
      * Update the theme toggle button text/icons to reflect the current theme.
      *
-     * @param {'light'|'dark'} theme
+     * @param {'LIGHT'|'DARK'} theme
      */
     function updateThemeToggleButton(theme) {
         const btn = document.getElementById('theme-toggle-btn');
         if (!btn) { return; }
         const sunSpan = btn.querySelector('.theme-icon-sun');
         const moonSpan = btn.querySelector('.theme-icon-moon');
-        if (theme.toLowerCase().trim() === 'dark') {
+        if (theme.toUpperCase().trim() === 'DARK') {
             if (sunSpan) { sunSpan.style.display = 'none'; }
             if (moonSpan) { moonSpan.style.display = 'inline'; }
         } else {
@@ -2016,6 +2043,14 @@
             (v) => {
                 const n = parseIntSafe(v, DEFAULT_CONFIG.REQUEST_TIMEOUT);
                 return n > 0 ? n : DEFAULT_CONFIG.REQUEST_TIMEOUT;
+            }
+        );
+        AppState.defaultTheme = getConfigValue(
+            'DEFAULT_THEME',
+            DEFAULT_CONFIG.DEFAULT_THEME,
+            (v) => {
+                if (typeof v !== 'string') { return DEFAULT_CONFIG.DEFAULT_THEME; }
+                return v.toUpperCase().trim();
             }
         );
         // Derive the compression threshold from validated values.

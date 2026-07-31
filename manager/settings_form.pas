@@ -59,6 +59,8 @@ type
     Avatar: AnsiString;
     { Base64-encoded background image data. }
     BackgroundImage: AnsiString;
+    { Short default color theme name/key. }
+    defaultTheme: string;
     { CSS override string for custom styling. }
     CSSoverride: AnsiString;
   end;
@@ -88,6 +90,7 @@ type
     EnableLLMcheckBox: TCheckBox;
     { Button to clear the temporary directory contents. }
     ClearTempDirButton: TButton;
+    DefaultThemeGroupBox: TGroupBox;
     { Label for the PHP time zone combobox. }
     PHPtimezoneComboBox: TComboBox;
     { Combobox for the PHP time zone. }
@@ -98,6 +101,10 @@ type
     PersonaSummaryPromptLabel: TLabel;
     { Memo control for editing the persona summary prompt. }
     PersonaSummaryPrompt: TMemo;
+    { Radio button for choosing light color theme on frontpage. }
+    DefaultThemeLightRadioButton: TRadioButton;
+    { Radio button for choosing dark color theme on frontpage. }
+    DefaultThemeDarkRadioButton: TRadioButton;
     { Group box containing temporary directory controls. }
     TempDirGroupBox: TGroupBox;
     { SQL query component for loading PHP time zones from the database. }
@@ -1389,6 +1396,7 @@ begin
           personaItem.BehaviorSimilarityThreshold := PersonaQuery.FieldByName('behavior_similarity_threshold').AsInteger;
           personaItem.Avatar := trim(PersonaQuery.FieldByName('avatar').AsString);
           personaItem.BackgroundImage := trim(PersonaQuery.FieldByName('background_image').AsString);
+          personaItem.defaultTheme := uppercase(trim(PersonaQuery.FieldByName('default_theme').AsString));
           personaItem.CSSoverride := trim(PersonaQuery.FieldByName('css_override').AsString);
           if (length(personaItem.FullName) >= 1) and (length(personaItem.Description) >= 1) then
             DefaultPersonaComboBox.Items.AddObject(personaItem.FullName + ': ' + personaItem.Description, personaItem)
@@ -1495,6 +1503,20 @@ begin
       if length(paramValue) >= 1 then PersonaSystemPrompt.Lines.Text := paramValue;
       paramValue := trim(RootObj.Get('summary_prompt', ''));
       if length(paramValue) >= 1 then PersonaSummaryPrompt.Lines.Text := paramValue;
+      paramValue := uppercase(trim(RootObj.Get('default_theme', '')));
+      if length(paramValue) >= 1 then
+      begin
+        if paramValue = 'DARK' then
+        begin
+          DefaultThemeDarkRadioButton.Checked := true;
+          DefaultThemeLightRadioButton.Checked := false;
+        end
+        else
+        begin
+          DefaultThemeLightRadioButton.Checked := true;
+          DefaultThemeDarkRadioButton.Checked := false;
+        end;
+      end;
       paramValue := trim(RootObj.Get('css_override', ''));
       if length(paramValue) >= 1 then PersonaCSSoverride.Lines.Text := paramValue;
       paramValue := trim(RootObj.Get('behavior_similarity_threshold', ''));
@@ -2069,6 +2091,19 @@ begin
     PersonaInitialMessage.Text := personaItem.InitialMessage;
     PersonaSystemPrompt.Lines.Text := personaItem.SystemPrompt;
     PersonaSummaryPrompt.Lines.Text := personaItem.SummaryPrompt;
+    if length(personaItem.defaultTheme) >= 1 then
+    begin
+      if personaItem.defaultTheme = 'DARK' then
+      begin
+        DefaultThemeDarkRadioButton.Checked := true;
+        DefaultThemeLightRadioButton.Checked := false;
+      end
+      else
+      begin
+        DefaultThemeLightRadioButton.Checked := true;
+        DefaultThemeDarkRadioButton.Checked := false;
+      end;
+    end;
     PersonaCSSoverride.Lines.Text := personaItem.CSSoverride;
     if personaItem.BehaviorSimilarityThreshold >= 1 then
       PersonaBehaviorSimilarityThreshold.Value := personaItem.BehaviorSimilarityThreshold
@@ -2780,6 +2815,10 @@ begin
         end
         else
           PersonaObj.Add('response_mode', 1);
+        if DefaultThemeDarkRadioButton.Checked then
+          PersonaObj.Add('default_theme', 'DARK')
+        else
+          PersonaObj.Add('default_theme', 'LIGHT');
         cssOverride := trim(PersonaCSSoverride.Lines.Text);
         if length(cssOverride) >= 1 then PersonaObj.Add('css_override', cssOverride);
         if not(PersonaAvatarImage.Picture.Graphic = nil) then

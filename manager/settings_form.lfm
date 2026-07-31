@@ -1240,11 +1240,11 @@ object SettingsForm: TSettingsForm
             Left = 224
             Height = 184
             Top = 8
-            Width = 504
+            Width = 259
             Anchors = [akTop, akLeft, akRight]
             Caption = 'Background'
             ClientHeight = 154
-            ClientWidth = 500
+            ClientWidth = 255
             TabOrder = 1
             object PersonaBackgroundImage: TImage
               Cursor = crHandPoint
@@ -1252,7 +1252,7 @@ object SettingsForm: TSettingsForm
               Height = 138
               Hint = 'Change the background image of the persona'
               Top = 8
-              Width = 484
+              Width = 239
               AntialiasingMode = amOn
               Align = alClient
               BorderSpacing.Around = 8
@@ -1273,7 +1273,7 @@ object SettingsForm: TSettingsForm
             EditLabel.Width = 720
             EditLabel.Caption = 'Full name'
             MaxLength = 255
-            TabOrder = 2
+            TabOrder = 3
           end
           object PersonaDescription: TLabeledEdit
             Left = 7
@@ -1286,7 +1286,7 @@ object SettingsForm: TSettingsForm
             EditLabel.Width = 720
             EditLabel.Caption = 'Description'
             MaxLength = 255
-            TabOrder = 3
+            TabOrder = 4
           end
           object PersonaInitialMessage: TLabeledEdit
             Left = 7
@@ -1298,7 +1298,7 @@ object SettingsForm: TSettingsForm
             EditLabel.Height = 25
             EditLabel.Width = 720
             EditLabel.Caption = 'Initial message'
-            TabOrder = 4
+            TabOrder = 5
           end
           object PersonaSystemPromptLabel: TLabel
             Left = 7
@@ -1315,7 +1315,7 @@ object SettingsForm: TSettingsForm
             Width = 720
             Anchors = [akTop, akLeft, akRight]
             ScrollBars = ssAutoVertical
-            TabOrder = 5
+            TabOrder = 6
           end
           object PersonaCSSoverrideLabel: TLabel
             Left = 8
@@ -1339,7 +1339,7 @@ object SettingsForm: TSettingsForm
             Font.Quality = fqNonAntialiased
             ParentColor = False
             ParentFont = False
-            TabOrder = 6
+            TabOrder = 7
             Gutter.Width = 68
             Gutter.MouseActions = <>
             RightGutter.Width = 0
@@ -1848,7 +1848,39 @@ object SettingsForm: TSettingsForm
             Width = 720
             Anchors = [akTop, akLeft, akRight]
             ScrollBars = ssAutoVertical
-            TabOrder = 7
+            TabOrder = 8
+          end
+          object DefaultThemeGroupBox: TGroupBox
+            Left = 496
+            Height = 184
+            Top = 8
+            Width = 231
+            Anchors = [akTop, akRight]
+            Caption = 'Default theme'
+            ClientHeight = 154
+            ClientWidth = 227
+            TabOrder = 2
+            object DefaultThemeLightRadioButton: TRadioButton
+              Left = 16
+              Height = 29
+              Hint = 'Use light color theme on frontpage'
+              Top = 8
+              Width = 160
+              Caption = 'Light color theme'
+              Checked = True
+              TabOrder = 0
+              TabStop = True
+            end
+            object DefaultThemeDarkRadioButton: TRadioButton
+              Left = 16
+              Height = 29
+              Hint = 'Use dark color theme on frontpage'
+              Top = 48
+              Width = 158
+              Caption = 'Dark color theme'
+              TabOrder = 1
+              TabStop = True
+            end
           end
         end
         object PersonaSystemGroupBox: TGroupBox
