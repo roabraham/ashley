@@ -453,6 +453,7 @@ begin
     LLMserverProcessPreviousState := LLMserverProcess.Running;
     repeat
       SettingsForm.MainLLMserverProcessRunning := LLMserverProcess.Running;
+      SettingsForm.WebUIprocessRunning := WebUIprocess.Running;
       if SettingsForm.showModal = mrOk then SettingsForm.SaveConfigData;
     until not(SettingsForm.saveSettingsError);
     if not(SettingsForm.configDataSaved) then Exit;

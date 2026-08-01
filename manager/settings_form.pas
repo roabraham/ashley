@@ -90,6 +90,7 @@ type
     EnableLLMcheckBox: TCheckBox;
     { Button to clear the temporary directory contents. }
     ClearTempDirButton: TButton;
+    { Group box containing theme controls. }
     DefaultThemeGroupBox: TGroupBox;
     { Label for the PHP time zone combobox. }
     PHPtimezoneComboBox: TComboBox;
@@ -463,8 +464,10 @@ type
     logDirectory: AnsiString;
     { Full path to the log file. }
     logFile: AnsiString;
-    { Path to the temporary files directory. }
+    { Path to the main temporary files directory. }
     TempDirectory: AnsiString;
+    { Path to PHP Desktop CGI temporary files directory. }
+    CGItempDirectory: AnsiString;
     { Path to the cache directory. }
     CacheDirectory: AnsiString;
     { Indicates whether configuration was saved successfully. }
@@ -473,6 +476,8 @@ type
     saveSettingsError: boolean;
     { Indicates whether the LLM server process is currently running. }
     MainLLMserverProcessRunning: boolean;
+    { Indicates whether the Web UI (PHP Desktop) process is currently running. }
+    WebUIprocessRunning: boolean;
     { Stores the default PHP time zone read from the database. }
     DefaultPHPtimezone: integer;
     { Saves configuration data to JSON and webserver config files. }
@@ -756,7 +761,7 @@ end;
 procedure TSettingsForm.ClearTempDir;
 begin
   try
-    if MainLLMserverProcessRunning then
+    if MainLLMserverProcessRunning or WebUIprocessRunning then
     begin
       if not(MessageDlg(
         'Confirm Cleanup',
@@ -777,13 +782,17 @@ begin
       begin
         if DirectoryExists(TempDirectory) then DeleteDirectory(TempDirectory, true);
       end;
+      if length(CGItempDirectory) >= 1 then
+      begin
+        if DirectoryExists(CGItempDirectory) then DeleteDirectory(CGItempDirectory, true);
+      end;
     end;
     if length(CacheDirectory) >= 1 then
     begin
       if DirectoryExists(CacheDirectory) then DeleteDirectory(CacheDirectory, false);
     end;
     ClearTempDirButton.Enabled := false;
-    if MainLLMserverProcessRunning then
+    if MainLLMserverProcessRunning or WebUIprocessRunning then
     begin
       ShowMessage('Cache cleared successfully!');
       Exit;
@@ -2229,6 +2238,28 @@ begin
         end;
       end;
     end;
+    if length(CGItempDirectory) >= 1 then
+    begin
+      if DirectoryExists(CGItempDirectory) then
+      begin
+        if not(WebUIprocessRunning) then
+        begin
+          if FindFirst(CGItempDirectory + '*', faAnyFile, SR) = 0 then
+          begin
+            try
+              repeat
+                if SR.Name = '.' then continue;
+                if SR.Name = '..' then continue;
+                ClearTempDirButton.Enabled := true;
+                break;
+              until not(FindNext(SR) = 0);
+            finally
+              SysUtils.FindClose(SR);
+            end;
+          end;
+        end;
+      end;
+    end;
     if not(ClearTempDirButton.Enabled) then
     begin
       if length(CacheDirectory) >= 1 then
@@ -2927,6 +2958,7 @@ begin
     configDataSaved := false;
     saveSettingsError := false;
     MainLLMserverProcessRunning := false;
+    WebUIprocessRunning := false;
     DefaultPHPtimezone := -1;
     {$IFDEF MSWINDOWS}
     appdir := IncludeTrailingPathDelimiter(ExtractFilePath(application.ExeName));
@@ -2965,6 +2997,7 @@ begin
     logDirectory := appdir + 'log' + PathDelim;
     logFile := logDirectory + 'wrapper.log';
     TempDirectory := appdir + 'temp' + PathDelim;
+    CGItempDirectory := webserverdir + 'temp' + PathDelim;
     CacheDirectory := webserverdir + 'www' + PathDelim + 'frontend' + PathDelim + 'var' + PathDelim + 'cache' + PathDelim;
     try
       // DO NOT delete WAL/SHM files before opening - let SQLite handle them

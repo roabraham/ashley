@@ -35,7 +35,7 @@
         "index_files": ["index.html", "index.php"],
         "cgi_interpreter": "php/php-cgi.exe",
         "cgi_extensions": ["php"],
-        "cgi_temp_dir": "",
+        "cgi_temp_dir": "temp/cgi",
         "404_handler": "/not_found.php",
         "hide_files": []
     },
@@ -49,7 +49,10 @@
         "devtools_F12": false,
         "remote_debugging_port": -1,
         "runtime_style": "alloy",
-        "command_line_switches": {"disable-gpu": ""},
+        "command_line_switches": {
+            "disable-gpu": "",
+            "user-data-dir": "temp/userdata"
+        },
         "enable_downloads": true,
         "context_menu": {
             "enable_menu": true,
