@@ -1016,27 +1016,68 @@ begin
   {$ENDIF}
 end;
 
-{ TServiceWrapper.IsPortFree: Checks if a TCP port is available for binding. }
+{ TServiceWrapper.IsPortFree: Check for IPv4 and optional IPv6 availability. Returns True if port can be bound OR if protocol is completely unsupported by OS, False otherwise. }
 function TServiceWrapper.IsPortFree(APort: Integer): Boolean;
-var
-  S: LongInt;
-  Addr: TInetSockAddr;
-begin
-  Result := false;
-  S := fpSocket(AF_INET, SOCK_STREAM, 0);
-  if S = -1 then Exit;
-  try
-    // Set up the address structure
-    Addr.sin_family := AF_INET;
-    Addr.sin_port := htons(APort);
-    Addr.sin_addr.s_addr := htonl(LongWord(INADDR_ANY));
-    // If we can bind to it, it's free
-    if fpBind(S, @Addr, sizeof(Addr)) = 0 then
-      Result := true;
-  finally
-    // Always close the socket
-    CloseSocket(S);
+  { Helper: Try to bing port without blocking. }
+  function TryBind(Family: SmallInt): Boolean;
+  var
+    S: LongInt;
+    Addr4: TInetSockAddr;
+    Addr6: TInetSockAddr6;
+    OptVal: Integer;
+  begin
+    Result := False;
+    S := fpSocket(Family, SOCK_STREAM, 0);
+    if S = -1 then
+    begin
+      // If IPv6 socket creation fails, OS doesn't support IPv6 (ignore it -> True).
+      // If IPv4 socket creation fails, system socket error (fail check -> False).
+      Result := (Family = AF_INET6);
+      Exit;
+    end;
+    try
+      OptVal := 1;
+      // 1. Isolate IPv6 sockets from IPv4 to prevent dual-stack bind conflicts
+      if Family = AF_INET6 then
+      begin
+        {$IFDEF MSWINDOWS}
+        fpsetsockopt(S, 41 {IPPROTO_IPV6}, 27 {IPV6_V6ONLY}, @OptVal, SizeOf(OptVal));
+        {$ENDIF}
+        {$IFDEF UNIX}
+        fpsetsockopt(S, IPPROTO_IPV6, IPV6_V6ONLY, @OptVal, SizeOf(OptVal));
+        {$ENDIF}
+      end;
+      // 2. Prevent socket-hijacking on Windows (WSL2 / WinNAT port conflicts)
+      {$IFDEF MSWINDOWS}
+      fpsetsockopt(S, $FFFF {SOL_SOCKET}, $8000 {SO_EXCLUSIVEADDRUSE}, @OptVal, SizeOf(OptVal));
+      {$ENDIF}
+      // 3. Test bind availability
+      if Family = AF_INET then
+      begin
+        FillChar(Addr4, SizeOf(Addr4), 0);
+        Addr4.sin_family := AF_INET;
+        Addr4.sin_port := htons(Word(APort));
+        Addr4.sin_addr.s_addr := htonl(LongWord(INADDR_ANY));
+        Result := (fpBind(S, @Addr4, SizeOf(Addr4)) = 0);
+        Exit;
+      end;
+      FillChar(Addr6, SizeOf(Addr6), 0);
+      Addr6.sin6_family := AF_INET6;
+      Addr6.sin6_port := htons(Word(APort));
+      Result := (fpBind(S, @Addr6, SizeOf(Addr6)) = 0);
+    finally
+      CloseSocket(S);
+    end;
   end;
+begin
+  // Default value
+  Result := False;
+  // Guard 1: Sanity check port range
+  if (APort < 1) or (APort > 65535) then Exit;
+  // Guard 2: Must be free on IPv4
+  if not(TryBind(AF_INET)) then Exit;
+  // Guard 3: Must be free on IPv6 (unless host OS has IPv6 disabled entirely)
+  Result := TryBind(AF_INET6);
 end;
 
 { TServiceWrapper.HandleGlobalException: Global exception handler that logs error and terminates application. }
