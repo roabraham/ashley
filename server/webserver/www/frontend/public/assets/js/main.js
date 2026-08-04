@@ -144,7 +144,6 @@
      * Cached DOM element references. Populated once in initDOM().
      */
     const DOM = {
-        form: null,
         input: null,
         chatBox: null,
         submitBtn: null,
@@ -156,7 +155,7 @@
     let activeModalEl = null;
 
     // =============================================================================
-    // SECTION 2.5: THEME TOGGLE — Light/Dark Mode
+    // SECTION 2: THEME TOGGLE — Light/Dark Mode
     // =============================================================================
     // Persists the user's theme preference in localStorage under the key
     // 'chat_theme'. Values are stored UPPERCASE ('LIGHT' or 'DARK'),
@@ -295,7 +294,7 @@
     }
 
     // =============================================================================
-    // SECTION 3: TOKEN ESTIMATION & HISTORY MANAGEMENT
+    // SECTION 3: UTILITIES, CONFIG & MODAL HELPERS
     // =============================================================================
 
     /**
@@ -665,7 +664,7 @@
 
 
     // =============================================================================
-    // SECTION 3: TOKEN ESTIMATION & HISTORY MANAGEMENT
+    // SECTION 4: TOKEN ESTIMATION & HISTORY MANAGEMENT
     // =============================================================================
 
     /**
@@ -1185,7 +1184,7 @@
     }
 
     // =============================================================================
-    // SECTION 4: UI HELPER FUNCTIONS
+    // SECTION 5: UI HELPER FUNCTIONS
     // =============================================================================
 
     /**
@@ -1381,7 +1380,7 @@
     }
 
     // =============================================================================
-    // SECTION 5: STREAMING MODE — DIRECT LLAMA.CPP CONNECTION
+    // SECTION 6: STREAMING MODE — DIRECT LLAMA.CPP CONNECTION
     // =============================================================================
 
     /**
@@ -1607,7 +1606,7 @@
     }
 
     // =============================================================================
-    // SECTION 6: API COMMUNICATION
+    // SECTION 7: API COMMUNICATION
     // =============================================================================
 
     /**
@@ -1652,7 +1651,7 @@
     }
 
     // =============================================================================
-    // SECTION 7: MAIN FORM SUBMIT HANDLER
+    // SECTION 8: MAIN FORM SUBMIT HANDLER
     // =============================================================================
 
     /**
@@ -1870,7 +1869,7 @@
     }
 
     // =============================================================================
-    // SECTION 8: EVENT HANDLERS
+    // SECTION 9: EVENT HANDLERS
     // =============================================================================
 
     /** Auto-grow the textarea as the user types. */
@@ -1920,32 +1919,12 @@
         }
     }
 
-    /**
-     * Handle the form submit event.
-     *
-     * @param {Event} e
-     */
-    function handleSubmit(e) {
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        try {
-            handleFormSubmit();
-        } catch (err) {
-            console.error('[Form] Submit handler error:', err);
-            finishProcessing();
-        }
-        return false;
-    }
-
     // =============================================================================
-    // SECTION 9: INITIALIZATION
+    // SECTION 10: INITIALIZATION
     // =============================================================================
 
     /** Populate the DOM cache. */
     function initDOM() {
-        DOM.form        = document.getElementById('chat-form');
         DOM.input       = document.getElementById('user-input');
         DOM.chatBox     = document.getElementById('chat-box');
         DOM.importInput = document.getElementById('import-conversation-input');
@@ -2202,7 +2181,7 @@
     function init() {
         try {
             initDOM();
-            if (!DOM.form || !DOM.input || !DOM.chatBox) {
+            if (!DOM.input || !DOM.chatBox) {
                 console.error('[Init] Required DOM elements not found. Aborting.');
                 return;
             }
