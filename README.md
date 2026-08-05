@@ -43,8 +43,10 @@ ashley/                             # Project root (this directory)
 │  └─ Llama Service Wrapper/
 ├─ doc/                             # Source files of documentation
 │  ├─ frontend_doxygen.cfg          # DoxyGen config for frontend documentation
+│  ├─ gendoc.py                     # Quick and dirty Python script to generate MarkDown (*.md) documentation for Pascal (*.pas) files
 │  ├─ manager.pds                   # PasDoc config for Service Manager documentation
-│  └─ user_manual.md                # Source of user manual PDF
+│  ├─ user_manual.md                # Source of user manual PDF
+│  └─ wrapper.md                    # Source of Service Wrapper PDF
 ├─ LICENSE.md                       # Main license file
 ├─ media/                           # Application images and icons (PNG, ICO, JPG)
 ├─ README.md                        # This file
