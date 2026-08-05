@@ -113,6 +113,7 @@ The main window is primarily used for service control, tool execution, and acces
 * **Database Documentation > Personality Database**: opens the *Personality* database documentation.
 * **Frontend Documentation**: opens the frontend documentation in your default browser.
 * **Service Manager Documentation**: opens the developer documentation of the service manager.
+* **Service Wrapper Documentation**: opens the developer documentation of the service wrapper.
 * **User Manual**: opens this *user manual* document.
 * **About**: opens the *About* dialog showing the *application version*, *copyright*, and *license* information.
 
@@ -368,6 +369,10 @@ The **Frontend Documentation** option in the *Help* menu opens the *frontend doc
 ## Service Manager Documentation
 
 The **Service Manager Documentation** option in the *Help* menu opens the *developer documentation* of the Service Manager in your default web browser. This document describes all elements of the Service Manager's source code. This is intended for developers only.
+
+## Service Wrapper Documentation
+
+The **Service Wrapper Documentation** option in the *Help* menu opens the *developer documentation* of the Service Wrapper in your default PDF reader. This document describes all elements of the Service Wrapper's source code. This is intended for developers only.
 
 ---
 
