@@ -65,6 +65,8 @@ type
     FrontendDocMenu: TMenuItem;
     { Frontend documentation option in the system tray popup menu. }
     FrontendDocPopupMenu: TMenuItem;
+    ServiceWrapperDocPopupMenu: TMenuItem;
+    ServiceWrapperDocMenu: TMenuItem;
     { Service Manager documentation option in the system tray popup menu. }
     ServiceManagerDocPopupMenu: TMenuItem;
     { Service Manager documentation option in the main menu. }
@@ -177,6 +179,8 @@ type
     procedure ServiceManagerDocMenuClick(Sender: TObject);
     { Opens Service Manager documentation from popup menu. }
     procedure ServiceManagerDocPopupMenuClick(Sender: TObject);
+    procedure ServiceWrapperDocMenuClick(Sender: TObject);
+    procedure ServiceWrapperDocPopupMenuClick(Sender: TObject);
     { Opens settings form from popup menu. }
     procedure SettingsPopupMenuClick(Sender: TObject);
     { Opens Web UI from main menu. }
@@ -266,15 +270,17 @@ type
     docDir: AnsiString;
     { Path to the developer documentation directory. }
     devDocDir: AnsiString;
-    { Full path to the wrapper database documentation PDF. }
+    { Full path to the wrapper database documentation. }
     wrapperDBdocFile: AnsiString;
-    { Full path to the personality database documentation PDF. }
+    { Full path to the personality database documentation. }
     personalityDBdocFile: AnsiString;
-    { Full path to the frontend documentation HTML file. }
+    { Full path to the frontend documentation file. }
     frontendDocFile: AnsiString;
-    { Full path to the service manager documentation HTML file. }
+    { Full path to the service manager documentation file. }
     serviceManagerDocFile: AnsiString;
-    { Full path to the user manual PDF. }
+    { Full path to the service wrapper documentation file. }
+    serviceWrapperDocFile: AnsiString;
+    { Full path to the user manual. }
     userManualFile: AnsiString;
   end;
 
@@ -1043,6 +1049,18 @@ begin
   OpenFile(serviceManagerDocFile);
 end;
 
+//Open Service Wrapper documentation
+procedure TMainForm.ServiceWrapperDocMenuClick(Sender: TObject);
+begin
+  OpenFile(serviceWrapperDocFile);
+end;
+
+//Open Service Wrapper documentation
+procedure TMainForm.ServiceWrapperDocPopupMenuClick(Sender: TObject);
+begin
+  OpenFile(serviceWrapperDocFile);
+end;
+
 //Open Settings menu
 procedure TMainForm.SettingsPopupMenuClick(Sender: TObject);
 begin
@@ -1279,6 +1297,7 @@ begin
     personalityDBdocFile := devDocDir + 'database' + PathDelim + 'personality.pdf';
     frontendDocFile := devDocDir + 'frontend' + PathDelim + 'index.html';
     serviceManagerDocFile := devDocDir + 'manager' + PathDelim + 'index.html';
+    serviceWrapperDocFile := devDocDir + 'wrapper.pdf';
     userManualFile := docDir + 'user_manual.pdf';
     //Application settings
     Caption := trim(application.Title);
