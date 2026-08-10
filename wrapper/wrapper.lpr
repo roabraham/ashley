@@ -1020,6 +1020,9 @@ end;
 function TServiceWrapper.IsPortFree(APort: Integer): Boolean;
   { Helper: Try to bing port without blocking. }
   function TryBind(Family: SmallInt): Boolean;
+  const
+    IPPROTO_IPV6 = 41;
+    IPV6_V6ONLY = {$IFDEF MSWINDOWS}27{$ELSE}26{$ENDIF};
   var
     S: LongInt;
     Addr4: TInetSockAddr;
@@ -1038,18 +1041,10 @@ function TServiceWrapper.IsPortFree(APort: Integer): Boolean;
     try
       OptVal := 1;
       // 1. Isolate IPv6 sockets from IPv4 to prevent dual-stack bind conflicts
-      if Family = AF_INET6 then
-      begin
-        {$IFDEF MSWINDOWS}
-        fpsetsockopt(S, 41 {IPPROTO_IPV6}, 27 {IPV6_V6ONLY}, @OptVal, SizeOf(OptVal));
-        {$ENDIF}
-        {$IFDEF UNIX}
-        fpsetsockopt(S, IPPROTO_IPV6, IPV6_V6ONLY, @OptVal, SizeOf(OptVal));
-        {$ENDIF}
-      end;
+      if Family = AF_INET6 then fpsetsockopt(S, IPPROTO_IPV6, IPV6_V6ONLY, @OptVal, SizeOf(OptVal));
       // 2. Prevent socket-hijacking on Windows (WSL2 / WinNAT port conflicts)
       {$IFDEF MSWINDOWS}
-      fpsetsockopt(S, $FFFF {SOL_SOCKET}, $8000 {SO_EXCLUSIVEADDRUSE}, @OptVal, SizeOf(OptVal));
+      fpsetsockopt(S, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, @OptVal, SizeOf(OptVal));
       {$ENDIF}
       // 3. Test bind availability
       if Family = AF_INET then

@@ -9,9 +9,9 @@
         <Filename Value="wrapper.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="2410"/>
-        <CursorPos X="8" Y="2428"/>
-        <UsageCount Value="109"/>
+        <TopLine Value="1048"/>
+        <CursorPos X="11" Y="1058"/>
+        <UsageCount Value="110"/>
         <Loaded Value="True"/>
       </Unit>
       <Unit>
@@ -54,93 +54,6 @@
     <JumpHistory HistoryIndex="29">
       <Position>
         <Filename Value="wrapper.lpr"/>
-        <Caret Line="1048" Column="15" TopLine="1036"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1026" Column="27" TopLine="1015"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1063" Column="27" TopLine="1074"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1095" Column="7" TopLine="1083"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1040" Column="32" TopLine="1026"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="55" Column="81" TopLine="35"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="56" Column="11" TopLine="36"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="66" Column="66" TopLine="46"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="67" Column="15" TopLine="47"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="85" Column="77" TopLine="65"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="168" Column="62" TopLine="148"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="169" Column="14" TopLine="149"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="226" Column="54" TopLine="208"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="265" Column="55" TopLine="247"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="298" Column="30" TopLine="278"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="315" Column="88" TopLine="295"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="971" Column="66" TopLine="951"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="972" Column="45" TopLine="952"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="980" Column="12" TopLine="960"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="983" Column="43" TopLine="963"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="995" Column="42" TopLine="976"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
         <Caret Line="2244" Column="44" TopLine="2225"/>
       </Position>
       <Position>
@@ -168,6 +81,92 @@
       <Position>
         <Filename Value="wrapper.lpr"/>
         <Caret Line="1081" Column="5" TopLine="1064"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2421" Column="39" TopLine="2411"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="274" Column="67" TopLine="264"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="275" Column="24" TopLine="264"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1044" Column="76" TopLine="1037"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1042" Column="12" TopLine="1037"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1044" Column="76" TopLine="1037"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1042" Column="12" TopLine="1037"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1044" Column="76" TopLine="1037"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1074" TopLine="1056"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1023" Column="44" TopLine="1019"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1024" Column="6" TopLine="1019"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1033" Column="43" TopLine="1018"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2241" Column="56" TopLine="2222"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="2422" Column="35" TopLine="2400"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="274" Column="67" TopLine="256"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="275" Column="24" TopLine="257"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1065" Column="51" TopLine="1049"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="13" Column="21"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="274" Column="67" TopLine="256"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="275" Column="24" TopLine="257"/>
       </Position>
     </JumpHistory>
     <RunParams>
