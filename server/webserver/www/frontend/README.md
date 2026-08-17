@@ -88,8 +88,7 @@ frontend/
 │  ├─ Entity/ (.gitignore placeholder)
 │  ├─ Repository/ (.gitignore placeholder)
 │  └─ Service/
-│     ├─ ChatConfigService.php
-│     └─ LlmClient.php
+│     └─ ChatConfigService.php
 ├─ symfony.lock
 ├─ templates/
 │  ├─ base.html.twig         ← Default Symfony template (unused)
@@ -115,7 +114,6 @@ frontend/
 Services are auto-discovered from `src/` via `config/services.yaml`.
 
 * **`App\Service\ChatConfigService`**: Loads LLM and persona configuration from `wrapper.json`, `wrapper.db`, `personality.json`, `personality.db`. Instantiated directly (no Symfony DI container).
-* **`App\Service\LlmClient`**: Reusable HTTP client for LLM and embedding proxy requests.
 
 ---
 
