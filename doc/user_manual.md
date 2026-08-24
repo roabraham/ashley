@@ -314,7 +314,7 @@ The *About* dialog is accessible from the *Help* menu (both in the main window a
 ## Directory Structure
 
 * **`manager.exe`**: this is the Ashley *Service Manager*. It runs from the *system tray*, manages the built-in services and displays the *Settings window*.
-* **`wrapper.exe`**: this is the background service that runs the AI engine. It manages the *LLM process*, *embedding process*, *web server* and *proxy*.
+* **`wrapper.exe`**: this is the background service manager that runs and monitors the AI engine, web server, PHP runtime and API proxy.
 * **`llama` folder**: this folder contains the *LLM engine* binaries bundled with Ashley. Do not modify anything inside this folder.
   - **`cpu` subdirectory**: contains the CPU-only engine that works on every PC.
   - **`cuda12` subdirectory**: contains the *NVIDIA CUDA* engine that requires *CUDA 12.x toolkit*.
@@ -323,11 +323,11 @@ The *About* dialog is accessible from the *Help* menu (both in the main window a
   - **`radeon` subdirectory**: contains the *Radeon* engine but it is not tested yet.
 * **`model` folder**: your AI *model* files with the `.gguf` extension are stored here. Place your *conversational* models directly in this folder.
   - **`model\embedding` folder**: *embedding model* files are stored here. Embedding models are used for behavior matching.
-* **webserver folder**: this folder contains the *NGINX web server*, *PHP runtime*, and *embedded web client*. Do not modify files in this folder unless you know what you are doing.
+* **webserver folder**: this folder contains the *NGINX web server*, *PHP runtime*, and *web chatbot application*. Do not modify files in this folder unless you know what you are doing.
   - **`webserver\webclient.exe`**: this is the *CEF*-based chat window application. It is a standalone browser window that loads the chat interface.
   - **`webserver\settings.json`**: this file contains the web client settings including window size and web server configuration.
   - **`webserver\conf` folder**: this folder contains web server configuration files.
-  - **`webserver\www` folder**: this folder contains the web chatbot files including *HTML*, *CSS*, and *JavaScript*.
+  - **`webserver\www` folder**: this folder contains the web chatbot application files (Symfony/PHP).
 * **`config` folder**: this folder contains *JSON* configuration files. Advanced users can modify these files directly if needed.
 * **`database` folder**: this folder contains *SQLite* databases. Do not delete or modify anything inside this folder while Ashley is running.
   - **`database\wrapper.db`**: this database stores the background service configuration including engine settings and parameters.

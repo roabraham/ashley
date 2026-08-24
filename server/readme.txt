@@ -107,7 +107,7 @@ Restarting the AI service: right-click the tray icon and choose `Restart service
 --------------------------------------------
 
 * `manager.exe`: the Ashley Settings Manager (system tray + settings GUI)
-* `wrapper.exe`: the background service that runs the AI engine
+* `wrapper.exe`: the background service manager that runs and monitors the AI engine, web server, PHP runtime and API proxy
 * `llama\`: LLM engine binaries bundled with Ashley (do not modify)
 - `cpu\`: CPU-only engine (works on every PC)
 - `cuda12\`: NVIDIA CUDA engine (requires CUDA 12.x toolkit)
@@ -116,14 +116,15 @@ Restarting the AI service: right-click the tray icon and choose `Restart service
 - `radeon\`: Radeon engine (not tested yet!)
 * `model\`: your AI model files (.gguf) are stored here
 - `embedding\`: embedding model files are stored here
-* `webserver\`: NGINX web server + PHP runtime + embedded web client
+* `webserver\`: NGINX web server + PHP runtime + web chatbot application
 - `webclient.exe`: CEF-based chat window (standalone)
-- `settings.json`: Web client settings
+- `settings.json`: web client settings (advanced)
 - `conf\`: web server configuration
-- `www\`: web chatbot files (HTML, CSS, JS, PHP)
+- `www\`: web chatbot application files (Symfony/PHP)
 * `config\`: JSON configuration files (advanced)
 * `database\`: SQLite databases (advanced - do not modify)
-- `wrapper.db`: default background service settings (SQLite database)
+- `wrapper.db`: background service settings (SQLite database)
+- `personality.db`: chatbot personality and behavior data (SQLite database)
 * `log\`: log files
 * `temp\`: temporary files
 
