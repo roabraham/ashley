@@ -531,7 +531,7 @@ object SettingsForm: TSettingsForm
             ReadOnly = True
             ShowHint = True
             Style = csDropDownList
-            TabOrder = 2
+            TabOrder = 4
           end
           object LlamaEngineComboBox: TComboBox
             Left = 8
@@ -563,7 +563,7 @@ object SettingsForm: TSettingsForm
             Height = 33
             Hint = 'Select device for engine to use. This choice highly affects performance.'
             Top = 120
-            Width = 725
+            Width = 566
             Anchors = [akTop, akLeft, akRight]
             AutoSize = False
             Enabled = False
@@ -584,7 +584,7 @@ object SettingsForm: TSettingsForm
             Width = 150
             Anchors = [akTop, akRight]
             Caption = 'Add Model...'
-            TabOrder = 3
+            TabOrder = 5
             OnClick = AddModelButtonClick
           end
           object EnableLLMcheckBox: TCheckBox
@@ -596,8 +596,19 @@ object SettingsForm: TSettingsForm
             Caption = 'Enable LLM server'
             Checked = True
             State = cbChecked
-            TabOrder = 4
+            TabOrder = 3
             OnChange = EnableLLMcheckBoxChange
+          end
+          object LoadDevicesButton: TButton
+            Left = 583
+            Height = 33
+            Hint = 'Load device list'
+            Top = 120
+            Width = 150
+            Anchors = [akTop, akRight]
+            Caption = 'Load Devices...'
+            TabOrder = 2
+            OnClick = LoadDevicesButtonClick
           end
         end
         object ParameterGroupBox: TGroupBox
@@ -632,7 +643,7 @@ object SettingsForm: TSettingsForm
             )
             ColWidths = (
               250
-              475
+              471
             )
           end
           object AddButton: TButton
@@ -734,7 +745,7 @@ object SettingsForm: TSettingsForm
           )
           ColWidths = (
             250
-            492
+            467
           )
         end
         object AddEmbeddingParameterButton: TButton
@@ -2044,7 +2055,7 @@ object SettingsForm: TSettingsForm
     Transaction = LlamaTransaction
     ReadOnly = True
     SQL.Strings = (
-      'SELECT id AS id, CONCAT(name, '': '', description) AS name, server AS server, proxy_port AS proxy_port, proxy_timeout AS proxy_timeout, max_proxy_connections AS max_proxy_connections, max_package_size AS max_package_size, cli AS cli FROM config ORDER BY priority DESC, name ASC, id ASC'
+      'SELECT id AS id, CONCAT(name, '': '', description) AS name, server AS server, uses_gpu AS uses_gpu, proxy_port AS proxy_port, proxy_timeout AS proxy_timeout, max_proxy_connections AS max_proxy_connections, max_package_size AS max_package_size, cli AS cli FROM config ORDER BY priority DESC, name ASC, id ASC'
     )
     Params = <>
     Macros = <>

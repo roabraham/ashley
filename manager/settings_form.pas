@@ -19,6 +19,8 @@ type
     ID: string;
     { Path to the server executable binary. }
     ServerBinary: ansistring;
+    { Determines whether the engine uses CPU or GPU for processing. }
+    UsesGPU: integer;
     { Proxy port number configured for this engine. }
     ProxyPort: string;
     { Timeout in seconds for proxy connections. }
@@ -86,6 +88,8 @@ type
 
   { TSettingsForm: settings dialog form for configuring LLM engines, proxy settings, models, and personas. }
   TSettingsForm = class(TForm)
+    { Button to load device list. }
+    LoadDevicesButton: TButton;
     { Checkbox to enable or disable the LLM service. }
     EnableLLMcheckBox: TCheckBox;
     { Button to clear the temporary directory contents. }
@@ -314,6 +318,8 @@ type
     function GetImageFileName(ImageControl: TImage): string;
     { Converts a stream to its string representation. }
     function StreamToString(Stream: TStream): string;
+    { Handles device loader button click. }
+    procedure LoadDevicesButtonClick(Sender: TObject);
     { Enables or disables LLM parameters based on checkbox. }
     procedure EnableLLMcheckBoxChange(Sender: TObject);
     { Clears all temporary files and directories. }
@@ -359,6 +365,8 @@ type
     procedure LlamaEngineComboBoxChange(Sender: TObject);
     { Enables or disables proxy service settings based on port input. }
     procedure LLMproxyServicePortChange(Sender: TObject);
+    { Loads the list of available devices for the selected engine. }
+    procedure LoadDevices(const ServerBinary: AnsiString; const ClearList: Boolean = false);
     { Loads default configuration values for the selected engine. }
     procedure LoadDefaultConfig;
     { Loads configuration data from wrapper.json file. }
@@ -514,6 +522,21 @@ begin
     end;
     OpenDocument(FolderNameFixed);
     Result := true;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+//Load device list
+procedure TSettingsForm.LoadDevicesButtonClick(Sender: TObject);
+var engineItem: TEngineComboBoxItem;
+begin
+  try
+    if LlamaEngineComboBox.ItemIndex < 0 then Exit;
+    engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
+    if not(Assigned(engineItem)) then Exit;
+    LoadDevices(engineItem.ServerBinary, true);
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
@@ -1110,17 +1133,114 @@ begin
   end;
 end;
 
+//Load device list
+procedure TSettingsForm.LoadDevices(const ServerBinary: AnsiString; const ClearList: Boolean = false);
+var
+  ServerBinaryFixed: AnsiString;
+  SL: TStringList;
+  i, j: Integer;
+  output_line: String;
+  foundDeviceHeader: Boolean;
+  deviceItem: TDeviceComboBoxItem;
+begin
+  try
+    //Check parameters
+    ServerBinaryFixed := trim(ServerBinary);
+    if ServerBinaryFixed = '' then
+    begin
+      MessageDlg('Error', 'Engine path not defined!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    chdir(appdir);
+    if not(FileExists(ServerBinaryFixed)) then
+    begin
+      MessageDlg('Error', 'Server binary does not exist: ' + ServerBinaryFixed, mtError, [mbOK], 0);
+      Exit;
+    end;
+    //Load devices
+    foundDeviceHeader := false;
+    SL := TStringList.Create;
+    try
+      LLMserverProcess.Executable := ServerBinaryFixed;
+      LLMserverProcess.CurrentDirectory := ExtractFilePath(ServerBinaryFixed);
+      LLMserverProcess.Execute;
+      SL.LoadFromStream(LLMserverProcess.Output);
+      if LLMserverProcess.Running then
+      begin
+        LLMserverProcess.Terminate(0);
+        LLMserverProcess.WaitOnExit;
+      end;
+      LLMserverProcess.Active := false;
+      if ClearList then ClearDeviceComboBox;
+      if SL.Count >= 1 then
+      begin
+        try
+          for i := 0 to SL.Count - 1 do
+          begin
+            output_line := trim(SL[i]);
+            if not(foundDeviceHeader) then
+            begin
+              if Pos('available devices:', lowercase(output_line)) > 0 then
+              begin
+                DeviceComboBox.Items.BeginUpdate;
+                foundDeviceHeader := true;
+              end;
+              continue;
+            end;
+            j := Pos(':', output_line);
+            if not(j > 0) then continue;
+            deviceItem := TDeviceComboBoxItem.Create;
+            try
+              deviceItem.ID := trim(Copy(output_line, 1, j - 1));
+              deviceItem.Title := deviceItem.ID + ': ' + trim(Copy(output_line, j + 1, length(output_line)));
+              if (length(deviceItem.ID) >= 1) and (length(deviceItem.Title) >= 1) then
+              begin
+                DeviceComboBox.Items.AddObject(deviceItem.Title, deviceItem);
+                deviceItem := nil;
+              end;
+            finally
+              if Assigned(deviceItem) then FreeAndNil(deviceItem);
+            end;
+          end;
+        finally
+          if foundDeviceHeader then DeviceComboBox.Items.EndUpdate;
+        end;
+        if DeviceComboBox.Items.Count >= 1 then
+        begin
+          DeviceComboBox.ItemIndex := 0;
+          DeviceLabel.Enabled := true;
+          DeviceComboBox.Enabled := true;
+        end;
+      end;
+      if ClearList then
+      begin
+        if not(DeviceComboBox.Items.Count >= 1) then
+        begin
+          DeviceComboBox.Items.Add('N/A');
+          DeviceComboBox.ItemIndex := 0;
+        end;
+      end;
+    finally
+      FreeAndNil(SL);
+    end;
+  except
+    on x: Exception do
+    begin
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+      chdir(appdir);
+    end;
+  end;
+end;
+
 //Load default settings
 procedure TSettingsForm.LoadDefaultConfig;
 var
   engineItem: TEngineComboBoxItem;
-  deviceItem: TDeviceComboBoxItem;
-  configID, i, j: Integer;
+  configID: Integer;
   modelFromDB, embeddingModelFromDB: String;
   paramFound, embeddingParamFound: boolean;
-  paramName, paramTitle, paramType, configName, configValue, output_line: String;
-  foundDeviceEntry, foundDeviceHeader: boolean;
-  SL: TStringList;
+  paramName, paramTitle, paramType, configName, configValue: String;
+  foundDeviceEntry: boolean;
 begin
   try
     saveSettingsError := false;
@@ -1136,7 +1256,7 @@ begin
     llmProxyLocation := '/llamacpp/';
     if LlamaEngineComboBox.ItemIndex < 0 then Exit;
     engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
-    if engineItem = nil then Exit;
+    if not(Assigned(engineItem)) then Exit;
     configID := StrToIntDef(engineItem.ID, 0);
     if configID = 0 then Exit;
     if length(engineItem.ProxyPort) >= 1 then
@@ -1147,6 +1267,7 @@ begin
       LLMproxyServiceMaxConnections.Value := engineItem.ProxyMaxConnections;
     if engineItem.ProxyMaxPackageSize >= 1 then
       LLMproxyServiceMaxPackageSize.Value := engineItem.ProxyMaxPackageSize;
+    LoadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
     ClearDeviceComboBox;
     ParameterListEditor.Strings.Clear;
     EmbeddingParameterListEditor.Strings.Clear;
@@ -1171,7 +1292,6 @@ begin
     paramFound := false;
     embeddingParamFound := false;
     foundDeviceEntry := false;
-    foundDeviceHeader := false;
     while not(ConfigDataQuery.EOF) do
     begin
       paramName := trim(ConfigDataQuery.FieldByName('name').AsString);
@@ -1240,62 +1360,7 @@ begin
     WebServerConfigQuery.Close;
     PHPtimezoneCombobox.ItemIndex := DefaultPHPtimezone;
     try
-      if foundDeviceEntry then
-      begin
-        SL := TStringList.Create;
-        try
-          chdir(appdir);
-          LLMserverProcess.Executable := engineItem.ServerBinary;
-          LLMserverProcess.CurrentDirectory := ExtractFilePath(engineItem.ServerBinary);
-          LLMserverProcess.Execute;
-          SL.LoadFromStream(LLMserverProcess.Output);
-          if LLMserverProcess.Running then
-          begin
-            LLMserverProcess.Terminate(0);
-            LLMserverProcess.WaitOnExit;
-          end;
-          LLMserverProcess.Active := false;
-          if SL.Count >= 1 then
-          begin
-            try
-              for i := 0 to SL.Count - 1 do
-              begin
-                output_line := trim(SL[i]);
-                if not(foundDeviceHeader) then
-                begin
-                  if Pos('available devices:', lowercase(output_line)) > 0 then
-                  begin
-                    DeviceComboBox.Items.BeginUpdate;
-                    foundDeviceHeader := true;
-                  end;
-                  continue;
-                end;
-                j := Pos(':', output_line);
-                if not(j > 0) then continue;
-                deviceItem := TDeviceComboBoxItem.Create;
-                deviceItem.ID := trim(Copy(output_line, 1, j - 1));
-                deviceItem.Title := deviceItem.ID + ': ' + trim(Copy(output_line, j + 1, length(output_line)));
-                if (length(deviceItem.ID) >= 1) and (length(deviceItem.Title) >= 1) then
-                begin
-                  DeviceComboBox.Items.AddObject(deviceItem.Title, deviceItem);
-                  continue;
-                end;
-                FreeAndNil(deviceItem);
-              end;
-            finally
-              if foundDeviceHeader then DeviceComboBox.Items.EndUpdate;
-            end;
-            if DeviceComboBox.Items.Count >= 1 then
-            begin
-              DeviceComboBox.ItemIndex := 0;
-              DeviceLabel.Enabled := true;
-              DeviceComboBox.Enabled := true;
-            end;
-          end;
-        finally
-          FreeAndNil(SL);
-        end;
-      end;
+      if foundDeviceEntry then LoadDevices(engineItem.ServerBinary, false);
       if not(DeviceComboBox.Items.Count >= 1) then
       begin
         DeviceComboBox.Items.Add('N/A');
@@ -2009,9 +2074,8 @@ var
   ImageJSONList: TStringList;
   ImageBase64: String;
   ImageStream: TMemoryStream;
-  ImageFileName: string;
   procedure ProcessImage(const JSONStr: AnsiString; TargetImage: TImage);
-    var ImageFileName: string;
+    var ImageFileName: AnsiString;
     begin
       TargetImage.AutoSize := False;
       TargetImage.Proportional := True;
@@ -2136,19 +2200,33 @@ end;
 
 //Handle LLM engine change
 procedure TSettingsForm.LlamaEngineComboBoxChange(Sender: TObject);
+var engineItem: TEngineComboBoxItem;
 begin
   try
-    if canHandleEngineChange then
+    if not(canHandleEngineChange) then Exit;
+    if MessageDlg(
+         'Load Defaults',
+         'Load default configuration for the selected engine?',
+         mtConfirmation,
+         [mbYes, mbNo],
+         0
+       ) = mrYes then
     begin
-      if MessageDlg(
-           'Load Defaults',
-           'Load default configuration for the selected engine?',
-           mtConfirmation,
-           [mbYes, mbNo],
-           0
-         ) = mrYes then
-        LoadDefaultConfig;
+      LoadDefaultConfig;
+      Exit;
     end;
+    if LlamaEngineComboBox.ItemIndex < 0 then Exit;
+    engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
+    if not(Assigned(engineItem)) then Exit;
+    if engineItem.UsesGPU = 0 then
+    begin
+      LoadDevicesButton.Enabled := false;
+      ClearDeviceComboBox;
+      DeviceComboBox.Items.Add('N/A');
+      DeviceComboBox.ItemIndex := 0;
+      Exit;
+    end;
+    LoadDevicesButton.Enabled := true;
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
@@ -3023,6 +3101,7 @@ begin
           item := TEngineComboBoxItem.Create;
           item.ID := trim(LlamaQuery.FieldByName('id').AsString);
           item.ServerBinary := ServerFilePath;
+          item.UsesGPU := StrToIntDef(trim(LlamaQuery.FieldByName('uses_gpu').AsString), 0);
           item.ProxyPort := trim(LlamaQuery.FieldByName('proxy_port').AsString);
           item.ProxyTimeout := StrToIntDef(trim(LlamaQuery.FieldByName('proxy_timeout').AsString), 1);
           item.ProxyMaxConnections := StrToIntDef(trim(LlamaQuery.FieldByName('max_proxy_connections').AsString), 1);
