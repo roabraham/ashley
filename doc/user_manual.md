@@ -165,7 +165,7 @@ This is the first and most important tab. It configures the core engine (for bot
   * **HIP Radeon**: requires a *Radeon GPU* with *ROCm* support. Windows support is experimental.
     The engine choice highly affects performance. Select the engine that matches your hardware.
 * **Device**: a drop-down list that lets you select which specific device (*GPU*) the *LLM* and/or *embedding engine* should use. When you select an engine that supports multiple devices, the application queries the engine binary for available devices and populates this list. *N/A* will be selected for CPU or when device selection is not applicable. This choice also highly affects performance.
-* **Load Devices**: runs the query for the selected engine to create the list of the supported devices in the device combobox.
+* **Reload Devices**: runs the query for the selected engine to recreate the list of the available devices in the device combobox.
 * **Enable LLM server**: a checkbox that lets you enable or disable *LLM server*. Disabling LLM server may significantly improve response time but only rule-based responses will be returned (if embedding engine is enabled). This means a significant loss in the intelligence.
 * **Model**: a drop-down list that lets you select which `.gguf` model file the *LLM server* will load. The list is populated from the `model/` folder. Only one model can be selected at a time. The selected model determines the AI's capabilities and response quality.
 * **Add Model**: opens a file dialog to import a new `.gguf` model file into the `model/` folder. The file is copied into the model directory, and its name is sanitized (special characters and spaces are replaced with underscores). After importing, the model appears in the Model drop-down list.

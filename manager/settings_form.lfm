@@ -599,16 +599,16 @@ object SettingsForm: TSettingsForm
             TabOrder = 3
             OnChange = EnableLLMcheckBoxChange
           end
-          object LoadDevicesButton: TButton
+          object ReloadDevicesButton: TButton
             Left = 583
             Height = 33
-            Hint = 'Load device list'
+            Hint = 'Reload the list of available devices'
             Top = 120
             Width = 150
             Anchors = [akTop, akRight]
-            Caption = 'Load Devices...'
+            Caption = 'Reload Devices'
             TabOrder = 2
-            OnClick = LoadDevicesButtonClick
+            OnClick = ReloadDevicesButtonClick
           end
         end
         object ParameterGroupBox: TGroupBox
