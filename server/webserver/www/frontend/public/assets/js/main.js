@@ -121,6 +121,8 @@
         streamingController: null,
         streamingMessageDiv: null,
         lastUserMessageDiv: null,
+        lastUserMessageText: '',
+        streamingAssistantMessage: '',
         userStoppedStream: false,
         memoryMode: DEFAULT_CONFIG.MEMORY_MODE,
         responseMode: DEFAULT_CONFIG.RESPONSE_MODE,
@@ -1463,6 +1465,7 @@
         // (result.done) cannot both fire the caller's callback. (FIX-BUG-1)
         let completed = false;
         let assistantMessage = '';
+        AppState.streamingAssistantMessage = '';
 
         // Create the streaming message bubble.
         const messageDiv = document.createElement('div');
@@ -1488,7 +1491,7 @@
             try {
                 const dots = messageDiv.querySelector('.dots');
                 if (dots) { dots.style.display = 'none'; }
-                const shouldSave = (assistantMessage.length > 0 && (!AppState.userStoppedStream));
+                const shouldSave = (assistantMessage.length > 0);
                 if (shouldSave) {
                     AppState.chatHistory.push({ role: 'user', content: userMessage });
                     AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
@@ -1507,6 +1510,8 @@
                         try { finishProcessing(); } catch (fpErr) { /* ignore */ }
                     }
                 }
+                AppState.streamingAssistantMessage = '';
+                AppState.lastUserMessageText = '';
             } catch (e) {
                 console.warn('[Stream] Finalise error:', e.message);
                 try { finishProcessing(); } catch (fpErr) { /* ignore */ }
@@ -1532,6 +1537,7 @@
                 const content = delta && typeof delta.content === 'string' ? delta.content : '';
                 if (content.length > 0) {
                     assistantMessage += content;
+                    AppState.streamingAssistantMessage = assistantMessage;
                     const contentSpan = messageDiv.querySelector('.stream-content');
                     if (contentSpan) {
                         contentSpan.innerHTML = formatMessageText(assistantMessage);
@@ -1682,6 +1688,7 @@
         }
         const userMsgDiv = appendMessage('user', message);
         AppState.lastUserMessageDiv = userMsgDiv;
+        AppState.lastUserMessageText = message;
         DOM.input.value = '';
         DOM.input.classList.remove('is-invalid');
         DOM.input.style.height = 'auto';
@@ -1834,13 +1841,16 @@
         if (!AppState.isProcessing) { return; }
         AppState.userStoppedStream = true;
         abortActiveStream();
-        if (AppState.streamingMessageDiv && AppState.streamingMessageDiv.parentNode) {
-            AppState.streamingMessageDiv.parentNode.removeChild(AppState.streamingMessageDiv);
+        let partialContent = (AppState.streamingAssistantMessage || '').trim();
+        let userText = (AppState.lastUserMessageText || '').trim();
+        if (partialContent.length > 0 && userText.length > 0) {
+            AppState.chatHistory.push({ role: 'user', content: userText });
+            AppState.chatHistory.push({ role: 'assistant', content: partialContent });
+            saveHistoryToStorage();
         }
+        AppState.streamingAssistantMessage = '';
+        AppState.lastUserMessageText = '';
         AppState.streamingMessageDiv = null;
-        if (AppState.lastUserMessageDiv && AppState.lastUserMessageDiv.parentNode) {
-            AppState.lastUserMessageDiv.parentNode.removeChild(AppState.lastUserMessageDiv);
-        }
         AppState.lastUserMessageDiv = null;
         removeThinkingMessage();
         appendMessage('chatbot', 'Request canceled by user.', null, 'cancel-message');
