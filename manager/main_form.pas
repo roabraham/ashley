@@ -661,6 +661,8 @@ begin
             Inc(WaitCount);
           end;
         end;
+        //Wait for 1 second before restarting services
+        Sleep(1000);
         LLMserverProcess.Active := false;
         LLMserverProcess.Parameters.Clear;
         LLMserverProcess.CommandLine := '';
