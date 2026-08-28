@@ -1801,7 +1801,7 @@
                         appendMessage('chatbot', videoReply);
                         if (AppState.responseMode === 2) {
                             AppState.chatHistory.push({ role: 'user',      content: message });
-                            AppState.chatHistory.push({ role: 'assistant', content: videoReply });
+                            AppState.chatHistory.push({ role: 'assistant', content: '*#LOOP_VIDEO* ' + videoReply });
                             saveHistoryToStorage();
                         }
                     }
@@ -1813,7 +1813,7 @@
                 appendMessage('chatbot', actionReply, action);
                 if (AppState.responseMode === 2 && actionReply.length > 0) {
                     AppState.chatHistory.push({ role: 'user',      content: message });
-                    AppState.chatHistory.push({ role: 'assistant', content: actionReply });
+                    AppState.chatHistory.push({ role: 'assistant', content: '*' + action + '* ' + actionReply });
                     saveHistoryToStorage();
                 }
                 finishProcessing();
