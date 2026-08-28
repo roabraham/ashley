@@ -9,8 +9,7 @@
         <Filename Value="wrapper.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="1050"/>
-        <CursorPos X="11" Y="1058"/>
+        <CursorPos Y="22"/>
         <UsageCount Value="110"/>
         <Loaded Value="True"/>
       </Unit>
@@ -52,60 +51,6 @@
       </Unit>
     </Units>
     <JumpHistory HistoryIndex="29">
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="2244" Column="44" TopLine="2225"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="2425" Column="29" TopLine="2411"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1897" Column="39" TopLine="1879"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="274" Column="17" TopLine="256"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="275" Column="24" TopLine="257"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1081" Column="5" TopLine="1064"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="2421" Column="39" TopLine="2411"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="274" Column="67" TopLine="264"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="275" Column="24" TopLine="264"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1044" Column="76" TopLine="1037"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1042" Column="12" TopLine="1037"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1044" Column="76" TopLine="1037"/>
-      </Position>
       <Position>
         <Filename Value="wrapper.lpr"/>
         <Caret Line="1042" Column="12" TopLine="1037"/>
@@ -167,6 +112,60 @@
       <Position>
         <Filename Value="wrapper.lpr"/>
         <Caret Line="275" Column="24" TopLine="257"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1068" Column="43" TopLine="1054"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="482" Column="22" TopLine="471"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="729" Column="28" TopLine="710"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="746" Column="30" TopLine="727"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="481" Column="6" TopLine="463"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="710" Column="33" TopLine="704"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="58" Column="24" TopLine="52"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="57" Column="26" TopLine="52"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="58" Column="24" TopLine="52"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="637" Column="136" TopLine="626"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="50" TopLine="49"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="73" TopLine="60"/>
       </Position>
     </JumpHistory>
     <RunParams>

@@ -12,6 +12,14 @@ uses
   {$ENDIF}
   Classes, SysUtils, CustApp, SQLDB, SQLite3Conn, fpjson, jsonparser, Process, StrUtils, md5, sockets, ssockets;
 
+const
+  { LLM_TIMEOUT_THRESHOLD: Seconds before proxy timeout to trigger early partial response. }
+  LLM_TIMEOUT_THRESHOLD = 3;
+  { MIN_LLM_TIMEOUT_FOR_THRESHOLD: Minimum proxy timeout in seconds to enable early timeout behavior. }
+  MIN_LLM_TIMEOUT_FOR_THRESHOLD = 10;
+  { LLM_TIMEOUT_WARNING: Suffix appended to incomplete conversational responses on timeout. }
+  LLM_TIMEOUT_WARNING = 'LLM TIMEOUT REACHED';
+
 {$IFDEF MSWINDOWS}
 type
   { JOBOBJECT_BASIC_LIMIT_INFORMATION: Windows Job Object limit information structure for process job management. }
@@ -469,10 +477,13 @@ var
   DataNode, ContentNode, ValidationNode: TJSONData;
   ChunkStartTime: TDateTime;
   ElapsedSeconds, CurrentChunkTimeout: Double;
+  TimeoutWarning, TimeoutReached: Boolean;
   CleanReceived, FinalEndpoint: AnsiString;
   FinalTargetPort: Integer;
 begin
   FLlamaSocket := -1;
+  TimeoutWarning := False;
+  TimeoutReached := False;
   if FClientHandle = -1 then Exit; //If handle is dead, exit
   FillChar(Buffer, SizeOf(Buffer), 0);
   RequestBody := '';
@@ -625,9 +636,17 @@ begin
         CurrentChunkTimeout := 10.0; // Start with 10s for first chunk
         while not(Terminated) do
         begin
+          if (FProxyTimeout >= MIN_LLM_TIMEOUT_FOR_THRESHOLD) and ((Now - FStartTime) * 86400 >= (FProxyTimeout - LLM_TIMEOUT_THRESHOLD)) then
+          begin
+            WriteLn('[WORKER] LLM timeout reached, sending partial response.');
+            TimeoutWarning := True;
+            TimeoutReached := True;
+            Break;
+          end;
           if (Now - FStartTime) * 86400 > FProxyTimeout then
           begin
             WriteLn('[WORKER] Global timeout reached.');
+            TimeoutReached := True;
             Break;
           end;
           ChunkStartTime := Now;
@@ -643,7 +662,8 @@ begin
             if ElapsedSeconds >= (CurrentChunkTimeout - 0.1) then
             begin
               WriteLn('[WORKER] Llama server stalled.');
-              Line := '{"error": "Llama server stalled"}';
+              TimeoutWarning := True;
+              TimeoutReached := True;
               Break;
             end;
             Sleep(10);
@@ -688,23 +708,23 @@ begin
         end;
         // 4. Final Response Construction
         WriteLn('[WORKER] Response received from ', FinalTargetPort);
-        if not(FullContent = '') then
-        begin
-          if (FullContent[1] = '{') or (FinalEndpoint = FTargetEmbeddingEndpoint) then //It's already a JSON (Embedding)
-            Line := FullContent
-          else
-          begin
-            // Wrap conversational content back into JSON
-            if not(Assigned(LastObject)) then
-              LastObject := TJSONObject.Create(['choices', TJSONArray.Create([TJSONObject.Create(['index', 0])])]);
-            if Assigned(LastObject.FindPath('choices[0].delta')) then
-              TJSONObject(LastObject.FindPath('choices[0]')).Delete('delta');
-            TJSONObject(LastObject.FindPath('choices[0]')).Add('message', TJSONObject.Create(['role', 'assistant', 'content', FullContent]));
-            Line := LastObject.AsJSON;
-          end;
-        end
+        if TimeoutReached and (FullContent = '') then FullContent := '{"error": "Llama server stalled"}';
+        if FullContent = '' then
+          Line := '{"error": "Empty response from LLM engine"}'
+        else if (FullContent[1] = '{') or (FinalEndpoint = FTargetEmbeddingEndpoint) then //It's already a JSON (Embedding)
+          Line := FullContent
         else
-          Line := '{"error": "Empty response from LLM engine"}';
+        begin
+          // Add warning message tou output
+          if TimeoutWarning then FullContent := FullContent + ' - ' + LLM_TIMEOUT_WARNING;
+          // Wrap conversational content back into JSON
+          if not(Assigned(LastObject)) then
+            LastObject := TJSONObject.Create(['choices', TJSONArray.Create([TJSONObject.Create(['index', 0])])]);
+          if Assigned(LastObject.FindPath('choices[0].delta')) then
+            TJSONObject(LastObject.FindPath('choices[0]')).Delete('delta');
+          TJSONObject(LastObject.FindPath('choices[0]')).Add('message', TJSONObject.Create(['role', 'assistant', 'content', FullContent]));
+          Line := LastObject.AsJSON;
+        end;
         Line := 'HTTP/1.1 200 OK' + #13#10 + 'Content-Type: application/json' + #13#10 +
           'Content-Length: ' + IntToStr(Length(Line)) + #13#10 + 'Connection: close' + #13#10#13#10 + Line;
         ClientConn.Write(Line[1], Length(Line));
