@@ -14,21 +14,21 @@
 
 ## Classes and Types
 
-### `JOBOBJECT_BASIC_LIMIT_INFORMATION`
+### `JOBOBJECT_BASIC_LIMIT_INFORMATION (MSWINDOWS)`
 Windows Job Object limit information structure for process job management.
 
 ```pascal
 JOBOBJECT_BASIC_LIMIT_INFORMATION = record
 ```
 
-### `IO_COUNTERS`
+### `IO_COUNTERS (MSWINDOWS)`
 Windows I/O performance counters structure.
 
 ```pascal
 IO_COUNTERS = record
 ```
 
-### `JOBOBJECT_EXTENDED_LIMIT_INFORMATION`
+### `JOBOBJECT_EXTENDED_LIMIT_INFORMATION (MSWINDOWS)`
 Extended Windows Job Object information structure with memory limits.
 
 ```pascal
@@ -74,21 +74,21 @@ TServiceWrapper = class(TCustomApplication)
 
 ## Methods and Functions
 
-### `CreateJobObjectW`
+### `CreateJobObjectW (MSWINDOWS)`
 Creates or opens a job object in Windows.
 
 ```pascal
 function CreateJobObjectW(lpJobAttributes: Pointer; lpName: PWideChar): THandle; stdcall; external 'kernel32.dll';
 ```
 
-### `SetInformationJobObject`
+### `SetInformationJobObject (MSWINDOWS)`
 Sets information for a job object in Windows.
 
 ```pascal
 function SetInformationJobObject(hJob: THandle; JobObjectInfoClass: Integer; lpJobObjectInfo: Pointer; cbJobObjectInfoLength: DWORD): BOOL; stdcall; external 'kernel32.dll';
 ```
 
-### `AssignProcessToJobObject`
+### `AssignProcessToJobObject (MSWINDOWS)`
 Assigns a process to an existing job object in Windows.
 
 ```pascal
@@ -102,7 +102,7 @@ Main thread execution - blocks waiting for incoming connections.
 procedure Execute; override;
 ```
 
-### `TListenerThread.Create (UNIX)`
+### `TListenerThread.Create`
 Initializes the listener thread with the given server instance.
 
 ```pascal
@@ -137,7 +137,7 @@ Main thread execution - handles the request/response cycle.
 procedure Execute; override;
 ```
 
-### `TWorkerThread.Create (UNIX)`
+### `TWorkerThread.Create`
 Initializes the worker thread with connection and routing parameters.
 
 ```pascal
@@ -165,7 +165,7 @@ Main thread execution - manages listener and worker lifecycle.
 procedure Execute; override;
 ```
 
-### `TProxyThread.Create (UNIX)`
+### `TProxyThread.Create`
 Initializes the proxy thread with routing and connection parameters.
 
 ```pascal
@@ -291,7 +291,7 @@ Main application entry point for the service wrapper.
 procedure DoRun; override;
 ```
 
-### `TServiceWrapper.Create (UNIX)`
+### `TServiceWrapper.Create`
 Initializes the service wrapper application.
 
 ```pascal
@@ -319,7 +319,7 @@ Try to bing port without blocking.
 function TryBind(Family: SmallInt): Boolean;
 ```
 
-### `DoSigInt`
+### `DoSigInt (UNIX)`
 Signal handler for SIGINT/SIGTERM signals on Unix platforms.
 
 ```pascal
@@ -329,13 +329,6 @@ procedure DoSigInt(Sig: LongInt); cdecl;
 ---
 
 ## Fields and Properties
-
-### `JobObjectExtendedLimitInformation`
-Windows Job Object information class constant.
-
-```pascal
-JobObjectExtendedLimitInformation = 9;
-```
 
 ### `TListenerThread.FServer`
 The TCP server socket that listens for incoming connections.
@@ -834,21 +827,21 @@ Flag indicating whether only SSL certificate generation is requested.
 IsCertOnlyMode: Boolean;
 ```
 
-### `TServiceWrapper.FJob`
+### `TServiceWrapper.FJob (MSWINDOWS)`
 Windows job object handle for process group management.
 
 ```pascal
 FJob: THandle;
 ```
 
-### `TServiceWrapper.FMutex`
+### `TServiceWrapper.FMutex (MSWINDOWS)`
 Windows mutex handle for single instance check.
 
 ```pascal
 FMutex: THandle;
 ```
 
-### `TServiceWrapper.FLockFileHandle`
+### `TServiceWrapper.FLockFileHandle (UNIX)`
 Unix file handle for lock file based single instance check.
 
 ```pascal
@@ -859,14 +852,42 @@ FLockFileHandle: Integer;
 
 ## Constants
 
-### `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
+### `LLM_TIMEOUT_THRESHOLD`
+Seconds before proxy timeout to trigger early partial response.
+
+```pascal
+LLM_TIMEOUT_THRESHOLD = 3;
+```
+
+### `MIN_LLM_TIMEOUT_FOR_THRESHOLD`
+Minimum proxy timeout in seconds to enable early timeout behavior.
+
+```pascal
+MIN_LLM_TIMEOUT_FOR_THRESHOLD = 10;
+```
+
+### `LLM_TIMEOUT_WARNING`
+Suffix appended to incomplete conversational responses on timeout.
+
+```pascal
+LLM_TIMEOUT_WARNING = 'LLM TIMEOUT REACHED';
+```
+
+### `JobObjectExtendedLimitInformation (MSWINDOWS)`
+Windows Job Object information class constant.
+
+```pascal
+JobObjectExtendedLimitInformation = 9;
+```
+
+### `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (MSWINDOWS)`
 Job object limit flag that kills processes when job closes.
 
 ```pascal
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = $00002000;
 ```
 
-### `INSTANCE_PREFIX`
+### `INSTANCE_PREFIX (MSWINDOWS)`
 Windows mutex name prefix for single instance management.
 
 ```pascal

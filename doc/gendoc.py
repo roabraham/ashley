@@ -96,10 +96,16 @@ LOOKAHEAD_LINES: int = 10
 #   2. Parsing: Scans block comments { ... } and looks ahead up to 10 lines
 #      for the next non-comment code signature.
 #   3. Context Tracking:
-#        - Class context: ClassName = class( or record sets class mode.
+#        - Class context: ClassName = class( sets class mode.
 #          Members are prefixed with ClassName. in documentation.
-#        - Platform context: {$IFDEF MSWINDOWS} / {$IFDEF UNIX} constants
-#          are annotated with the platform name to avoid duplicates.
+#        - Section context: const, type, var keywords set the section
+#          for subsequent declarations so they are categorized correctly.
+#        - Platform context: {$IFDEF MSWINDOWS} / {$IFDEF UNIX} wraps
+#          are tracked using a stack (supports nesting). {$ENDIF} /
+#          {$IFEND} restore the previous platform context, preventing
+#          platform leakage into subsequent code.
+#        - Platform annotation: All items inside an IFDEF block are
+#          annotated with the platform name suffix (e.g. Symbol (MSWINDOWS)).
 #        - Class boundary: end; resets class context.
 #   4. Filtering: Excludes class-qualified implementations, implementation
 #      statements, and non-declaration lines.
@@ -144,7 +150,8 @@ LOOKAHEAD_LINES: int = 10
 #       Use Name: Description format inside { ... } comments.
 #
 #   Duplicate headings
-#       Platform-specific constants are annotated with (MSWINDOWS) / (UNIX).
+#       All items inside {$IFDEF} blocks are annotated with the
+#       platform name suffix (e.g. Symbol (MSWINDOWS) / (UNIX)).
 #
 # LIMITATIONS
 # -----------
@@ -278,40 +285,6 @@ def _extract_top_description(content: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _parse_platform_directive(line: str) -> Optional[str]:
-    """Parse an IFDEF directive and return the platform name.
-
-    Args:
-        line: Raw source line.
-
-    Returns:
-        Platform name (e.g. 'MSWINDOWS', 'UNIX') or None.
-    """
-    stripped = line.strip()
-    if stripped.lower().startswith("{$ifdef "):
-        platform = stripped[8:].strip()
-        if platform.endswith("}"):
-            platform = platform[:-1].strip()
-        return platform if platform else None
-    return None
-
-
-def _is_class_definition(code_sig: str) -> bool:
-    """Check whether a code signature is a class/record definition.
-
-    Args:
-        code_sig: Code signature string.
-
-    Returns:
-        True if the signature defines a class or record.
-    """
-    return bool(
-        re.search(r"=\s*class\s*\(", code_sig, re.IGNORECASE)
-        or code_sig.lower().startswith("type")
-        or "record" in code_sig.lower()
-    )
-
-
 def _extract_class_name(code_sig: str) -> Optional[str]:
     """Extract the class name from a class definition signature.
 
@@ -413,11 +386,19 @@ def _is_implementation_statement(code_sig: str) -> bool:
     )
 
 
-def _categorize_signature(code_sig: str) -> Optional[str]:
+def _categorize_signature(
+    code_sig: str, section_context: str = "", in_class: bool = False
+) -> Optional[str]:
     """Categorize a code signature into a documentation section.
 
     Args:
         code_sig: Code signature string.
+        section_context: The current Pascal section keyword ('const', 'type',
+            'var', or empty). Used to disambiguate declarations that lack the
+            section keyword on the same line (e.g. ``MY_CONST = 100;`` inside
+            a ``const`` block).
+        in_class: Whether the signature appears inside a class/record body.
+            When True, section context does not override field categorization.
 
     Returns:
         One of 'methods', 'types', 'constants', 'fields', or None.
@@ -427,10 +408,10 @@ def _categorize_signature(code_sig: str) -> Optional[str]:
         return "methods"
     if "class(" in sig_lower or sig_lower.startswith("type") or "record" in sig_lower:
         return "types"
-    if sig_lower.startswith("const") or any(
-        k in sig_lower for k in ["job_object", "instance_prefix"]
-    ):
+    if section_context == "const" or sig_lower.startswith("const "):
         return "constants"
+    if section_context == "type" and not in_class:
+        return "types"
     return "fields"
 
 
@@ -472,25 +453,50 @@ def parse_pascal_source(file_path: str) -> Dict[str, Any]:
     current_class: Optional[str] = None
     in_class: bool = False
     current_platform: str = ""
+    platform_stack: List[str] = []
+    current_section: str = ""
 
     comment_pattern = re.compile(r"\{\s*([^$].*?)\s*\}", re.DOTALL)
 
     for i, line in enumerate(lines):
         stripped = line.strip()
+        stripped_lower = stripped.lower()
 
         # Track structural boundaries
         if stripped == "end;":
             in_class = False
             current_class = None
+            current_section = ""
             continue
 
-        platform = _parse_platform_directive(stripped)
-        if platform is not None:
-            if stripped.lower().startswith("{$ifdef "):
-                current_platform = platform
-            elif stripped.lower().startswith("{$endif"):
-                current_platform = ""
+        # Track platform directives (IFDEF / IFEND / ELSE) using a stack
+        ifdef_match = re.match(r"\{\$IFDEF\s+(\w+)\s*\}", stripped, re.IGNORECASE)
+        if ifdef_match:
+            current_platform = ifdef_match.group(1)
+            platform_stack.append(current_platform)
             continue
+        if stripped_lower.startswith(("{$endif", "{$ifend")):
+            if platform_stack:
+                platform_stack.pop()
+            current_platform = platform_stack[-1] if platform_stack else ""
+            continue
+        if stripped_lower.startswith("{$else"):
+            current_platform = ""
+            continue
+
+        # Track Pascal section keywords (const, type, var) for categorization
+        if stripped_lower == "const" or stripped_lower.startswith("const "):
+            current_section = "const"
+        elif stripped_lower == "type" or stripped_lower.startswith("type "):
+            current_section = "type"
+        elif stripped_lower == "var" or stripped_lower.startswith("var "):
+            current_section = "var"
+        elif stripped_lower.startswith("begin"):
+            current_section = ""
+        elif stripped_lower.startswith("implementation"):
+            current_section = ""
+            in_class = False
+            current_class = None
 
         match = comment_pattern.search(line)
         if not match:
@@ -514,8 +520,6 @@ def parse_pascal_source(file_path: str) -> Dict[str, Any]:
 
         if not code_sig:
             continue
-
-        sig_lower = code_sig.lower()
 
         # Track class context: only actual class/record definitions set context
         if re.search(r"=\s*class\s*\(", code_sig, re.IGNORECASE):
@@ -559,8 +563,8 @@ def parse_pascal_source(file_path: str) -> Dict[str, Any]:
         ):
             display_symbol = f"{current_class}.{symbol_name}"
 
-        # Append platform suffix to constants inside conditional blocks
-        if current_platform and sig_lower.startswith("const"):
+        # Append platform suffix to ALL items inside conditional blocks
+        if current_platform:
             display_symbol = f"{display_symbol} ({current_platform})"
 
         entry: Dict[str, str] = {
@@ -569,7 +573,7 @@ def parse_pascal_source(file_path: str) -> Dict[str, Any]:
             "sig": code_sig,
         }
 
-        category = _categorize_signature(code_sig)
+        category = _categorize_signature(code_sig, current_section, in_class)
         if category == "methods":
             methods.append(entry)
         elif category == "types":
