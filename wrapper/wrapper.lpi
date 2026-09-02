@@ -20,7 +20,7 @@
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="4"/>
       <RevisionNr Value="1"/>
-      <BuildNr Value="5"/>
+      <BuildNr Value="7"/>
       <StringTable Comments="Llama service wrapper" CompanyName="Robert Abraham" FileDescription="Llama service wrapper" InternalName="Service Wrapper" LegalCopyright="Robert Abraham" OriginalFilename="wrapper.exe" ProductName="Service Wrapper" ProductVersion="0.4.1"/>
     </VersionInfo>
     <BuildModes>

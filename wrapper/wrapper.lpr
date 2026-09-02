@@ -215,10 +215,6 @@ type
     FParams: TStringList;
     { FEmbeddingParams: Command-line parameters for the embedding LLM server. }
     FEmbeddingParams: TStringList;
-    { FLLMenabled: Flag indicating whether LLM service is enabled. }
-    FLLMenabled: Boolean;
-    { FEmbeddingEnabled: Flag indicating whether embedding service is enabled. }
-    FEmbeddingEnabled: Boolean;
     { FUseLogFile: Flag indicating whether to log to file. }
     FUseLogFile: boolean;
     { FProxyHost: Host address for the API proxy service to listen on. }
@@ -1169,6 +1165,7 @@ var
   ParamName, ParamValue: AnsiString;
   enableServer: Boolean;
   //enableCLI: Boolean;
+  FLLMenabled, FEmbeddingEnabled: Boolean;
   ServerFileName: String;
   AllowedParams, AllowedEmbeddingParams: TStringList;
   ConfigTypeName: String;
@@ -2018,18 +2015,10 @@ begin
             FPhpProcess.Options := [];
             FWebserverProcess.Options := [];
           end;
-          {$IFDEF MSWINDOWS}
           FProcess.Options := FProcess.Options + [poNewProcessGroup];
           FEmbeddingProcess.Options := FEmbeddingProcess.Options + [poNewProcessGroup];
           FPhpProcess.Options := FPhpProcess.Options + [poNewProcessGroup];
           FWebserverProcess.Options := FWebserverProcess.Options + [poNewProcessGroup];
-          {$ENDIF}
-          {$IFDEF UNIX}
-          FProcess.Options := FProcess.Options + [poNewProcessGroup];
-          FEmbeddingProcess.Options := FEmbeddingProcess.Options + [poNewProcessGroup];
-          FPhpProcess.Options := FPhpProcess.Options + [poNewProcessGroup];
-          FWebserverProcess.Options := FWebserverProcess.Options + [poNewProcessGroup];
-          {$ENDIF}
           if not(FinalFModelFile = '') and not(FProcess.Running) then FProcess.Execute;
           if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then FEmbeddingProcess.Execute;
           if not(FPhpProcess.Running) then FPhpProcess.Execute;
