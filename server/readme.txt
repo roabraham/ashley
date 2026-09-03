@@ -44,7 +44,7 @@ Note: ROCm is officially supported on Linux; Windows support is experimental.
 * CPU: works on every Windows PC; no extra software needed
 * CUDA: NVIDIA GPU required (faster than CPU)
 * Vulkan: AMD / Intel / NVIDIA GPU (no CUDA toolkit needed)
-* HIP Radeon: Radeon GPU required (not tested yet!)
+* Radeon: Radeon GPU required (not tested yet!)
 Also choose a model file (".gguf") for the engine to use
 
 7. Click `OK` at the bottom of the window. Ashley configures everything, generates a security certificate if needed and starts the AI service in the background.
