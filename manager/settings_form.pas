@@ -1021,8 +1021,10 @@ begin
       chdir(appdir);
       Exit;
     end;
-    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_]', BaseName, '_');
+    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_-]', BaseName, '_');
     BaseName := ReplaceRegExpr('_+', BaseName, '_');
+    BaseName := ReplaceRegExpr('-+', BaseName, '-');
+    BaseName := ReplaceRegExpr('[-_]{2,}', BaseName, '_');
     TargetFileName := BaseName + FileExtension;
     TargetFilePath := embeddingModeldir + TargetFileName;
     ForceDirectories(ExtractFilePath(TargetFilePath));
@@ -1103,8 +1105,10 @@ begin
       chdir(appdir);
       Exit;
     end;
-    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_]', BaseName, '_');
+    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_-]', BaseName, '_');
     BaseName := ReplaceRegExpr('_+', BaseName, '_');
+    BaseName := ReplaceRegExpr('-+', BaseName, '-');
+    BaseName := ReplaceRegExpr('[-_]{2,}', BaseName, '_');
     TargetFileName := BaseName + FileExtension;
     TargetFilePath := modeldir + TargetFileName;
     ForceDirectories(ExtractFilePath(TargetFilePath));
