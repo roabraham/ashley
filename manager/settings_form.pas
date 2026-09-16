@@ -310,6 +310,8 @@ type
     LoggingAndProxyTabSheet: TTabSheet;
     { Spin edit control for the LLM proxy service timeout in seconds. }
     LLMproxyServiceTimeout: TSpinEdit;
+    { Replaces special characters in the specified filename. }
+    function NormalizeFileName(const FilePath: AnsiString): AnsiString;
     { Opens a folder in the system default file explorer. }
     function OpenFolder(const FolderName: AnsiString): Boolean;
     { Converts an image control's picture to a Base64 encoded string. }
@@ -502,6 +504,35 @@ implementation
 {$R *.lfm}
 
 { TSettingsForm }
+
+//Normalize filename
+function TSettingsForm.NormalizeFileName(const FilePath: AnsiString): AnsiString;
+var FilePathFixed, DirectoryPath, BaseName, FileExtension: AnsiString;
+begin
+  Result := '';
+  try
+    //DirectoryPath := '';
+    FilePathFixed := trim(FilePath);
+    if FilePathFixed = '' then Exit;
+    BaseName := trim(ExtractFileName(FilePathFixed));
+    if BaseName = '' then Exit;
+    {if not(BaseName = FilePathFixed) then} DirectoryPath := trim(ExtractFilePath(FilePathFixed));
+    FileExtension := trim(ExtractFileExt(BaseName));
+    BaseName := trim(ChangeFileExt(BaseName, ''));
+    if BaseName = '' then Exit;
+    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_-]', BaseName, '_');
+    BaseName := ReplaceRegExpr('_+', BaseName, '_');
+    BaseName := ReplaceRegExpr('-+', BaseName, '-');
+    BaseName := ReplaceRegExpr('[-_]{2,}', BaseName, '_');
+    BaseName := TrimSet(BaseName, ['_', '-']);
+    if BaseName = '' then Exit;
+    BaseName := BaseName + FileExtension;
+    Result := DirectoryPath + BaseName;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
 
 //Open Folder
 function TSettingsForm.OpenFolder(const FolderName: AnsiString): Boolean;
@@ -962,7 +993,7 @@ end;
 
 //Import embedding model file
 procedure TSettingsForm.AddEmbeddingModelButtonClick(Sender: TObject);
-var FileToImport, FileExtension, BaseName, TargetFileName, TargetFilePath: ansistring;
+var FileToImport, TargetFileName, TargetFilePath: ansistring;
 begin
   try
     if not(length(embeddingModeldir) >= 1) then
@@ -1000,32 +1031,13 @@ begin
       chdir(appdir);
       Exit;
     end;
-    BaseName := trim(ExtractFileName(FileToImport));
-    if not(length(BaseName) >= 1) then
+    TargetFileName := NormalizeFileName(ExtractFileName(FileToImport));
+    if not(length(TargetFileName) >= 1) then
     begin
       MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
       chdir(appdir);
       Exit;
     end;
-    FileExtension := trim(ExtractFileExt(BaseName));
-    if not(length(FileExtension) >= 1) then
-    begin
-      MessageDlg('Error', 'Invalid file extension!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    BaseName := trim(ChangeFileExt(BaseName, ''));
-    if not(length(BaseName) >= 1) then
-    begin
-      MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_-]', BaseName, '_');
-    BaseName := ReplaceRegExpr('_+', BaseName, '_');
-    BaseName := ReplaceRegExpr('-+', BaseName, '-');
-    BaseName := ReplaceRegExpr('[-_]{2,}', BaseName, '_');
-    TargetFileName := BaseName + FileExtension;
     TargetFilePath := embeddingModeldir + TargetFileName;
     ForceDirectories(ExtractFilePath(TargetFilePath));
     if CopyFileWithProgress(FileToImport, TargetFilePath) then
@@ -1046,7 +1058,7 @@ end;
 
 //Import model file
 procedure TSettingsForm.AddModelButtonClick(Sender: TObject);
-var FileToImport, FileExtension, BaseName, TargetFileName, TargetFilePath: ansistring;
+var FileToImport, TargetFileName, TargetFilePath: ansistring;
 begin
   try
     if not(length(modeldir) >= 1) then
@@ -1084,32 +1096,13 @@ begin
       chdir(appdir);
       Exit;
     end;
-    BaseName := trim(ExtractFileName(FileToImport));
-    if not(length(BaseName) >= 1) then
+    TargetFileName := NormalizeFileName(ExtractFileName(FileToImport));
+    if not(length(TargetFileName) >= 1) then
     begin
       MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
       chdir(appdir);
       Exit;
     end;
-    FileExtension := trim(ExtractFileExt(BaseName));
-    if not(length(FileExtension) >= 1) then
-    begin
-      MessageDlg('Error', 'Invalid file extension!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    BaseName := trim(ChangeFileExt(BaseName, ''));
-    if not(length(BaseName) >= 1) then
-    begin
-      MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    BaseName := ReplaceRegExpr('[^a-zA-Z0-9_-]', BaseName, '_');
-    BaseName := ReplaceRegExpr('_+', BaseName, '_');
-    BaseName := ReplaceRegExpr('-+', BaseName, '-');
-    BaseName := ReplaceRegExpr('[-_]{2,}', BaseName, '_');
-    TargetFileName := BaseName + FileExtension;
     TargetFilePath := modeldir + TargetFileName;
     ForceDirectories(ExtractFilePath(TargetFilePath));
     if CopyFileWithProgress(FileToImport, TargetFilePath) then
