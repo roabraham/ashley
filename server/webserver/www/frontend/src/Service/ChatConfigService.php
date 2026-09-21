@@ -216,7 +216,7 @@ class ChatConfigService {
             }
             if ($engineId >= 1) {
                 try {
-                    $dataSql = "SELECT config_data.name AS name, config_data.value AS value, config_data_type.name AS type_name, config_data.enable_server AS enable_server FROM config_data LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id WHERE config_id = :cid";
+                    $dataSql = "SELECT config_data.name AS name, config_data.value AS value, config_data_type.name AS type_name, config_data.enable_server AS enable_server FROM config_data LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id WHERE config_id = :cid AND enable_server != 0";
                     $dataStmt = $db->prepare($dataSql);
                     $dataStmt->bindValue(':cid', $engineId, \PDO::PARAM_INT);
                     $dataStmt->execute();
@@ -226,8 +226,7 @@ class ChatConfigService {
                             $name = strtolower(trim($r['name'] ?? ''));
                             $value = trim($r['value'] ?? '');
                             $typeName = strtoupper(trim($r['type_name'] ?? ''));
-                            $enableServer = (intval(trim($r['enable_server'] ?? '0')) !== 0);
-                            if ($name == 'model' && $enableServer) {
+                            if ($name == 'model') {
                                 if ($typeName == 'EMBEDDING') {
                                     $hasEmbeddingModel = true;
                                 } else {
@@ -235,7 +234,7 @@ class ChatConfigService {
                                 }
                                 continue;
                             }
-                            if ($name == 'port' && $enableServer) {
+                            if ($name == 'port') {
                                 if ($typeName === 'EMBEDDING') {
                                     $embeddingPort = intval($value);
                                 } else {
@@ -243,7 +242,7 @@ class ChatConfigService {
                                 }
                                 continue;
                             }
-                            if ($name == 'host' && $enableServer) {
+                            if ($name == 'host') {
                                 if ($typeName === 'EMBEDDING') {
                                     $embeddingHost = $value;
                                 } else {
@@ -251,7 +250,7 @@ class ChatConfigService {
                                 }
                                 continue;
                             }
-                            if (in_array($name, ['ctx_size', 'ctx-size']) && $enableServer) {
+                            if (in_array($name, ['ctx_size', 'ctx-size'])) {
                                 if ($typeName === 'EMBEDDING') {
                                     $embeddingCtxSize = intval($value);
                                 } else {
