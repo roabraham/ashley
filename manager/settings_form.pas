@@ -939,6 +939,12 @@ begin
       MessageDlg('Error', 'Invalid model type: ' + ModelTypeFixed, mtError, [mbOK], 0);
       Exit;
     end;
+    //Validate model directory
+    if ModelDirectory = '' then
+    begin
+      MessageDlg('Error', 'Model directory not specified!', mtError, [mbOK], 0);
+      Exit;
+    end;
     //Get source filepath
     if not(ImportModelDialog.Execute) then
     begin
