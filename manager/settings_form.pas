@@ -433,6 +433,8 @@ type
     llmProxyLocation: AnsiString;
     { Copies a file progressively while updating the progress bar (helper). }
     function CopyFileWithProgress(const SourceFile, DestFile: AnsiString): Boolean;
+    { Imports a new language model to the repository (helper). }
+    procedure ImportModel(const ModelType: String);
   public
     { Path to the application directory. }
     appdir: AnsiString;
@@ -914,6 +916,89 @@ begin
   end;
 end;
 
+//Import model file
+procedure TSettingsForm.ImportModel(const ModelType: String);
+var
+  ModelDirectory, FileToImport, TargetFileName, TargetFilePath: AnsiString;
+  ModelTypeFixed: String;
+begin
+  try
+    //Validate model type
+    ModelTypeFixed := UpperCase(Trim(ModelType));
+    if ModelTypeFixed = '' then
+    begin
+      MessageDlg('Error', 'Model type not specified!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if ModelTypeFixed = 'EMBEDDING' then
+      ModelDirectory := embeddingModeldir
+    else if ModelTypeFixed = 'CONVERSATIONAL' then
+      ModelDirectory := modeldir
+    else
+    begin
+      MessageDlg('Error', 'Invalid model type: ' + ModelTypeFixed, mtError, [mbOK], 0);
+      Exit;
+    end;
+    //Get source filepath
+    if not(ImportModelDialog.Execute) then
+    begin
+      chdir(appdir);
+      Exit;
+    end;
+    FileToImport := trim(ImportModelDialog.FileName);
+    if FileToImport = '' then
+    begin
+      MessageDlg('Error', 'Model filename not specified!', mtError, [mbOK], 0);
+      chdir(appdir);
+      Exit;
+    end;
+    if not(FileExists(FileToImport)) then
+    begin
+      MessageDlg('Error', 'The model file doesn not exist: ' + FileToImport, mtError, [mbOK], 0);
+      chdir(appdir);
+      Exit;
+    end;
+    // Ask for confirmation
+    if
+      not(MessageDlg(
+        'Do you really want to import the model file?' + sLineBreak +
+          'This may take a while and the application may seem unresponsive.',
+        mtConfirmation,
+        [mbYes, mbNo],
+        0) = mrYes)
+    then
+    begin
+      chdir(appdir);
+      Exit;
+    end;
+    //Generate target filepath
+    TargetFileName := NormalizeFileName(ExtractFileName(FileToImport));
+    if TargetFileName = '' then
+    begin
+      MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
+      chdir(appdir);
+      Exit;
+    end;
+    TargetFilePath := ModelDirectory + TargetFileName;
+    //Create intermediate directories if needed
+    ForceDirectories(ExtractFilePath(TargetFilePath));
+    //Perform model import
+    if CopyFileWithProgress(FileToImport, TargetFilePath) then
+    begin
+      chdir(appdir);
+      LoadLLMfiles(ModelTypeFixed, String(TargetFileName));
+      Exit;
+    end;
+    chdir(appdir);
+  except
+    on x: Exception do
+    begin
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+      chdir(appdir);
+    end;
+  end;
+end;
+
 //Call log clearing
 procedure TSettingsForm.ClearLogButtonClick(Sender: TObject);
 begin
@@ -993,132 +1078,14 @@ end;
 
 //Import embedding model file
 procedure TSettingsForm.AddEmbeddingModelButtonClick(Sender: TObject);
-var FileToImport, TargetFileName, TargetFilePath: ansistring;
 begin
-  try
-    if not(length(embeddingModeldir) >= 1) then
-    begin
-      MessageDlg('Error', 'Embedding directory not specified!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    if not(ImportModelDialog.Execute) then
-    begin
-      chdir(appdir);
-      Exit;
-    end;
-    FileToImport := trim(ImportModelDialog.FileName);
-    if not(length(FileToImport) >= 1) then
-    begin
-      MessageDlg('Error', 'Embedding model filename not specified!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    if not(FileExists(FileToImport)) then
-    begin
-      MessageDlg('Error', 'The embedding model file doesn not exist: ' + FileToImport, mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    if
-      not(MessageDlg(
-        'Do you really want to import the model file?' + sLineBreak +
-          'This may take a while and the application may seem unresponsive.',
-        mtConfirmation,
-        [mbYes, mbNo],
-        0) = mrYes)
-    then
-    begin
-      chdir(appdir);
-      Exit;
-    end;
-    TargetFileName := NormalizeFileName(ExtractFileName(FileToImport));
-    if not(length(TargetFileName) >= 1) then
-    begin
-      MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    TargetFilePath := embeddingModeldir + TargetFileName;
-    ForceDirectories(ExtractFilePath(TargetFilePath));
-    if CopyFileWithProgress(FileToImport, TargetFilePath) then
-    begin
-      chdir(appdir);
-      LoadLLMfiles('EMBEDDING', String(TargetFileName));
-      Exit;
-    end;
-    chdir(appdir);
-  except
-    on x: Exception do
-    begin
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-      chdir(appdir);
-    end;
-  end;
+  ImportModel('EMBEDDING');
 end;
 
 //Import model file
 procedure TSettingsForm.AddModelButtonClick(Sender: TObject);
-var FileToImport, TargetFileName, TargetFilePath: ansistring;
 begin
-  try
-    if not(length(modeldir) >= 1) then
-    begin
-      MessageDlg('Error', 'LLM directory not specified!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    if not(ImportModelDialog.Execute) then
-    begin
-      chdir(appdir);
-      Exit;
-    end;
-    FileToImport := trim(ImportModelDialog.FileName);
-    if not(length(FileToImport) >= 1) then
-    begin
-      MessageDlg('Error', 'Model filename not specified!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    if not(FileExists(FileToImport)) then
-    begin
-      MessageDlg('Error', 'The model file doesn not exist: ' + FileToImport, mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    if
-      not(MessageDlg(
-        'Do you really want to import the model file?' + sLineBreak +
-          'This may take a while and the application may seem unresponsive.',
-        mtConfirmation,
-        [mbYes, mbNo],
-        0) = mrYes)
-    then
-    begin
-      chdir(appdir);
-      Exit;
-    end;
-    TargetFileName := NormalizeFileName(ExtractFileName(FileToImport));
-    if not(length(TargetFileName) >= 1) then
-    begin
-      MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
-      chdir(appdir);
-      Exit;
-    end;
-    TargetFilePath := modeldir + TargetFileName;
-    ForceDirectories(ExtractFilePath(TargetFilePath));
-    if CopyFileWithProgress(FileToImport, TargetFilePath) then
-    begin
-      chdir(appdir);
-      LoadLLMfiles('CONVERSATIONAL', String(TargetFileName));
-      Exit;
-    end;
-    chdir(appdir);
-  except
-    on x: Exception do
-    begin
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-      chdir(appdir);
-    end;
-  end;
+  ImportModel('CONVERSATIONAL');
 end;
 
 //Load device list
