@@ -554,6 +554,44 @@ Windows 10 or later, x64 architecture, is required.
 
 ---
 
+## Developing with Dual VCS (e.g., SVN + Git)
+
+If you use a self-hosted version control system (VCS) for local development and want to sync your project with a remote VCS of a **different type** (e.g. *SVN* for local work and *Git/GitHub* for remote deployment), follow this setup.
+
+> **Important:** This approach only works when pairing **two different VCS engines** (such as *SVN* + *Git*). Attempting this with two repositories of the same VCS engine will result in metadata conflicts.
+
+### Workflow Overview
+
+1. Use your primary VCS (e.g. *SVN*) for your daily development, branching, and feature merges.
+
+2. Maintain a *dedicated release branch* in your primary VCS that serves as the "export" layer.
+
+3. Sync that release branch with the *secondary remote repository* (e.g. *Git*) to push code upstream.
+
+### Setup Instructions
+
+1. **Checkout both repositories:** clone/checkout both your *local* repository and the *remote* repository into **two separate directories** on your machine.
+
+2. **Combine workspace files:** copy the entire contents of the *remote* directory into your *local* directory, overwriting all existing files. Ensure you also copy the metadata folder (`.git` or `.svn`).
+
+3. **Configure mutual ignores:** to prevent tracking conflicts, configure each VCS to ignore the other's metadata directory:
+
+   - Add `.git` to your *SVN* ignore list (`svn:ignore` or `.svnignore`).
+
+   - Add `.svn` to your *Git* ignore list (`.gitignore`).
+
+4- **Commit+push changes to both VCS**.
+
+5. **Daily Sync Procedure:**
+
+   - Perform all active development, feature branching, and code reviews in your *primary* VCS.
+
+   - When code is ready for release, merge it into your designated *export branch* in the *primary* VCS.
+
+   - Commit the final state to both VCS and push it upstream.
+
+---
+
 ## License
 
 This project is licensed under the **Apache License, Version 2.0**.
