@@ -643,7 +643,7 @@ object SettingsForm: TSettingsForm
             )
             ColWidths = (
               250
-              475
+              471
             )
           end
           object AddButton: TButton
@@ -745,7 +745,7 @@ object SettingsForm: TSettingsForm
           )
           ColWidths = (
             250
-            492
+            488
           )
         end
         object AddEmbeddingParameterButton: TButton

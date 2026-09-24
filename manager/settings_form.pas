@@ -435,6 +435,10 @@ type
     function CopyFileWithProgress(const SourceFile, DestFile: AnsiString): Boolean;
     { Imports a new language model to the repository (helper). }
     procedure ImportModel(const ModelType: String);
+    { Adds a new parameter to the selected list control (helper). }
+    procedure AddParameter(ValueListEditor: TValueListEditor);
+    { Removes a parameter from the selected list control (helper). }
+    procedure RemoveParameter(ValueListEditor: TValueListEditor; StringList: TStringList);
   public
     { Path to the application directory. }
     appdir: AnsiString;
@@ -1005,6 +1009,66 @@ begin
   end;
 end;
 
+//Add parameter to the selected list control
+procedure TSettingsForm.AddParameter(ValueListEditor: TValueListEditor);
+var
+  ParameterName: String;
+  RowIndex: Integer;
+begin
+  try
+    ParameterName := '';
+    if not(InputQuery('New Parameter', 'Enter parameter name:', ParameterName)) then Exit;
+    ParameterName := trim(ParameterName);
+    if ParameterName = '' then
+    begin
+      MessageDlg('Error', 'Parameter name cannot be empty!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if ValueListEditor.FindRow(ParameterName, RowIndex) then
+    begin
+      MessageDlg('Error', 'Parameter already exists!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    ValueListEditor.InsertRow(ParameterName, '', true);
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+//Remove parameter from the selected list control
+procedure TSettingsForm.RemoveParameter(ValueListEditor: TValueListEditor; StringList: TStringList);
+var
+  RowIndex: Integer;
+  ParameterName: String;
+  TitleIdx: Integer;
+begin
+  try
+    RowIndex := ValueListEditor.Row;
+    if (RowIndex <= 0) or (RowIndex >= ValueListEditor.RowCount) then Exit;
+    ParameterName := trim(ValueListEditor.Keys[RowIndex]);
+    if ParameterName = '' then Exit;
+    if MessageDlg(
+      'Remove parameter',
+      'Do you really want to delete "' + ParameterName + '"?',
+      mtConfirmation,
+      [mbYes, mbNo],
+      0) = mrYes then
+    begin
+      ValueListEditor.DeleteRow(RowIndex);
+      if Assigned(StringList) then
+      begin
+        TitleIdx := StringList.IndexOfName(ParameterName);
+        if not(TitleIdx = -1) then StringList.Delete(TitleIdx);
+      end;
+      ValueListEditor.Hint := '';
+    end;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
 //Call log clearing
 procedure TSettingsForm.ClearLogButtonClick(Sender: TObject);
 begin
@@ -1057,29 +1121,8 @@ end;
 
 //Add Embedding Parameter
 procedure TSettingsForm.AddEmbeddingParameterButtonClick(Sender: TObject);
-var
-  ParameterName: String;
-  RowIndex: Integer;
 begin
-  try
-    ParameterName := '';
-    if not(InputQuery('New Parameter', 'Enter parameter name:', ParameterName)) then Exit;
-    ParameterName := trim(ParameterName);
-    if ParameterName = '' then
-    begin
-      MessageDlg('Error', 'Parameter name cannot be empty!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    if EmbeddingParameterListEditor.FindRow(ParameterName, RowIndex) then
-    begin
-      MessageDlg('Error', 'Parameter already exists!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    EmbeddingParameterListEditor.InsertRow(ParameterName, '', true);
-  except
-    on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-  end;
+  AddParameter(EmbeddingParameterListEditor);
 end;
 
 //Import embedding model file
@@ -3133,95 +3176,20 @@ end;
 
 //Add new LLM parameter
 procedure TSettingsForm.AddButtonClick(Sender: TObject);
-var
-  ParameterName: String;
-  RowIndex: Integer;
 begin
-  try
-    ParameterName := '';
-    if not(InputQuery('New Parameter', 'Enter parameter name:', ParameterName)) then Exit;
-    ParameterName := trim(ParameterName);
-    if ParameterName = '' then
-    begin
-      MessageDlg('Error', 'Parameter name cannot be empty!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    if ParameterListEditor.FindRow(ParameterName, RowIndex) then
-    begin
-      MessageDlg('Error', 'Parameter already exists!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    ParameterListEditor.InsertRow(ParameterName, '', true);
-  except
-    on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-  end;
+  AddParameter(ParameterListEditor);
 end;
 
 //Remove LLM parameter
 procedure TSettingsForm.RemoveButtonClick(Sender: TObject);
-var
-  RowIndex: Integer;
-  ParameterName: String;
-  TitleIdx: Integer;
 begin
-  try
-    RowIndex := ParameterListEditor.Row;
-    if (RowIndex <= 0) or (RowIndex >= ParameterListEditor.RowCount) then Exit;
-    ParameterName := trim(ParameterListEditor.Keys[RowIndex]);
-    if ParameterName = '' then Exit;
-    if MessageDlg(
-      'Remove parameter',
-      'Do you really want to delete "' + ParameterName + '"?',
-      mtConfirmation,
-      [mbYes, mbNo],
-      0) = mrYes then
-    begin
-      ParameterListEditor.DeleteRow(RowIndex);
-      if Assigned(TitleList) then
-      begin
-        TitleIdx := TitleList.IndexOfName(ParameterName);
-        if not(TitleIdx = -1) then TitleList.Delete(TitleIdx);
-      end;
-      ParameterListEditor.Hint := '';
-    end;
-  except
-    on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-  end;
+  RemoveParameter(ParameterListEditor, TitleList);
 end;
 
 //Remove Embedding Parameter
 procedure TSettingsForm.RemoveEmbeddingParameterButtonClick(Sender: TObject);
-var
-  RowIndex: Integer;
-  ParameterName: String;
-  TitleIdx: Integer;
 begin
-  try
-    RowIndex := EmbeddingParameterListEditor.Row;
-    if (RowIndex <= 0) or (RowIndex >= EmbeddingParameterListEditor.RowCount) then Exit;
-    ParameterName := trim(EmbeddingParameterListEditor.Keys[RowIndex]);
-    if ParameterName = '' then Exit;
-    if MessageDlg(
-      'Remove parameter',
-      'Do you really want to delete "' + ParameterName + '"?',
-      mtConfirmation,
-      [mbYes, mbNo],
-      0) = mrYes then
-    begin
-      EmbeddingParameterListEditor.DeleteRow(RowIndex);
-      if Assigned(EmbeddingTitleList) then
-      begin
-        TitleIdx := EmbeddingTitleList.IndexOfName(ParameterName);
-        if not(TitleIdx = -1) then EmbeddingTitleList.Delete(TitleIdx);
-      end;
-      EmbeddingParameterListEditor.Hint := '';
-    end;
-  except
-    on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-  end;
+  RemoveParameter(EmbeddingParameterListEditor, EmbeddingTitleList);
 end;
 
 //Free up memory
