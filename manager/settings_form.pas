@@ -357,8 +357,7 @@ type
     { Handles clear log button click event. }
     procedure ClearLogButtonClick(Sender: TObject);
     { Handles mouse move over embedding parameter grid for tooltip display. }
-    procedure EmbeddingParameterListEditorMouseMove(Sender: TObject;
-      Shift: TShiftState; X, Y: Integer);
+    procedure EmbeddingParameterListEditorMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     { Enables or disables embedding parameters based on checkbox. }
     procedure EnableEmbeddingCheckBoxChange(Sender: TObject);
     { Initializes the form display and enables buttons. }
@@ -400,8 +399,7 @@ type
     { Handles open log folder button click. }
     procedure OpenLogFolderButtonClick(Sender: TObject);
     { Handles mouse move over parameter grid for tooltip display. }
-    procedure ParameterListEditorMouseMove(Sender: TObject; Shift: TShiftState;
-      X, Y: Integer);
+    procedure ParameterListEditorMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     { Handles remove button click to remove a parameter. }
     procedure RemoveButtonClick(Sender: TObject);
     { Handles remove embedding parameter button click. }
@@ -620,98 +618,105 @@ end;
 //Load LLM files
 procedure TSettingsForm.LoadLLMfiles(const LLMtype: string; const DefaultFile: string = '');
 var
-  LLMtypeFixed, ModelFile, EmbeddingModelFile, DefaultFileFixed: string;
+  LLMtypeFixed, DefaultFileFixed, ModelFile: string;
+  ModelDirectory: ansistring;
+  ComboBox: TComboBox;
+  CheckBox: TCheckBox;
   FoundIndex: Integer;
   SR: TSearchRec;
 begin
   try
-    //Validate parameter and variables
+    //Validate parameters and variables
     LLMtypeFixed := uppercase(trim(LLMtype));
     if not(length(LLMtypeFixed) >= 1) then
     begin
       MessageDlg('Error', 'LLM type not specified!', mtError, [mbOK], 0);
       Exit;
     end;
-    FoundIndex := -1;
-    DefaultFileFixed := trim(DefaultFile);
-    //Load conversational models
-    if LLMtypeFixed = 'CONVERSATIONAL' then
-    begin
-      if not(length(modeldir) >= 1) then
-      begin
-        MessageDlg('Error', 'LLM directory not specified!', mtError, [mbOK], 0);
-        Exit;
-      end;
-      if not(DirectoryExists(modeldir)) then
-      begin
-        MessageDlg('Error', 'LLM directory does not exist: ' + modeldir, mtError, [mbOK], 0);
-        Exit;
-      end;
-      ModelComboBox.Items.Clear;
-      ModelComboBox.ItemIndex := -1;
-      if FindFirst(modeldir + '*.gguf', faAnyFile, SR) = 0 then
-      begin
-        try
-          repeat
-            if not((SR.Attr and faDirectory) = 0) then continue;
-            ModelFile := trim(SR.Name);
-            if (Pos(' ', ModelFile) > 0) or (Pos(PathDelim, ModelFile) > 0) then continue;
-            ModelComboBox.Items.Add(ModelFile);
-          until not(FindNext(SR) = 0);
-        finally
-          FindClose(SR);
-        end;
-      end;
-      if ModelComboBox.Items.Count >= 1 then
-      begin
-        if length(DefaultFileFixed) >= 1 then FoundIndex := ModelComboBox.Items.IndexOf(DefaultFileFixed);
-        ModelComboBox.ItemIndex := max(FoundIndex, 0);
-        if (ModelComboBox.Items.Count > 1) and EnableLLMcheckBox.Checked then ModelComboBox.Enabled := true;
-      end;
-      if (ModelComboBox.Items.Count <= 1) or not(EnableLLMcheckBox.Checked) then ModelComboBox.Enabled := false;
-      Exit;
-    end;
-    //Load embedding models
     if LLMtypeFixed = 'EMBEDDING' then
     begin
-      if not(length(embeddingModeldir) >= 1) then
-      begin
-        MessageDlg('Error', 'Embedding directory not specified!', mtError, [mbOK], 0);
-        Exit;
-      end;
-      if not(DirectoryExists(embeddingModeldir)) then
-      begin
-        MessageDlg('Error', 'Embedding directory does not exist: ' + embeddingModeldir, mtError, [mbOK], 0);
-        Exit;
-      end;
-      EmbeddingModelComboBox.Items.Clear;
-      EmbeddingModelComboBox.ItemIndex := -1;
-      if FindFirst(embeddingModeldir + '*.gguf', faAnyFile, SR) = 0 then
-      begin
-        try
-          repeat
-            if not((SR.Attr and faDirectory) = 0) then continue;
-            EmbeddingModelFile := trim(SR.Name);
-            if (Pos(' ', EmbeddingModelFile) > 0) or (Pos(PathDelim, EmbeddingModelFile) > 0) then continue;
-            EmbeddingModelComboBox.Items.Add(EmbeddingModelFile);
-          until not(FindNext(SR) = 0);
-        finally
-          FindClose(SR);
-        end;
-      end;
-      if EmbeddingModelComboBox.Items.Count >= 1 then
-      begin
-        EnableEmbeddingCheckBox.Enabled := true;
-        if length(DefaultFileFixed) >= 1 then FoundIndex := EmbeddingModelComboBox.Items.IndexOf(DefaultFileFixed);
-        EmbeddingModelComboBox.ItemIndex := max(FoundIndex, 0);
-        if EmbeddingModelComboBox.Items.Count > 1 then EmbeddingModelComboBox.Enabled := true;
-      end
-      else
-        EnableEmbeddingCheckBox.Enabled := false;
-      if EmbeddingModelComboBox.Items.Count <= 1 then EmbeddingModelComboBox.Enabled := false;
+      ModelDirectory := embeddingModeldir;
+      ComboBox := EmbeddingModelComboBox;
+      CheckBox := EnableEmbeddingCheckBox;
+    end
+    else if LLMtypeFixed = 'CONVERSATIONAL' then
+    begin
+      ModelDirectory := modeldir;
+      ComboBox := ModelComboBox;
+      CheckBox := EnableLLMcheckBox;
+    end
+    else
+    begin
+      MessageDlg('Error', 'Invalid LLM type!', mtError, [mbOK], 0);
       Exit;
     end;
-    MessageDlg('Error', 'Invalid LLM type!', mtError, [mbOK], 0);
+    if not(length(ModelDirectory) >= 1) then
+    begin
+      MessageDlg('Error', 'LLM directory not specified!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if not(DirectoryExists(ModelDirectory)) then
+    begin
+      MessageDlg('Error', 'LLM directory does not exist: ' + ModelDirectory, mtError, [mbOK], 0);
+      Exit;
+    end;
+    if not(Assigned(ComboBox)) then
+    begin
+      MessageDlg('Error', 'Target combobox not assigned!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if not(Assigned(CheckBox)) then
+    begin
+      MessageDlg('Error', 'Target checkbox not assigned!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    //Load models
+    FoundIndex := -1;
+    DefaultFileFixed := trim(DefaultFile);
+    ComboBox.Items.Clear;
+    ComboBox.ItemIndex := -1;
+    if FindFirst(ModelDirectory + '*.gguf', faAnyFile, SR) = 0 then
+    begin
+      try
+        repeat
+          if not((SR.Attr and faDirectory) = 0) then continue;
+          ModelFile := trim(SR.Name);
+          if (Pos(' ', ModelFile) > 0) or (Pos(PathDelim, ModelFile) > 0) then continue;
+          ComboBox.Items.Add(ModelFile);
+        until not(FindNext(SR) = 0);
+      finally
+        FindClose(SR);
+      end;
+    end;
+    //Apply results on available services
+    if LLMtypeFixed = 'EMBEDDING' then
+    begin
+      //Checkbox status applies to entire group boxes here not just the model combobox
+      if ComboBox.Items.Count >= 1 then
+      begin
+        CheckBox.Enabled := true;
+        if length(DefaultFileFixed) >= 1 then FoundIndex := ComboBox.Items.IndexOf(DefaultFileFixed);
+        ComboBox.ItemIndex := max(FoundIndex, 0);
+        if ComboBox.Items.Count > 1 then ComboBox.Enabled := true;
+      end
+      else
+        CheckBox.Enabled := false;
+      if ComboBox.Items.Count <= 1 then ComboBox.Enabled := false;
+      Exit;
+    end;
+    if LLMtypeFixed = 'CONVERSATIONAL' then
+    begin
+      //Checkbox here is in the same group box as the model combobox
+      if ComboBox.Items.Count >= 1 then
+      begin
+        if length(DefaultFileFixed) >= 1 then FoundIndex := ComboBox.Items.IndexOf(DefaultFileFixed);
+        ComboBox.ItemIndex := max(FoundIndex, 0);
+        if (ComboBox.Items.Count > 1) and CheckBox.Checked then ComboBox.Enabled := true;
+      end;
+      if (ComboBox.Items.Count <= 1) or not(CheckBox.Checked) then ComboBox.Enabled := false;
+      Exit;
+    end;
+    MessageDlg('Error', 'Internal error!', mtError, [mbOK], 0);
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
