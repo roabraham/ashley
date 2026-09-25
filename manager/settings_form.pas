@@ -439,6 +439,8 @@ type
     procedure AddParameter(ValueListEditor: TValueListEditor);
     { Removes a parameter from the selected list control (helper). }
     procedure RemoveParameter(ValueListEditor: TValueListEditor; StringList: TStringList);
+    { Show hint for coordinates at valuelist editor control (helper). }
+    procedure ShowHintForValueListCoords(ValueListEditor: TValueListEditor; StringList: TStringList; X, Y: Integer);
   public
     { Path to the application directory. }
     appdir: AnsiString;
@@ -559,28 +561,6 @@ begin
     end;
     OpenDocument(FolderNameFixed);
     Result := true;
-  except
-    on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
-  end;
-end;
-
-//Load device list
-procedure TSettingsForm.ReloadDevicesButtonClick(Sender: TObject);
-begin
-  LoadDevices;
-end;
-
-//Enable or disable LLM server
-procedure TSettingsForm.EnableLLMcheckBoxChange(Sender: TObject);
-var enable_llm: boolean;
-begin
-  try
-    enable_llm := EnableLLMcheckBox.Checked;
-    ModelLabel.Enabled := enable_llm;
-    ModelComboBox.Enabled := enable_llm;
-    AddModelButton.Enabled := enable_llm;
-    ParameterGroupBox.Enabled := enable_llm;
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
@@ -1016,6 +996,7 @@ var
   RowIndex: Integer;
 begin
   try
+    if not(Assigned(ValueListEditor)) then Exit;
     ParameterName := '';
     if not(InputQuery('New Parameter', 'Enter parameter name:', ParameterName)) then Exit;
     ParameterName := trim(ParameterName);
@@ -1044,6 +1025,7 @@ var
   TitleIdx: Integer;
 begin
   try
+    if not(Assigned(ValueListEditor)) then Exit;
     RowIndex := ValueListEditor.Row;
     if (RowIndex <= 0) or (RowIndex >= ValueListEditor.RowCount) then Exit;
     ParameterName := trim(ValueListEditor.Keys[RowIndex]);
@@ -1069,6 +1051,58 @@ begin
   end;
 end;
 
+//Show hint for coordinates at valuelist editor control
+procedure TSettingsForm.ShowHintForValueListCoords(ValueListEditor: TValueListEditor; StringList: TStringList; X, Y: Integer);
+var
+  gc: TGridCoord;
+  KeyName, NewHint: string;
+begin
+  try
+    if not(Assigned(ValueListEditor)) then Exit;
+    gc := ValueListEditor.MouseToCell(Point(X, Y));
+    if (gc.Y <= 0) or (gc.Y >= ValueListEditor.RowCount) or (gc.X < 0) then Exit;
+    KeyName := trim(ValueListEditor.Keys[gc.Y]);
+    if KeyName = '' then
+    begin
+      ValueListEditor.Hint := '';
+      Exit;
+    end;
+    NewHint := '';
+    if Assigned(StringList) then NewHint := StringList.Values[KeyName];
+    if NewHint = '' then NewHint := KeyName;
+    if not(ValueListEditor.Hint = NewHint) then
+    begin
+      ValueListEditor.Hint := NewHint;
+      Application.ActivateHint(Mouse.CursorPos);
+    end;
+  except
+    {on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);}
+  end;
+end;
+
+//Load device list
+procedure TSettingsForm.ReloadDevicesButtonClick(Sender: TObject);
+begin
+  LoadDevices;
+end;
+
+//Enable or disable LLM server
+procedure TSettingsForm.EnableLLMcheckBoxChange(Sender: TObject);
+var enable_llm: boolean;
+begin
+  try
+    enable_llm := EnableLLMcheckBox.Checked;
+    ModelLabel.Enabled := enable_llm;
+    ModelComboBox.Enabled := enable_llm;
+    AddModelButton.Enabled := enable_llm;
+    ParameterGroupBox.Enabled := enable_llm;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
 //Call log clearing
 procedure TSettingsForm.ClearLogButtonClick(Sender: TObject);
 begin
@@ -1076,33 +1110,9 @@ begin
 end;
 
 //Show title for each embedding parameter
-procedure TSettingsForm.EmbeddingParameterListEditorMouseMove(Sender: TObject;
-  Shift: TShiftState; X, Y: Integer);
-var
-  gc: TGridCoord;
-  KeyName, NewHint: string;
+procedure TSettingsForm.EmbeddingParameterListEditorMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
 begin
-  try
-    gc := EmbeddingParameterListEditor.MouseToCell(Point(X, Y));
-    if (gc.Y <= 0) or (gc.Y >= EmbeddingParameterListEditor.RowCount) or (gc.X < 0) then Exit;
-    KeyName := trim(EmbeddingParameterListEditor.Keys[gc.Y]);
-    if KeyName = '' then
-    begin
-      EmbeddingParameterListEditor.Hint := '';
-      Exit;
-    end;
-    NewHint := '';
-    if Assigned(EmbeddingTitleList) then NewHint := EmbeddingTitleList.Values[KeyName];
-    if NewHint = '' then NewHint := KeyName;
-    if not(EmbeddingParameterListEditor.Hint = NewHint) then
-    begin
-      EmbeddingParameterListEditor.Hint := NewHint;
-      Application.ActivateHint(Mouse.CursorPos);
-    end;
-  except
-    {on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);}
-  end;
+  ShowHintForValueListCoords(EmbeddingParameterListEditor, EmbeddingTitleList, X, Y);
 end;
 
 //Enable or Disable Embedding Model
@@ -3341,33 +3351,9 @@ begin
 end;
 
 //Show title for each parameter
-procedure TSettingsForm.ParameterListEditorMouseMove(Sender: TObject;
-  Shift: TShiftState; X, Y: Integer);
-var
-  gc: TGridCoord;
-  KeyName, NewHint: string;
+procedure TSettingsForm.ParameterListEditorMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
 begin
-  try
-    gc := ParameterListEditor.MouseToCell(Point(X, Y));
-    if (gc.Y <= 0) or (gc.Y >= ParameterListEditor.RowCount) or (gc.X < 0) then Exit;
-    KeyName := trim(ParameterListEditor.Keys[gc.Y]);
-    if KeyName = '' then
-    begin
-      ParameterListEditor.Hint := '';
-      Exit;
-    end;
-    NewHint := '';
-    if Assigned(TitleList) then NewHint := TitleList.Values[KeyName];
-    if NewHint = '' then NewHint := KeyName;
-    if not(ParameterListEditor.Hint = NewHint) then
-    begin
-      ParameterListEditor.Hint := NewHint;
-      Application.ActivateHint(Mouse.CursorPos);
-    end;
-  except
-    {on x: Exception do
-      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);}
-  end;
+  ShowHintForValueListCoords(ParameterListEditor, TitleList, X, Y);
 end;
 
 end.

@@ -10,7 +10,7 @@
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
         <CursorPos X="44" Y="20"/>
-        <UsageCount Value="184"/>
+        <UsageCount Value="185"/>
       </Unit>
       <Unit>
         <Filename Value="main_form.pas"/>
@@ -20,7 +20,7 @@
         <ResourceBaseClass Value="Form"/>
         <TopLine Value="1041"/>
         <CursorPos Y="1057"/>
-        <UsageCount Value="184"/>
+        <UsageCount Value="185"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
       </Unit>
@@ -32,9 +32,8 @@
         <ResourceBaseClass Value="Form"/>
         <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
-        <TopLine Value="3243"/>
-        <CursorPos Y="3260"/>
-        <UsageCount Value="183"/>
+        <CursorPos Y="13"/>
+        <UsageCount Value="184"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
       </Unit>
@@ -47,7 +46,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="47"/>
         <CursorPos X="14" Y="67"/>
-        <UsageCount Value="160"/>
+        <UsageCount Value="161"/>
       </Unit>
       <Unit>
         <Filename Value="progress_form.pas"/>
@@ -58,7 +57,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="7"/>
         <CursorPos X="16" Y="15"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="50"/>
       </Unit>
       <Unit>
         <Filename Value="C:\lazarus\fpc\3.2.2\source\rtl\objpas\sysutils\finah.inc"/>
@@ -127,120 +126,119 @@
         <UsageCount Value="10"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="28">
+    <JumpHistory HistoryIndex="29">
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="1095" Column="35" TopLine="1077"/>
+      </Position>
+      <Position>
+        <Filename Value="settings_form.pas"/>
+        <Caret Line="242" Column="52" TopLine="225"/>
+      </Position>
+      <Position>
+        <Filename Value="settings_form.pas"/>
+        <Caret Line="304" Column="42" TopLine="287"/>
+      </Position>
+      <Position>
+        <Filename Value="settings_form.pas"/>
+        <Caret Line="439" Column="61" TopLine="423"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="245" Column="63" TopLine="228"/>
+        <Caret Line="242" Column="51" TopLine="225"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="246" Column="11" TopLine="229"/>
+        <Caret Line="304" Column="42" TopLine="287"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="277" Column="23" TopLine="260"/>
+        <Caret Line="439" Column="61" TopLine="423"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="278" Column="11" TopLine="261"/>
+        <Caret Line="441" Column="64" TopLine="425"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="405" Column="44" TopLine="388"/>
+        <Caret Line="443" Column="75" TopLine="427"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="406" Column="21" TopLine="389"/>
+        <Caret Line="1041" TopLine="1024"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="407" Column="21" TopLine="390"/>
+        <Caret Line="1074" Column="5" TopLine="1062"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="408" Column="21" TopLine="391"/>
-      </Position>
-      <Position>
-        <Filename Value="settings_form.pas"/>
-        <Caret Line="442" Column="9" TopLine="429"/>
-      </Position>
-      <Position>
-        <Filename Value="settings_form.pas"/>
-        <Caret Line="504" TopLine="483"/>
-      </Position>
-      <Position>
-        <Filename Value="settings_form.pas"/>
-        <Caret Line="1039" Column="50" TopLine="1027"/>
+        <Caret Line="1105" TopLine="1091"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="245" Column="23" TopLine="228"/>
+        <Caret Line="1105" TopLine="1092"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="246" Column="11" TopLine="229"/>
+        <Caret Line="1134" Column="47" TopLine="1117"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="277" Column="23" TopLine="260"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="278" Column="11" TopLine="261"/>
+        <Caret Line="1098" Column="47" TopLine="1081"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="405" Column="44" TopLine="388"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="406" Column="21" TopLine="389"/>
+        <Caret Line="1098" Column="47" TopLine="1081"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="407" Column="21" TopLine="390"/>
+        <Caret Line="1117" TopLine="1101"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="408" Column="21" TopLine="391"/>
+        <Caret Line="3375" Column="53" TopLine="3361"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="440" Column="13" TopLine="424"/>
+        <Caret Line="1098" Column="47" TopLine="1088"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="441" Column="21" TopLine="425"/>
+        <Caret Line="3375" Column="47" TopLine="3358"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="501" Column="29" TopLine="485"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="1077" TopLine="1060"/>
+        <Caret Line="1098" Column="47" TopLine="1081"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="3188" TopLine="3173"/>
+        <Caret Line="3359" Column="5" TopLine="3338"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="3194" TopLine="3184"/>
       </Position>
       <Position>
         <Filename Value="settings_form.pas"/>
-        <Caret Line="3255" Column="9" TopLine="3235"/>
+        <Caret Line="1076" Column="49" TopLine="1064"/>
+      </Position>
+      <Position>
+        <Filename Value="settings_form.pas"/>
+        <Caret Line="14"/>
       </Position>
     </JumpHistory>
     <RunParams>

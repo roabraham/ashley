@@ -31,11 +31,15 @@ Ashley is an all-in-one, single-click local AI assistant that runs entirely on y
 - Self-contained deployment
 - Modular, easy to add extensions
 
+## About this repository
+
+This repository contains the complete source tree including compiled binaries and model files for development. For public distribution, see the **Public Repository Structure** section below.
+
 ---
 
-## Directory Layout
+## Directory Layout — Source (Public Repository)
 
-This repository contains only source files to minimize size. After cloning, the build process assembles the `server/` subdirectory into a runnable package.
+The public repository contains only source files to minimize size. After cloning, the build process assembles the `server/` subdirectory into a runnable package.
 
 ```
 ashley/                             # Project root (this directory)
@@ -554,7 +558,7 @@ Windows 10 or later, x64 architecture, is required.
 
 ---
 
-## Developing with Dual VCS (e.g., SVN + Git)
+## Developing with Dual VCS (e.g. SVN + Git)
 
 If you use a self-hosted version control system (VCS) for local development and want to sync your project with a remote VCS of a **different type** (e.g. *SVN* for local work and *Git/GitHub* for remote deployment), follow this setup.
 
