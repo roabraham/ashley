@@ -31,15 +31,11 @@ Ashley is an all-in-one, single-click local AI assistant that runs entirely on y
 - Self-contained deployment
 - Modular, easy to add extensions
 
-## About this repository
-
-This repository contains the complete source tree including compiled binaries and model files for development. For public distribution, see the **Public Repository Structure** section below.
-
 ---
 
-## Directory Layout — Source (Public Repository)
+## Directory Layout
 
-The public repository contains only source files to minimize size. After cloning, the build process assembles the `server/` subdirectory into a runnable package.
+This repository contains only source files to minimize size. After cloning, the build process assembles the `server/` subdirectory into a runnable package.
 
 ```
 ashley/                             # Project root (this directory)
