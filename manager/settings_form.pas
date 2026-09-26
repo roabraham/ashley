@@ -633,6 +633,9 @@ begin
       MessageDlg('Error', 'LLM type not specified!', mtError, [mbOK], 0);
       Exit;
     end;
+    ModelDirectory := '';
+    ComboBox := nil;
+    CheckBox := nil;
     if LLMtypeFixed = 'EMBEDDING' then
     begin
       ModelDirectory := embeddingModeldir;
@@ -3026,6 +3029,7 @@ var
   item: TEngineComboBoxItem;
 begin
   try
+    //Basic settings
     llmConversationalPort := 8080;
     llmEmbeddingPort := 8081;
     llmProxyLocation := '/llamacpp/';
@@ -3047,6 +3051,7 @@ begin
     MainLLMserverProcessRunning := false;
     WebUIprocessRunning := false;
     DefaultPHPtimezone := -1;
+    //Directories and files
     {$IFDEF MSWINDOWS}
     appdir := IncludeTrailingPathDelimiter(ExtractFilePath(application.ExeName));
     {$ELSE}
@@ -3090,6 +3095,7 @@ begin
       // DO NOT delete WAL/SHM files before opening - let SQLite handle them
       {if FileExists(wrapperDbFileWAL) then DeleteFile(wrapperDbFileWAL);
       if FileExists(wrapperDbFileSHM) then DeleteFile(wrapperDbFileSHM);}
+      //Load available Llama engines
       LlamaDBconnection.DatabaseName := wrapperDbFile;
       LlamaDBconnection.Open;
       LlamaTransaction.Active := true;
@@ -3160,8 +3166,10 @@ begin
     end
     else
       MessageDlg('Error', 'No LLM engine not found! Unable to run LLM server!', mtError, [mbOK], 0);
+    //Load models
     LoadLLMfiles('CONVERSATIONAL');
     LoadLLMfiles('EMBEDDING');
+    //Load personalities
     PersonaMemoryMode.Items.AddObject('Delete old (default)', TMemoryModeComboBoxItem.Create);
     TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[0]).ID := 1;
     TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[0]).Title := 'Delete old (default)';
@@ -3176,6 +3184,7 @@ begin
     TResponseModeComboBoxItem(PersonaResponseMode.Items.Objects[1]).ID := 2;
     TResponseModeComboBoxItem(PersonaResponseMode.Items.Objects[1]).Title := 'Modern (stream)';
     PersonaResponseMode.ItemIndex := 0;
+    //Final validation
     if (ModelComboBox.Items.Count < 1) and (EmbeddingModelComboBox.Items.Count < 1) then
       MessageDlg('Error', 'No language or embedding model not found! Unable to run LLM server!', mtError, [mbOK], 0);
   except
