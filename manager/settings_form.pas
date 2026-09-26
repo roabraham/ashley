@@ -310,22 +310,10 @@ type
     LoggingAndProxyTabSheet: TTabSheet;
     { Spin edit control for the LLM proxy service timeout in seconds. }
     LLMproxyServiceTimeout: TSpinEdit;
-    { Replaces special characters in the specified filename. }
-    function NormalizeFileName(const FilePath: AnsiString): AnsiString;
-    { Opens a folder in the system default file explorer. }
-    function OpenFolder(const FolderName: AnsiString): Boolean;
-    { Converts an image control's picture to a Base64 encoded string. }
-    function GetImageBase64(ImageControl: TImage): AnsiString;
-    { Gets the filename for an image control based on stored format. }
-    function GetImageFileName(ImageControl: TImage): string;
-    { Converts a stream to its string representation. }
-    function StreamToString(Stream: TStream): string;
     { Handles device reload button click. }
     procedure ReloadDevicesButtonClick(Sender: TObject);
     { Enables or disables LLM parameters based on checkbox. }
     procedure EnableLLMcheckBoxChange(Sender: TObject);
-    { Clears all temporary files and directories. }
-    procedure ClearTempDir;
     { Handles clear temp dir button click event. }
     procedure ClearTempDirButtonClick(Sender: TObject);
     { Handles persona selection change in the combo box. }
@@ -346,14 +334,6 @@ type
     procedure AddEmbeddingParameterButtonClick(Sender: TObject);
     { Handles add model button click. }
     procedure AddModelButtonClick(Sender: TObject);
-    { Clears the engine combo box and frees all associated items. }
-    procedure ClearEngineComboBox;
-    { Clears the device combo box and frees all associated items. }
-    procedure ClearDeviceComboBox;
-    { Loads LLM model files from the model or embedding directory. }
-    procedure LoadLLMfiles(const LLMtype: string; const DefaultFile: string = '');
-    { Clears log files or directory based on server running state. }
-    procedure ClearLog;
     { Handles clear log button click event. }
     procedure ClearLogButtonClick(Sender: TObject);
     { Handles mouse move over embedding parameter grid for tooltip display. }
@@ -366,24 +346,6 @@ type
     procedure LlamaEngineComboBoxChange(Sender: TObject);
     { Enables or disables proxy service settings based on port input. }
     procedure LLMproxyServicePortChange(Sender: TObject);
-    { Loads the list of available devices for the selected engine. }
-    procedure LoadDevices;
-    { Loads default configuration values for the selected engine. }
-    procedure LoadDefaultConfig;
-    { Loads configuration data from wrapper.json file. }
-    procedure LoadConfigData;
-    { Loads the list of personas from the database. }
-    procedure LoadBasePersonaList;
-    { Loads persona configuration from the personality.json file. }
-    procedure LoadPersonaConfig;
-    { Loads the selected persona into the form fields. }
-    procedure LoadSelectedPersona;
-    { Opens a confirmation dialog before loading selected persona. }
-    procedure LoadSelectedPersonaQuery;
-    { Loads persona images from JSON data into image controls. }
-    procedure LoadPersonaImages(RootObj: TJSONObject; const FieldName: string; ImageControl: TImage);
-    { Clears the persona combo box and frees all associated items. }
-    procedure ClearPersonaComboBox;
     { Handles apply button click to save settings. }
     procedure ApplyButtonClick(Sender: TObject);
     { Handles add button click to add a new parameter. }
@@ -429,10 +391,48 @@ type
     llmEmbeddingPort: integer;
     { Proxy location path for nginx. }
     llmProxyLocation: AnsiString;
+    { Replaces special characters in the specified filename. }
+    function NormalizeFileName(const FilePath: AnsiString): AnsiString;
     { Copies a file progressively while updating the progress bar (helper). }
     function CopyFileWithProgress(const SourceFile, DestFile: AnsiString): Boolean;
+    { Opens a folder in the system default file explorer. }
+    function OpenFolder(const FolderName: AnsiString): Boolean;
+    { Converts an image control's picture to a Base64 encoded string. }
+    function GetImageBase64(ImageControl: TImage): AnsiString;
+    { Gets the filename for an image control based on stored format. }
+    function GetImageFileName(ImageControl: TImage): string;
+    { Converts a stream to its string representation. }
+    function StreamToString(Stream: TStream): string;
     { Imports a new language model to the repository (helper). }
     procedure ImportModel(const ModelType: String);
+    { Loads LLM model files from the model or embedding directory. }
+    procedure LoadLLMfiles(const LLMtype: string; const DefaultFile: string = '');
+    { Loads the list of available devices for the selected engine. }
+    procedure LoadDevices;
+    { Loads default configuration values for the selected engine. }
+    procedure LoadDefaultConfig;
+    { Loads configuration data from wrapper.json file. }
+    procedure LoadConfigData;
+    { Loads the list of personas from the database. }
+    procedure LoadBasePersonaList;
+    { Loads persona configuration from the personality.json file. }
+    procedure LoadPersonaConfig;
+    { Loads the selected persona into the form fields. }
+    procedure LoadSelectedPersona;
+    { Opens a confirmation dialog before loading selected persona. }
+    procedure LoadSelectedPersonaQuery;
+    { Loads persona images from JSON data into image controls. }
+    procedure LoadPersonaImages(RootObj: TJSONObject; const FieldName: string; ImageControl: TImage);
+    { Clears the engine combo box and frees all associated items. }
+    procedure ClearEngineComboBox;
+    { Clears the device combo box and frees all associated items. }
+    procedure ClearDeviceComboBox;
+    { Clears the persona combo box and frees all associated items. }
+    procedure ClearPersonaComboBox;
+    { Clears log files or directory based on server running state. }
+    procedure ClearLog;
+    { Clears all temporary files and directories. }
+    procedure ClearTempDir;
     { Adds a new parameter to the selected list control (helper). }
     procedure AddParameter(ValueListEditor: TValueListEditor);
     { Removes a parameter from the selected list control (helper). }

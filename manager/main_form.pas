@@ -65,7 +65,9 @@ type
     FrontendDocMenu: TMenuItem;
     { Frontend documentation option in the system tray popup menu. }
     FrontendDocPopupMenu: TMenuItem;
+    { Service Wrapper documentation option in the system tray popup menu. }
     ServiceWrapperDocPopupMenu: TMenuItem;
+    { Service Wrapper documentation option in the main menu. }
     ServiceWrapperDocMenu: TMenuItem;
     { Service Manager documentation option in the system tray popup menu. }
     ServiceManagerDocPopupMenu: TMenuItem;
@@ -155,8 +157,6 @@ type
     procedure FrontendDocMenuClick(Sender: TObject);
     { Opens frontend documentation from the popup menu. }
     procedure FrontendDocPopupMenuClick(Sender: TObject);
-    { Opens a file using the system default application. }
-    function OpenFile(const filename: AnsiString): Boolean;
     { Displays the about dialog from the main menu. }
     procedure AboutMenuClick(Sender: TObject);
     { Displays the about dialog from the popup menu. }
@@ -179,7 +179,9 @@ type
     procedure ServiceManagerDocMenuClick(Sender: TObject);
     { Opens Service Manager documentation from popup menu. }
     procedure ServiceManagerDocPopupMenuClick(Sender: TObject);
+    { Opens Service Wrapper documentation from main menu. }
     procedure ServiceWrapperDocMenuClick(Sender: TObject);
+    { Opens Service Wrapper documentation from popup menu. }
     procedure ServiceWrapperDocPopupMenuClick(Sender: TObject);
     { Opens settings form from popup menu. }
     procedure SettingsPopupMenuClick(Sender: TObject);
@@ -191,22 +193,8 @@ type
     procedure ProcessTimerTimer(Sender: TObject);
     { Restarts LLM service from popup menu. }
     procedure RestartLLMservicePopupMenuClick(Sender: TObject);
-    { Displays appropriate error message based on error code from LLM service. }
-    procedure ProcessLLMserviceError(ErrorCode: integer);
-    { Controls the LLM service (START, STOP, RESTART). }
-    procedure LLMserviceControl(ServiceAction: string);
-    { Controls the LLM service with user confirmation dialog. }
-    procedure LLMserviceControlQuery(ServiceAction: string);
-    { Generates embedding vectors using the configured PHP process. }
-    procedure GenerateEmbeddings;
-    { Generates SSL certificate using the configured wrapper process. }
-    procedure GenerateSSLcertificate;
-    { Starts the Web UI client application. }
-    procedure startWebUI;
     { Restarts LLM service from main menu. }
     procedure RestartLLMserviceMenuClick(Sender: TObject);
-    { Opens the settings form and saves configuration if confirmed. }
-    procedure SaveConfigData;
     { Closes application from main menu. }
     procedure ExitMenuClick(Sender: TObject);
     { Closes application from popup menu. }
@@ -232,8 +220,7 @@ type
     { Stops LLM service from popup menu. }
     procedure StopLLMservicePopupMenuClick(Sender: TObject);
     { Handles system tray icon mouse down event. }
-    procedure SystemTrayIconMouseDown(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
+    procedure SystemTrayIconMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     { Opens user manual from main menu. }
     procedure UserManualMenuClick(Sender: TObject);
     { Opens user manual from popup menu. }
@@ -255,8 +242,24 @@ type
     DelayedStartUpQuery: Boolean;
     { Checks if only one instance of the application is running. }
     function CheckSingleInstance: Boolean;
+    { Opens a file using the system default application. }
+    function OpenFile(const filename: AnsiString): Boolean;
     { Releases the instance lock on application shutdown. }
     procedure ReleaseInstanceLock;
+    { Displays appropriate error message based on error code from LLM service. }
+    procedure ProcessLLMserviceError(ErrorCode: integer);
+    { Controls the LLM service (START, STOP, RESTART). }
+    procedure LLMserviceControl(ServiceAction: string);
+    { Controls the LLM service with user confirmation dialog. }
+    procedure LLMserviceControlQuery(ServiceAction: string);
+    { Generates embedding vectors using the configured PHP process. }
+    procedure GenerateEmbeddings;
+    { Generates SSL certificate using the configured wrapper process. }
+    procedure GenerateSSLcertificate;
+    { Starts the Web UI client application. }
+    procedure startWebUI;
+    { Opens the settings form and saves configuration if confirmed. }
+    procedure SaveConfigData;
   public
     { Path to the application directory. }
     appdir: AnsiString;
