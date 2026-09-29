@@ -2669,13 +2669,37 @@ begin
   regexp.ModifierI := true;
   try
     try
-      chdir(appdir);
+      //Basic validation
       if not(EnableLLMcheckBox.Checked) and not(EnableEmbeddingCheckBox.Checked) then
         raise SaveSettingsFatal.Create('Error: no LLM/embedding server enabled! Unable to run server!');
+      //Reset current directory
+      chdir(appdir);
+      //Validate config directory
+      if not(length(configdir) >= 1) then
+      begin
+        MessageDlg('Error', 'Config directory not specified!', mtError, [mbOK], 0);
+        Exit;
+      end;
+      if not(DirectoryExists(configdir)) then
+      begin
+        if not(ForceDirectories(configdir)) then
+        begin
+          MessageDlg('Error', 'Failed to create config directory: ' + configdir, mtError, [mbOK], 0);
+          Exit;
+        end;
+      end;
+      //Validate persona config filename
+      if not(length(personaConfigFile) >= 1) then
+      begin
+        MessageDlg('Error', 'Persona config file not specified!', mtError, [mbOK], 0);
+        Exit;
+      end;
+      //Enable or disable LLM engine
       if EnableLLMcheckBox.Checked then
         RootObj.Add('llm_enabled', 1)
       else
         RootObj.Add('llm_enabled', 0);
+      //LLM engine
       if not(LlamaEngineComboBox.ItemIndex = -1) then
       begin
         if Assigned(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]) then
@@ -2685,6 +2709,7 @@ begin
           if EngineID >= 1 then RootObj.Add('llama_engine', EngineID);
         end;
       end;
+      //LLM device
       if DeviceComboBox.Enabled and not(DeviceComboBox.ItemIndex = -1) then
       begin
         if Assigned(DeviceComboBox.Items.Objects[DeviceComboBox.ItemIndex]) then
@@ -2694,10 +2719,12 @@ begin
           if length(DeviceID) >= 1 then RootObj.Add('llama_device', DeviceID);
         end;
       end;
+      //Enable or disable logging
       if LLMloggingCheckBox.Checked then
         RootObj.Add('logging', 1)
       else
         RootObj.Add('logging', 0);
+      //Proxy settings
       ProxyPort := trim(LLMproxyServicePort.Text);
       if length(ProxyPort) >= 1 then
       begin
@@ -2711,8 +2738,9 @@ begin
       RootObj.Add('proxy_timeout', LLMproxyServiceTimeout.Value);
       RootObj.Add('max_proxy_connections', LLMproxyServiceMaxConnections.Value);
       RootObj.Add('max_package_size', LLMproxyServiceMaxPackageSize.Value);
-      if length(trim(ModelComboBox.Text)) >= 1 then
-        RootObj.Add('model', trim(ModelComboBox.Text));
+      //LLM model
+      if length(trim(ModelComboBox.Text)) >= 1 then RootObj.Add('model', trim(ModelComboBox.Text));
+      //LLM parameters
       if ParameterListEditor.RowCount >= 2 then
       begin
         ParamsObj := TJSONObject.Create;
@@ -2732,15 +2760,18 @@ begin
         RootObj.Add('parameters', ParamsObj);
         ParamsObj := nil;
       end;
+      //Check LLM port availability
       if not(PortsReserved.IndexOf(IntToStr(llmConversationalPort)) = -1) then
         raise SaveSettingsFatal.Create('Error: LLM port already reserved: ' + IntToStr(llmConversationalPort));
       PortsReserved.Add(IntToStr(llmConversationalPort));
+      //Enable or disable embedding
       if EnableEmbeddingCheckBox.Checked then
         RootObj.Add('embedding', 1)
       else
         RootObj.Add('embedding', 0);
-      if length(trim(EmbeddingModelCombobox.Text)) >= 1 then
-        RootObj.Add('embedding_model', trim(EmbeddingModelCombobox.Text));
+      //Embedding model
+      if length(trim(EmbeddingModelCombobox.Text)) >= 1 then RootObj.Add('embedding_model', trim(EmbeddingModelCombobox.Text));
+      //Embedding parameters
       if EmbeddingParameterListEditor.RowCount >= 2 then
       begin
         ParamsObj := TJSONObject.Create;
@@ -2760,9 +2791,11 @@ begin
         RootObj.Add('embedding_parameters', ParamsObj);
         ParamsObj := nil;
       end;
+      //Check embedding port availability
       if not(PortsReserved.IndexOf(IntToStr(llmEmbeddingPort)) = -1) then
         raise SaveSettingsFatal.Create('Error: embedding port already reserved: ' + IntToStr(llmEmbeddingPort));
       PortsReserved.Add(IntToStr(llmEmbeddingPort));
+      //Nginx settings
       ParamsObj := TJSONObject.Create;
       if not(PortsReserved.IndexOf(IntToStr(NginxHTTPport.Value)) = -1) then
         raise SaveSettingsFatal.Create('Error: HTTP port already reserved: ' + IntToStr(NginxHTTPport.Value));
@@ -2776,16 +2809,22 @@ begin
         ParamsObj.Add('nginx_ssl_certificate', StringReplace(trim(SSLcertificate.Text), PathDelim, '/', [rfReplaceAll]));
       if length(trim(SSLkey.Text)) > 0 then
         ParamsObj.Add('nginx_ssl_key', StringReplace(trim(SSLkey.Text), PathDelim, '/', [rfReplaceAll]));
+      //PHP settings
       if not(PortsReserved.IndexOf(IntToStr(PHPhttpPort.Value)) = -1) then
         raise SaveSettingsFatal.Create('Error: PHP port already reserved: ' + IntToStr(PHPhttpPort.Value));
       PortsReserved.Add(IntToStr(PHPhttpPort.Value));
       ParamsObj.Add('php_http_port', PHPhttpPort.Value);
       ParamsObj.Add('php_timezone', trim(PHPtimezoneCombobox.Text));
+      //Store web server settings
       RootObj.Add('webserver', ParamsObj);
+      //Delete JSON node pointer
       ParamsObj := nil;
+      //Save settings to file
       JSONList.Text := RootObj.FormatJSON();
       JSONList.SaveToFile(wrapperConfigFile);
+      //Free up memory
       FreeAndNil(JSONList);
+      //Apply PHP time zone settings
       if length(trim(PHPTimezoneCombobox.Text)) >= 1 then
       begin
         phpConfigLines := TStringList.Create;
@@ -2804,6 +2843,7 @@ begin
             MessageDlg('Error', 'Failed to update PHP configuration: ' + x.Message, mtError, [mbOK], 0);
         end;
       end;
+      //Apply Nginx settings
       webserverConfigLines := TStringList.Create;
       try
         webserverConfigLines.LoadFromFile(webserverConfigFile);
@@ -2880,31 +2920,10 @@ begin
         on x: Exception do
           MessageDlg('Error', 'Failed to update web server configuration: ' + x.Message, mtError, [mbOK], 0);
       end;
-      if not(length(configdir) >= 1) then
-      begin
-        MessageDlg('Error', 'Config directory not specified!', mtError, [mbOK], 0);
-        configDataSaved := false;
-        Exit;
-      end;
-      if not(DirectoryExists(configdir)) then
-      begin
-        if not(ForceDirectories(configdir)) then
-        begin
-          MessageDlg('Error', 'Failed to create config directory: ' + configdir, mtError, [mbOK], 0);
-          configDataSaved := false;
-          Exit;
-        end;
-      end;
-      if not(length(personaConfigFile) >= 1) then
-      begin
-        MessageDlg('Error', 'Persona config file not specified!', mtError, [mbOK], 0);
-        configDataSaved := false;
-        Exit;
-      end;
+      //Personality settings
       PersonaObj := TJSONObject.Create;
       JSONList := TStringList.Create;
       try
-        chdir(appdir);
         if DefaultPersonaComboBox.ItemIndex >= 0 then
         begin
           if Assigned(DefaultPersonaComboBox.Items.Objects[DefaultPersonaComboBox.ItemIndex]) then
@@ -2974,6 +2993,7 @@ begin
         end;
         JSONList.Text := PersonaObj.FormatJSON();
         JSONList.SaveToFile(personaConfigFile);
+        //Update CEF-redirect file
         if FileExists(redirectFile) then
         begin
           redirectFileContent := TStringList.Create;
@@ -2989,7 +3009,6 @@ begin
         on x: Exception do
         begin
           MessageDlg('Error', 'Failed to save persona config: ' + x.Message, mtError, [mbOK], 0);
-          configDataSaved := false;
           Exit;
         end;
       end;
@@ -2999,6 +3018,7 @@ begin
       begin
         saveSettingsError := true;
         MessageDlg('Error', x.Message, mtError, [mbOK], 0);
+        Exit;
       end;
       on x: Exception do MessageDlg('Error', 'Failed to save config: ' + x.Message, mtError, [mbOK], 0);
     end;
