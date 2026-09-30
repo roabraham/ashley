@@ -2384,12 +2384,15 @@ var
   paramFound: boolean;
   paramName, paramValue: String;
 begin
+  //Default values
   saveSettingsError := false;
   JSONList := TStringList.Create;
   JSONData := nil;
   try
     try
+      //Reset working directory
       chdir(appdir);
+      //Load defaults if config file does not exist
       if not(FileExists(wrapperConfigFile)) then
       begin
         if LlamaEngineComboBox.Items.Count > 0 then
@@ -2399,16 +2402,19 @@ begin
         end;
         Exit;
       end;
+      //Load config file
       JSONList.LoadFromFile(wrapperConfigFile);
       JSONData := GetJSON(JSONList.Text);
       if not(JSONData is TJSONObject) then Exit;
       RootObj := TJSONObject(JSONData);
+      //Set LLM engine
       EngineNode := RootObj.Find('llama_engine');
       if Assigned(EngineNode) then
         loadedEngineID := trim(EngineNode.AsString)
       else
         loadedEngineID := '';
-      if not(loadedEngineID = '') then
+      //Load defaults for selected engine
+      if length(loadedEngineID) >= 1 then
       begin
         if LlamaEngineComboBox.Items.Count >= 1 then
         begin
@@ -2425,10 +2431,11 @@ begin
           end;
         end;
       end;
+      //Set device
       if DeviceComboBox.Enabled and (DeviceComboBox.Items.Count >= 1) then
       begin
         paramName := trim(RootObj.Get('llama_device', ''));
-        if not(paramName = '') then
+        if length(paramName) >= 1 then
         begin
           foundIndex := -1;
           for i := 0 to DeviceComboBox.Items.Count -1 do
@@ -2442,8 +2449,9 @@ begin
           if not(foundIndex = -1) then DeviceComboBox.ItemIndex := foundIndex;
         end;
       end;
+      //Load LLM model
       loadedModel := trim(RootObj.Get('model', ''));
-      if not(loadedModel = '') then
+      if length(loadedModel) >= 1 then
       begin
         foundIndex := ModelComboBox.Items.IndexOf(loadedModel);
         if foundIndex = -1 then
@@ -2454,8 +2462,9 @@ begin
         else
           ModelComboBox.ItemIndex := foundIndex;
       end;
+      //Load embedding model
       loadedEmbeddingModel := trim(RootObj.Get('embedding_model', ''));
-      if not(loadedEmbeddingModel = '') then
+      if length(loadedEmbeddingModel) >= 1 then
       begin
         foundIndex := EmbeddingModelComboBox.Items.IndexOf(loadedEmbeddingModel);
         if foundIndex = -1 then
@@ -2466,6 +2475,7 @@ begin
         else
           EmbeddingModelComboBox.ItemIndex := foundIndex;
       end;
+      //Enable or disable LLM service
       LLMnode := RootObj.Find('llm_enabled');
       if Assigned(LLMnode) then
       begin
@@ -2474,6 +2484,7 @@ begin
         else
           EnableLLMcheckBox.Checked := (IndexStr(LowerCase(trim(LLMnode.AsString)), ['0', 'false', 'no']) = -1);
       end;
+      //Enable or disable embedding service
       EmbeddingNode := RootObj.Find('embedding');
       if Assigned(EmbeddingNode) then
       begin
@@ -2482,6 +2493,7 @@ begin
         else
           EnableEmbeddingCheckBox.Checked := (IndexStr(LowerCase(trim(EmbeddingNode.AsString)), ['0', 'false', 'no']) = -1);
       end;
+      //Enable or disable logging
       LogNode := RootObj.Find('logging');
       if Assigned(LogNode) then
       begin
@@ -2490,11 +2502,13 @@ begin
         else
           LLMloggingCheckBox.Checked := (IndexStr(LowerCase(trim(LogNode.AsString)), ['0', 'false', 'no']) = -1);
       end;
+      //Set proxy port number
       ProxyPortNode := RootObj.Find('proxy_port');
       if Assigned(ProxyPortNode) then
         LLMproxyServicePort.Text := trim(ProxyPortNode.AsString)
       else
         LLMproxyServicePort.Text := '';
+      //Set proxy timeout
       ProxyTimeoutNode := RootObj.Find('proxy_timeout');
       if Assigned(ProxyTimeoutNode) then
       begin
@@ -2505,6 +2519,7 @@ begin
       end
       else
         LLMproxyServiceTimeout.Value := 60;
+      //Set max proxy connections
       ProxyMaxConnectionsNode := RootObj.Find('max_proxy_connections');
       if Assigned(ProxyMaxConnectionsNode) then
       begin
@@ -2515,6 +2530,7 @@ begin
       end
       else
         LLMproxyServiceMaxConnections.Value := 200;
+      //Set max proxy package size
       ProxyMaxPackageSizeNode := RootObj.Find('max_package_size');
       if Assigned(ProxyMaxPackageSizeNode) then
       begin
@@ -2525,6 +2541,7 @@ begin
       end
       else
         LLMproxyServiceMaxPackageSize.Value := 2097152;
+      //Get LLM parameters
       ParamsObj := RootObj.Get('parameters', TJSONObject(nil));
       if Assigned(ParamsObj) then
       begin
@@ -2543,6 +2560,7 @@ begin
         end;
         if paramFound then ParameterListEditor.Row := 1;
       end;
+      //Get embedding parameters
       ParamsObj := RootObj.Get('embedding_parameters', TJSONObject(nil));
       if Assigned(ParamsObj) then
       begin
@@ -2561,12 +2579,14 @@ begin
         end;
         if paramFound then EmbeddingParameterListEditor.Row := 1;
       end;
+      //Load web server settings
       WebServerData := RootObj.Find('webserver');
       if Assigned(WebServerData) then
       begin
         if WebServerData.JSONType = jtObject then
         begin
           WebServerObj := TJSONObject(WebServerData);
+          //Set HTTP port
           httpPortNode := WebServerObj.Find('nginx_http_port');
           if Assigned(httpPortNode) then
           begin
@@ -2575,6 +2595,7 @@ begin
             else
               NginxHTTPport.Value := StrToIntDef(trim(httpPortNode.AsString), 80);
           end;
+          //Set HTTPS port
           httpsPortNode := WebServerObj.Find('nginx_https_port');
           if Assigned(httpsPortNode) then
           begin
@@ -2583,12 +2604,14 @@ begin
             else
               NginxHTTPSport.Value := StrToIntDef(trim(httpsPortNode.AsString), 443);
           end;
+          //Load SSL certificate settings
           sslCertNode := WebServerObj.Find('nginx_ssl_certificate');
           if Assigned(sslCertNode) then
             SSLcertificate.Text := StringReplace(trim(sslCertNode.AsString), '/', PathDelim, [rfReplaceAll]);
           sslKeyNode := WebServerObj.Find('nginx_ssl_key');
           if Assigned(sslKeyNode) then
             SSLkey.Text := StringReplace(trim(sslKeyNode.AsString), '/', PathDelim, [rfReplaceAll]);
+          //Set PHP port
           phpPortNode := WebServerObj.Find('php_http_port');
           if Assigned(phpPortNode) then
           begin
@@ -2597,6 +2620,7 @@ begin
             else
               PHPhttpPort.Value := StrToIntDef(trim(phpPortNode.AsString), 9000);
           end;
+          //Set PHP timezone
           loadedTimezone := trim(WebServerObj.Get('php_timezone', ''));
           if not(loadedTimezone = '') then
           begin
