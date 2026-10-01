@@ -932,7 +932,7 @@ begin
       Exit;
     end;
     //Validate model directory
-    if ModelDirectory = '' then
+    if not(length(ModelDirectory) >= 1) then
     begin
       MessageDlg('Error', 'Model directory not specified!', mtError, [mbOK], 0);
       Exit;
@@ -1287,14 +1287,10 @@ begin
     if not(Assigned(engineItem)) then Exit;
     configID := StrToIntDef(engineItem.ID, 0);
     if configID = 0 then Exit;
-    if length(engineItem.ProxyPort) >= 1 then
-      LLMproxyServicePort.Text := engineItem.ProxyPort;
-    if engineItem.ProxyTimeout >= 1 then
-      LLMproxyServiceTimeout.Value := engineItem.ProxyTimeout;
-    if engineItem.ProxyMaxConnections >= 1 then
-      LLMproxyServiceMaxConnections.Value := engineItem.ProxyMaxConnections;
-    if engineItem.ProxyMaxPackageSize >= 1 then
-      LLMproxyServiceMaxPackageSize.Value := engineItem.ProxyMaxPackageSize;
+    if length(engineItem.ProxyPort) >= 1 then LLMproxyServicePort.Text := engineItem.ProxyPort;
+    if engineItem.ProxyTimeout >= 1 then LLMproxyServiceTimeout.Value := engineItem.ProxyTimeout;
+    if engineItem.ProxyMaxConnections >= 1 then LLMproxyServiceMaxConnections.Value := engineItem.ProxyMaxConnections;
+    if engineItem.ProxyMaxPackageSize >= 1 then LLMproxyServiceMaxPackageSize.Value := engineItem.ProxyMaxPackageSize;
     ReloadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
     LoadDevices;
     ParameterListEditor.Strings.Clear;
@@ -1387,7 +1383,7 @@ begin
     try
       if paramFound then ParameterListEditor.Row := 1;
       if embeddingParamFound then EmbeddingParameterListEditor.Row := 1;
-      if not(modelFromDB = '') then
+      if length(modelFromDB) >= 1 then
       begin
         ModelComboBox.ItemIndex := ModelComboBox.Items.IndexOf(modelFromDB);
         if ModelComboBox.ItemIndex = -1 then
@@ -1396,7 +1392,7 @@ begin
           MessageDlg('Error', 'The selected language model not found in model directory!', mtError, [mbOK], 0);
         end;
       end;
-      if not(embeddingModelFromDB = '') then
+      if length(embeddingModelFromDB) >= 1 then
       begin
         EmbeddingModelComboBox.ItemIndex := EmbeddingModelComboBox.Items.IndexOf(embeddingModelFromDB);
         if EmbeddingModelComboBox.ItemIndex = -1 then
@@ -2622,7 +2618,7 @@ begin
           end;
           //Set PHP timezone
           loadedTimezone := trim(WebServerObj.Get('php_timezone', ''));
-          if not(loadedTimezone = '') then
+          if length(loadedTimezone) >= 1 then
           begin
             i := PHPtimezoneCombobox.Items.IndexOf(loadedTimezone);
             if i = -1 then
