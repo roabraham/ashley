@@ -1271,6 +1271,7 @@ var
   paramName, paramTitle, paramType, configName, configValue: String;
 begin
   try
+    //Defaults
     saveSettingsError := false;
     EnableLLMcheckBox.Checked := true;
     EnableEmbeddingCheckBox.Checked := true;
@@ -1282,23 +1283,28 @@ begin
     llmConversationalPort := 8080;
     llmEmbeddingPort := 8081;
     llmProxyLocation := '/llamacpp/';
+    //Validate selected engine
     if LlamaEngineComboBox.ItemIndex < 0 then Exit;
     engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
     if not(Assigned(engineItem)) then Exit;
     configID := StrToIntDef(engineItem.ID, 0);
     if configID = 0 then Exit;
+    //Load engine defaults
     if length(engineItem.ProxyPort) >= 1 then LLMproxyServicePort.Text := engineItem.ProxyPort;
     if engineItem.ProxyTimeout >= 1 then LLMproxyServiceTimeout.Value := engineItem.ProxyTimeout;
     if engineItem.ProxyMaxConnections >= 1 then LLMproxyServiceMaxConnections.Value := engineItem.ProxyMaxConnections;
     if engineItem.ProxyMaxPackageSize >= 1 then LLMproxyServiceMaxPackageSize.Value := engineItem.ProxyMaxPackageSize;
     ReloadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
+    //Load devices
     LoadDevices;
+    //Clear parameters
     ParameterListEditor.Strings.Clear;
     EmbeddingParameterListEditor.Strings.Clear;
     TitleList.Clear;
     EmbeddingTitleList.Clear;
     modelFromDB := '';
     embeddingModelFromDB := '';
+    //Connect to database
     if not(LlamaDBconnection.Connected) then
     begin
       // DO NOT delete WAL/SHM files before opening - let SQLite handle them
@@ -1310,6 +1316,7 @@ begin
       // Set busy timeout to wait for transient locks instead of failing immediately
       LlamaDBconnection.ExecuteDirect('PRAGMA busy_timeout = 5000');
     end;
+    //Load default LLM config data from database
     ConfigDataQuery.Close;
     ConfigDataQuery.ParamByName('cid').AsInteger := configID;
     ConfigDataQuery.Open;
@@ -1317,9 +1324,11 @@ begin
     embeddingParamFound := false;
     while not(ConfigDataQuery.EOF) do
     begin
+      //Load default parameters from database
       paramName := trim(ConfigDataQuery.FieldByName('name').AsString);
       paramTitle := trim(ConfigDataQuery.FieldByName('title').AsString) + ': ' + trim(ConfigDataQuery.FieldByName('description').AsString);
       paramType := uppercase(trim(ConfigDataQuery.FieldByName('type_name').AsString));
+      //Load default models from database
       if SameText(paramName, 'model') then
       begin
         if paramType = 'EMBEDDING' then
@@ -1329,6 +1338,7 @@ begin
       end
       else if not(SameText(paramName, 'device')) then
       begin
+        //Load default port from database
         if SameText(paramName, 'port') then
         begin
           if paramType = 'EMBEDDING' then
@@ -1336,6 +1346,7 @@ begin
           else
             llmConversationalPort := StrToIntDef(trim(ConfigDataQuery.FieldByName('value').AsString), 8080);
         end;
+        //Load remaining embedding parameters from database
         if paramType = 'EMBEDDING' then
         begin
           EmbeddingParameterListEditor.InsertRow(
@@ -1347,6 +1358,7 @@ begin
         end
         else
         begin
+          //Load remaining conversational parameters from database
           ParameterListEditor.InsertRow(
             paramName,
             trim(ConfigDataQuery.FieldByName('value').AsString),
@@ -1358,6 +1370,7 @@ begin
       ConfigDataQuery.Next;
     end;
     ConfigDataQuery.Close;
+    //Load default web server config data from database
     WebServerConfigQuery.Close;
     WebServerConfigQuery.Open;
     while not(WebServerConfigQuery.EOF) do
@@ -1379,10 +1392,13 @@ begin
       WebServerConfigQuery.Next;
     end;
     WebServerConfigQuery.Close;
+    //Set default PHP time zone
     PHPtimezoneCombobox.ItemIndex := DefaultPHPtimezone;
     try
+      //Apply default parameters
       if paramFound then ParameterListEditor.Row := 1;
       if embeddingParamFound then EmbeddingParameterListEditor.Row := 1;
+      //Apply default LLM model
       if length(modelFromDB) >= 1 then
       begin
         ModelComboBox.ItemIndex := ModelComboBox.Items.IndexOf(modelFromDB);
@@ -1392,6 +1408,7 @@ begin
           MessageDlg('Error', 'The selected language model not found in model directory!', mtError, [mbOK], 0);
         end;
       end;
+      //Apply default embedding model
       if length(embeddingModelFromDB) >= 1 then
       begin
         EmbeddingModelComboBox.ItemIndex := EmbeddingModelComboBox.Items.IndexOf(embeddingModelFromDB);
@@ -1402,6 +1419,7 @@ begin
         end;
       end;
     finally
+      //Close database connection
       LlamaTransaction.Active := false;
       LlamaDBconnection.Close;
       // Note: WAL/SHM files are managed by SQLite automatically. Do not delete them.
