@@ -3,6 +3,9 @@
 namespace App\Controller;
 
 use App\Service\ChatConfigService;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\ParameterType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -29,6 +32,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * | Action                    | Response mode | Description                  |
  * |---------------------------|---------------|------------------------------|
  * | *(empty / send_message)*  | 1             | Send message to the LLM      |
+ * | autocomplete              | -             | Suggest known user prompts   |
  * | summarize                 | -             | Summarize conversation       |
  * | clear_session             | 1             | Clear server-side history    |
  * | get_conversation_history  | 1             | Fetch server-side history    |
@@ -54,6 +58,32 @@ class ChatController extends AbstractController
     /** Valid chat roles */
     protected const VALID_ROLES = ['user', 'assistant', 'system'];
 
+    /**
+     * Maximum number of words combined into the `LIKE` predicates of a single autocomplete query.
+     *
+     * A very long message would otherwise produce an unbounded chain of AND-ed `LIKE` conditions, which slows the query down and matches almost nothing.
+     * Only the most recently typed words are kept because they are the freshest signal of what the user is currently writing.
+     */
+    protected const MAX_AUTOCOMPLETE_SEARCH_TERMS = 5;
+
+    /** Maximum accepted length (in characters) of the raw autocomplete request text */
+    protected const MAX_AUTOCOMPLETE_INPUT_LENGTH = 255;
+
+    /**
+     * Escape character of the autocomplete `LIKE` patterns, declared as a full SQL string literal because the generated predicate appends it as `ESCAPE <literal>`
+     */
+    protected const SQLITE_LIKE_ESCAPE_LITERAL = "'\\'";
+
+    /** SQLite busy timeout in seconds used for the short-lived autocomplete connection */
+    protected const SQLITE_BUSY_TIMEOUT_SECONDS = 3;
+
+    /**
+     * Flag passed to `PDO::sqliteCreateFunction()` to mark the registered `lower()` as deterministic (SQLite's `SQLITE_DETERMINISTIC` value, spelled out here because only ext/sqlite3 defines that constant and ext/pdo_sqlite does not).
+     *
+     * A deterministic function may be hoisted and reused by SQLite, so the repeated `LOWER(TRIM(behavior.user_prompt))` expression of an AND-ed `LIKE` chain is evaluated once per row instead of once per predicate.
+     */
+    protected const SQLITE_DETERMINISTIC_FLAG = 0x000000800;
+
     /** @var ChatConfigService $configService: shared configuration provider */
     protected ChatConfigService $configService;
 
@@ -78,7 +108,8 @@ class ChatController extends AbstractController
     #[Route('/', name: 'app_chat_index', methods: ['GET'])]
     public function index(SessionInterface $session): Response {
         $llmConfig = $this->configService->getLlmConfig();
-        $persona   = $this->configService->getPersonaConfig();
+        $persona = $this->configService->getPersonaConfig();
+        $autocomplete_config = $this->configService->getAutocompleteConfig();
         $responseMode = intval($persona['response_mode'] ?? 1);
         // Pre-calculate values that the template and JS need
         $llmCtxSize = intval($llmConfig['llm_ctx_size'] ?? self::DEFAULT_LLM_CTX_SIZE);
@@ -106,6 +137,7 @@ class ChatController extends AbstractController
         return $this->render('chat/index.html.twig', [
             'persona'                  => $persona,
             'llm_config'               => $llmConfig,
+            'autocomplete_config'      => $autocomplete_config,
             'has_session_conversation' => $hasSessionConversation,
             'llm_ctx_size'             => $llmCtxSize,
             'llm_max_response_tokens'  => $llmMaxResponseTokens,
@@ -151,6 +183,7 @@ class ChatController extends AbstractController
             case 'get_conversation_history': return $this->getConversationHistory($session, $llmConfig, $persona);
             case 'export_conversation': return $this->exportConversation($session, $persona);
             case 'import_conversation': return $this->importConversation($request, $session, $persona);
+            case 'autocomplete': return $this->autocomplete($data, $llmConfig, $persona);
             case 'summarize': return $this->summarizeHistory($data, $llmConfig, $persona);
             case 'send_message':
             case '': return $this->sendMessage($data, $request, $session, $llmConfig, $persona);
@@ -735,15 +768,222 @@ class ChatController extends AbstractController
     }
 
     // =========================================================================
+    // AUTOCOMPLETE SUGGESTIONS
+    // =========================================================================
+
+    /**
+     * Handle the `autocomplete` API action.
+     *
+     * Returns the known `behavior` `user_prompt` texts whose content contains every word of the request that is at least `min_autocomplete_length` characters long so the browser can offer them as suggestions for the message textarea.
+     *
+     * This is deliberately pure SQL pattern matching on `user_prompt` only:
+     *
+     * - No embedding column is read, so suggestions work before `app:generate-embeddings` has ever been run.
+     * - The embedding engine does not have to be enabled at all; the `embedding_enabled` flag is never consulted.
+     * - The `embedding` column holds vectors thousands of characters long, so keeping it out of the query avoids reading those blobs from disk for every scanned row.
+     * - Only `user_prompt` is selected and returned.
+     *
+     * Records are still scoped to the active personality (`personality_id` match or a behavior shared by all personalities), so the popup cannot offer prompts that belong to a different persona.
+     *
+     * Matching uses one case-insensitive `LIKE` predicate per search term:
+     *
+     * ```sql
+     * LOWER(TRIM(behavior.user_prompt)) LIKE :autocomplete_term_0 ESCAPE '\' AND ...
+     * ```
+     *
+     * No `ORDER BY` is emitted: without a sort key SQLite can stop scanning as soon as `max_popup_items` rows matched instead of buffering every match through a temporary sorter first, and a full scan of this rowid table already yields rows in ascending `id` order, so the result stays deterministic.
+     *
+     * The query is built with the Doctrine DBAL query builder; every user supplied value is bound as a named parameter, so no input can reach the SQL text.
+     *
+     * Expected request body: `{"action": "autocomplete", "text": "<raw textarea content>"}`.
+     *
+     * Success response: `{"success": true, "items": ["<user_prompt>", ...]}` where `items` is empty whenever no word qualifies yet or nothing matches.
+     *
+     * @param array $data Decoded request body
+     * @param array $llmConfig LLM configuration from {@see ChatConfigService}
+     * @param array $persona Persona configuration from {@see ChatConfigService}
+     * @return JsonResponse
+     */
+    protected function autocomplete(array $data, array $llmConfig, array $persona): JsonResponse {
+        try {
+            // Both values are validated and clamped by the configuration service.
+            $autocompleteConfig = $this->configService->getAutocompleteConfig();
+            $maxPopupItems = max(intval(trim($autocompleteConfig['max_popup_items'] ?? 3)), 1);
+            $minAutocompleteLength = max(intval(trim($autocompleteConfig['min_autocomplete_length'] ?? 3)), 1);
+            // A missing or non-string text field is treated as "nothing typed yet" instead of an error: the popup simply stays hidden.
+            $text = trim((string) ($data['text'] ?? ''));
+            if ($text == '') { return $this->json(['success' => true, 'items' => []]); }
+            if (mb_strlen($text, 'UTF-8') > self::MAX_AUTOCOMPLETE_INPUT_LENGTH) {
+                return $this->json([
+                    'error'   => 'INVALID_INPUT_LENGTH',
+                    'message' => 'The autocomplete request text exceeds the maximum accepted length of ' . self::MAX_AUTOCOMPLETE_INPUT_LENGTH . ' characters.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+            $searchTerms = $this->buildAutocompleteSearchTerms($text, $minAutocompleteLength);
+            if (empty($searchTerms)) {
+                // Not a single word is long enough yet - do not query at all.
+                return $this->json(['success' => true, 'items' => []]);
+            }
+            $personalityId = intval($persona['personality_id'] ?? 0);
+            if (empty($personalityId)) {
+                // Without an active personality there is no behavior list to suggest from.
+                return $this->json(['success' => true, 'items' => []]);
+            }
+            $behaviorDatabase = $this->getPersonalityDbConnection();
+            $queryBuilder = $behaviorDatabase->createQueryBuilder();
+            $queryBuilder
+                ->select('user_prompt')
+                ->from('behavior')
+                ->where('(personality_id = :personality_id OR all_personalities != 0)')
+                ->setParameter('personality_id', $personalityId, ParameterType::INTEGER)
+                ->setMaxResults($maxPopupItems);
+            $expressionBuilder = $queryBuilder->expr();
+            $normalizedPrompt = 'LOWER(TRIM(user_prompt))';
+            foreach ($searchTerms as $termIndex => $searchTerm) {
+                $placeholder = $queryBuilder->createNamedParameter(
+                    '%' . $this->escapeLikeWildcards($searchTerm) . '%',
+                    ParameterType::STRING,
+                    ':autocomplete_term_' . $termIndex
+                );
+                $queryBuilder->andWhere($expressionBuilder->like($normalizedPrompt, $placeholder, self::SQLITE_LIKE_ESCAPE_LITERAL));
+            }
+            $rows = $queryBuilder->executeQuery()->fetchAllAssociative();
+            return $this->json([
+                'success' => true,
+                'items'   => $this->formatAutocompleteItems($rows)
+            ]);
+        } catch (\Doctrine\DBAL\Exception $exception) {
+            return $this->json([
+                'error'   => 'AUTOCOMPLETE_QUERY_FAILED',
+                'message' => 'The autocomplete lookup failed because the behavior database query could not be executed: ' . $exception->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (\RuntimeException $exception) {
+            return $this->json([
+                'error'   => 'AUTOCOMPLETE_DB_UNAVAILABLE',
+                'message' => 'The autocomplete lookup is unavailable because the personality database cannot be opened: ' . $exception->getMessage()
+            ], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+    }
+
+    /**
+     * Split the raw textarea content into the search terms of the autocomplete query.
+     *
+     * Every whitespace-separated word whose UTF-8 length is at least `$minAutocompleteLength` becomes one search term. Terms are trimmed, lower-cased (Unicode-aware) and de-duplicated, because `LOWER(TRIM(user_prompt)) LIKE ?` is compared against an already lower-cased column expression.
+     *
+     * At most {@see MAX_AUTOCOMPLETE_SEARCH_TERMS} terms are returned; when the input contains more the most recently typed ones are kept, which bounds the number of AND-ed `LIKE` predicates on very long messages.
+     *
+     * @param string $text Raw textarea content
+     * @param int $minAutocompleteLength Minimum word length in characters
+     * @return array<int,string> Lower-cased, de-duplicated search terms
+     */
+    protected function buildAutocompleteSearchTerms(string $text, int $minAutocompleteLength): array {
+        $normalizedText = trim($text);
+        if ($normalizedText == '') { return []; }
+        // The /u modifier makes \s match Unicode whitespace; it can only fail on invalid UTF-8 input, in which case the ASCII splitter keeps the feature working on a best-effort basis instead of failing the whole request.
+        $candidates = preg_split('/\s+/u', $normalizedText);
+        if ($candidates === false) {
+            $candidates = preg_split('/\s+/', $normalizedText);
+            if ($candidates === false) { return []; }
+        }
+        $searchTerms = [];
+        $seenTerms   = [];
+        foreach ($candidates as $candidate) {
+            $word = trim((string) $candidate);
+            if ($word == '') { continue; }
+            if (mb_strlen($word, 'UTF-8') < $minAutocompleteLength) { continue; }
+            $normalizedWord = mb_strtolower($word, 'UTF-8');
+            if (isset($seenTerms[$normalizedWord])) { continue; }
+            $seenTerms[$normalizedWord] = true;
+            $searchTerms[] = $normalizedWord;
+        }
+        if (count($searchTerms) > self::MAX_AUTOCOMPLETE_SEARCH_TERMS) {
+            $searchTerms = array_slice($searchTerms, -1 * self::MAX_AUTOCOMPLETE_SEARCH_TERMS);
+        }
+        return $searchTerms;
+    }
+
+    /**
+     * Escape the LIKE wildcards of a single user supplied search term.
+     *
+     * Without escaping, a word containing `%` or `_` would silently widen the pattern, and a word containing the escape character itself would produce an invalid pattern.
+     *
+     * @param string $searchTerm Lower-cased search term
+     * @return string The term with every LIKE special character escaped
+     */
+    protected function escapeLikeWildcards(string $searchTerm): string {
+        // Self::SQLITE_LIKE_ESCAPE_LITERAL is the quoted literal of this character.
+        $escapeCharacter = substr(self::SQLITE_LIKE_ESCAPE_LITERAL, 1, 1);
+        return str_replace(
+            [$escapeCharacter, '%', '_'],
+            ["{$escapeCharacter}{$escapeCharacter}", "{$escapeCharacter}%", "{$escapeCharacter}_"],
+            $searchTerm
+        );
+    }
+
+    /**
+     * Convert the raw `behavior` rows into the JSON payload consumed by the popup.
+     *
+     * Only the `user_prompt` is returned - this is the text that fills the textarea.
+     *
+     * @param array<int,array<string,mixed>> $rows Rows returned by the autocomplete query
+     * @return array<int,string> Array of prompt strings
+     */
+    protected function formatAutocompleteItems(array $rows): array {
+        if (empty($rows)) { return []; }
+        $items = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) { continue; }
+            $prompt = trim((string) ($row['user_prompt'] ?? ''));
+            if ($prompt == '') { continue; }
+            $items[] = $prompt;
+        }
+        return $items;
+    }
+
+    /**
+     * Open a Doctrine DBAL connection to the SQLite personality database.
+     *
+     * The connection is short-lived and never cached, so the autocomplete lookup cannot interfere with the long-lived PDO handles of the chat flow. It is released as soon as the local variable goes out of scope.
+     *
+     * The `lower()` SQL function is registered as a Unicode-aware PHP function on this connection: the SQLite core implementation only folds ASCII characters, which would make `LOWER(TRIM(user_prompt)) LIKE '%word%'` miss accented characters such as "A" with diaeresis or "o" with double acute. Both sides of the comparison then use `mb_strtolower()`, so the match is case-insensitive across the whole UTF-8 range. The override only affects this connection, never the chat flow.
+     *
+     * @return Connection An open DBAL connection to the personality database
+     * @throws \RuntimeException When the personality database file does not exist
+     */
+    protected function getPersonalityDbConnection(): Connection {
+        $personalityDbPath = $this->configService->getPersonalityDbPath();
+        if (!file_exists($personalityDbPath)) { throw new \RuntimeException("Personality database not found: {$personalityDbPath}!"); }
+        $behaviorDatabase = DriverManager::getConnection([
+            'driver'        => 'pdo_sqlite',
+            'path'          => $personalityDbPath,
+            'driverOptions' => [\PDO::ATTR_TIMEOUT => self::SQLITE_BUSY_TIMEOUT_SECONDS]
+        ]);
+        $nativeConnection = $behaviorDatabase->getNativeConnection();
+        if ($nativeConnection instanceof \PDO) {
+            $nativeConnection->sqliteCreateFunction(
+                'lower',
+                static function (?string $value): ?string {
+                    return ($value === null) ? null : mb_strtolower($value, 'UTF-8');
+                },
+                1,
+                self::SQLITE_DETERMINISTIC_FLAG
+            );
+        }
+        return $behaviorDatabase;
+    }
+
+    // =========================================================================
     // BEHAVIOR MATCHING
     // =========================================================================
 
     /**
-     * Attempt to match the user message against known personality behaviors using cosine similarity on pre-computed embedding vectors.
+     * Attempt to match the user message against known personality behaviors.
+     *
+     * First tries a fast, case-insensitive exact match on `user_prompt`. If no exact match is found, falls back to cosine similarity on pre-computed embedding vectors.
      *
      * Returns `null` if matching is not applicable, the DB does not exist, or no match exceeds the configured similarity threshold.
      *
-     * @param string $userMessage   The incoming user message text
+     * @param string $userMessage The incoming user message text
      * @param SessionInterface $session Symfony session
      * @param array<string,mixed> $llmConfig LLM configuration from {@see ChatConfigService}
      * @param array<string,mixed> $persona Persona configuration from {@see ChatConfigService}
@@ -756,8 +996,22 @@ class ChatController extends AbstractController
             $db = new \PDO("sqlite:{$personalityDbPath}");
             $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
             $db->exec("PRAGMA journal_mode = WAL;");
-            // Embedding
-            //$embeddingHost = $llmConfig['embedding_host'] ?? '127.0.0.1';
+            $personalityId = intval($persona['personality_id'] ?? 0);
+            if (empty($personalityId)) { return null; }
+            // FAST PATH: case-insensitive exact match on user_prompt
+            // A normalized, trimmed comparison avoids the embedding/LLM round-trip when the user typed a known prompt verbatim. This is orders of magnitude faster and returns the identical response payload.
+            $normalizedMessage = trim($userMessage);
+            $stmtExact = $db->prepare(
+                "SELECT id, response_action, response_message FROM behavior" .
+                " WHERE (personality_id = :pid OR all_personalities != 0) AND LOWER(TRIM(user_prompt)) = LOWER(TRIM(:msg))" .
+                " LIMIT 1"
+            );
+            $stmtExact->bindValue(':pid', $personalityId, \PDO::PARAM_INT);
+            $stmtExact->bindValue(':msg', $normalizedMessage, \PDO::PARAM_STR);
+            $stmtExact->execute();
+            $exactMatch = $stmtExact->fetch(\PDO::FETCH_ASSOC);
+            if ($exactMatch) { return $this->buildBehaviorMatchResult($exactMatch, $persona, $session, 1.0, $db, $userMessage, $llmConfig); }
+            // SLOW PATH: cosine similarity on embeddings
             $embeddingHost = '127.0.0.1';
             $embeddingPort = intval($llmConfig['proxy_port'] ?? 5123);
             $embeddingEndpoint = trim($llmConfig['embedding_endpoint'] ?? '/v1/embeddings');
@@ -776,7 +1030,6 @@ class ChatController extends AbstractController
             if (count($userVector) < 8) { return null; }
             // Similarity search
             $threshold = floatval($persona['behavior_similarity_threshold'] ?? 80) / 100;
-            $personalityId = intval($persona['personality_id'] ?? 0);
             $stmt = $db->prepare(
                 "SELECT id, similarity_threshold, embedding FROM behavior" .
                 " WHERE (personality_id = :pid OR all_personalities != 0) AND embedding IS NOT NULL AND LENGTH(embedding) >= 4"
@@ -814,50 +1067,67 @@ class ChatController extends AbstractController
             }
             if (!$behaviorId || $bestScore < $bestThreshold) { return null; }
             // Fetch the matched behavior entry
-            $stmt2 = $db->prepare("SELECT user_prompt, response_action, response_message FROM behavior WHERE id = :id LIMIT 1");
+            $stmt2 = $db->prepare("SELECT id, user_prompt, response_action, response_message FROM behavior WHERE id = :id LIMIT 1");
             $stmt2->bindValue(':id', $behaviorId, \PDO::PARAM_INT);
             $stmt2->execute();
             $match = $stmt2->fetch(\PDO::FETCH_ASSOC);
             if (!$match) { return null; }
-            $responseAction = trim($match['response_action']  ?? '');
-            $responseMessage = trim($match['response_message'] ?? '');
-            $string_replacements = $this->getStringReplacements($persona);
-            if (!empty($string_replacements)) {
-                foreach($string_replacements as $variable => $replacement) {
-                    if ($responseAction != '') { $responseAction = trim(str_replace($variable, $replacement, $responseAction)); }
-                    if ($responseMessage != '') { $responseMessage = trim(str_replace($variable, $replacement, $responseMessage)); }
-                }
-            }
-            // Build the result payload
-            $result = [
-                'match_confidence' => round($bestScore, 3),
-                'behavior_id' => $behaviorId
-            ];
-            if ($responseAction != '') { $result['response_action'] = $responseAction; }
-            if ($responseAction == '#LOOP_VIDEO') {
-                $mediaData = $this->getRandomMediaData($db, $behaviorId, $session, $llmConfig);
-                if (!empty($mediaData)) { $result['media_data'] = $mediaData; }
-            }
-            $db = null;
-            if ($responseMessage != '') { $result['reply'] = $responseMessage; }
-            if (intval($persona['response_mode'] ?? 1) != 1) { return $result; }
-            // Update session history (response mode 1 only)
-            $history = $session->get('conversation_history', []);
-            if (empty($history)) { $history = []; }
-            if (!is_array($history)) { $history = []; }
-            $history[] = ['role' => 'user', 'content' => $userMessage];
-            $historyEntry = $responseMessage;
-            if ($responseAction != '' && $responseMessage == '') {
-                $historyEntry = "*{$responseAction}*";
-            } elseif ($responseAction != '') {
-                $historyEntry = "*{$responseAction}* {$responseMessage}";
-            }
-            if ($historyEntry != '') { $history[] = ['role' => 'assistant', 'content' => $historyEntry]; }
-            $session->set('conversation_history', $history);
-            return $result;
+            return $this->buildBehaviorMatchResult($match, $persona, $session, $bestScore, $db, $userMessage, $llmConfig);
         } catch (\Exception) {
             return null;
         }
+    }
+
+    /**
+     * Build the standardized behavior match result payload.
+     *
+     * Centralizes response construction so both the fast exact-match path and the slower embedding-similarity path return identical payloads.
+     *
+     * @param array<string,mixed> $match       Behavior row with `id`, `response_action`, `response_message`
+     * @param array<string,mixed> $persona     Persona configuration from {@see ChatConfigService}
+     * @param SessionInterface    $session     Symfony session (for history updates)
+     * @param float               $confidence  Match confidence (1.0 for exact, 0–1 for similarity)
+     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ChatConfigService}
+     * @param string              $userMessage The original user message (for history)
+     * @return array<string,mixed> Standardized match result
+     */
+    protected function buildBehaviorMatchResult(array $match, array $persona, SessionInterface $session, float $confidence, \PDO $db, string $userMessage, array $llmConfig): array {
+        $responseAction = trim((string) ($match['response_action']  ?? ''));
+        $responseMessage = trim((string) ($match['response_message'] ?? ''));
+        $string_replacements = $this->getStringReplacements($persona);
+        if (!empty($string_replacements)) {
+            foreach ($string_replacements as $variable => $replacement) {
+                if ($responseAction != '') { $responseAction = trim(str_replace($variable, $replacement, $responseAction)); }
+                if ($responseMessage != '') { $responseMessage = trim(str_replace($variable, $replacement, $responseMessage)); }
+            }
+        }
+        // Build the result payload
+        $behaviorId = intval(trim($match['id'] ?? 0));
+        $result = [
+            'match_confidence' => round($confidence, 3),
+            'behavior_id'      => $behaviorId,
+        ];
+        if ($responseAction != '') { $result['response_action'] = $responseAction; }
+        if ($responseAction == '#LOOP_VIDEO') {
+            $mediaData = $this->getRandomMediaData($db, $behaviorId, $session, $llmConfig);
+            if (!empty($mediaData)) { $result['media_data'] = $mediaData; }
+        }
+        if ($responseMessage != '') { $result['reply'] = $responseMessage; }
+        if (intval($persona['response_mode'] ?? 1) != 1) { return $result; }
+        // Update session history (response mode 1 only) - add BOTH user and assistant messages
+        $history = $session->get('conversation_history', []);
+        if (empty($history)) { $history = []; }
+        if (!is_array($history)) { $history = []; }
+        $history[] = ['role' => 'user', 'content' => $userMessage];
+        $historyEntry = $responseMessage;
+        if ($responseAction != '' && $responseMessage == '') {
+            $historyEntry = "*{$responseAction}*";
+        } elseif ($responseAction != '') {
+            $historyEntry = "*{$responseAction}* {$responseMessage}";
+        }
+        if ($historyEntry != '') { $history[] = ['role' => 'assistant', 'content' => $historyEntry]; }
+        $session->set('conversation_history', $history);
+        return $result;
     }
 
     /**

@@ -65,6 +65,12 @@
  *   persona setting; only 'DARK' (case-insensitive) enables dark mode, all
  *   other values default to light.
  * - System theme media query listener removed; explicit user choice always wins.
+ * - Autocomplete suggestion popup above the message textarea, driven by the new
+ *   `autocomplete` API action. It is debounced, only looks up once the input holds a
+ *   word of at least `min_autocomplete_length` characters, never pre-selects a row
+ *   (so Enter keeps sending the message), aborts superseded lookups and re-validates
+ *   both `min_autocomplete_length` and `max_popup_items` against the same bounds the
+ *   server enforces.
  *
  * This module is written as a single IIFE that loads directly via a <script> tag
  * (no bundler/transpilation), so it stays 100% ES6: const/let, arrow functions,
@@ -1692,6 +1698,7 @@
         DOM.input.value = '';
         DOM.input.classList.remove('is-invalid');
         DOM.input.style.height = 'auto';
+        closeAutocomplete();
         // In streaming mode, history is entirely client-side. Check compression here
         // before either the embedding or direct-LLM paths.
         if (AppState.responseMode === 2 && getHistoryTokenCount(message) > AppState.warningThreshold && AppState.chatHistory.length > 0) {
@@ -1888,17 +1895,20 @@
         DOM.input.style.height = 'auto';
         DOM.input.style.height = DOM.input.scrollHeight + 'px';
         DOM.input.classList.remove('is-invalid');
+        scheduleAutocompleteLookup();
     }
 
     /**
      * Handle keydown events on the input:
-     * - Enter (without Shift) → submit.
-     * - ArrowUp / ArrowDown → navigate message bubbles.
+     * - An open autocomplete popup gets the first say on the event.
+     * - Enter (without Shift) -> submit.
+     * - ArrowUp / ArrowDown -> navigate message bubbles.
      *
      * @param {KeyboardEvent} e
      */
     function handleKeydown(e) {
         if (!e) { return; }
+        if (handleAutocompleteKeydown(e)) { return; }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             e.stopPropagation();
@@ -1930,7 +1940,489 @@
     }
 
     // =============================================================================
-    // SECTION 10: INITIALIZATION
+    // SECTION 10: AUTOCOMPLETE SUGGESTION POPUP
+    // =============================================================================
+    // A deliberately gentle, non-disruptive suggestion list for the message
+    // textarea. It is rendered into the #user-input-autocomplete listbox that the
+    // Twig template already ships, so nothing here has to create DOM scaffolding.
+    //
+    // Behaviour contract:
+    // - Nothing happens until the user stops typing for AUTOCOMPLETE_DEBOUNCE_MS
+    //   and at least one WORD of the input is minLength characters or longer.
+    // - The list never takes focus and never pre-selects an item, so Enter keeps
+    //   its original meaning (send the message) instead of inserting text.
+    // - ArrowDown / ArrowUp move the highlight (wrapping around), Tab or Enter
+    //   accepts the highlighted item, Escape and a click outside dismiss the list.
+    // - Every lookup is abortable and tagged with a monotonically increasing
+    //   sequence number, so a slow response can never overwrite suggestions that
+    //   belong to text the user has already replaced.
+    // =============================================================================
+
+    /**
+     * Validated bounds for the autocomplete feature.
+     *
+     * These mirror the server-side bounds enforced by
+     * ChatConfigService::getAutocompleteConfig(), so a tampered configuration
+     * global can never produce an empty, unbounded or freeze-the-ui popup.
+     */
+    const AUTOCOMPLETE_LIMITS = {
+        MIN_LENGTH_FALLBACK: 3,
+        MIN_LENGTH_LOWER_BOUND: 1,
+        MIN_LENGTH_UPPER_BOUND: 64,
+        MAX_ITEMS_FALLBACK: 3,
+        MAX_ITEMS_LOWER_BOUND: 1,
+        MAX_ITEMS_UPPER_BOUND: 10
+    };
+
+    /** Idle time (ms) the user must stop typing before a lookup is issued. */
+    const AUTOCOMPLETE_DEBOUNCE_MS = 200;
+
+    /** Upper bound (ms) the client waits for a single lookup before aborting it. */
+    const AUTOCOMPLETE_TIMEOUT_MS = 3000;
+
+    /** Lower bound (ms) for the derived client timeout, even on a tiny server timeout. */
+    const AUTOCOMPLETE_MIN_TIMEOUT_MS = 2000;
+
+    /**
+     * Maximum length (characters) of the textarea content that is ever sent.
+     * Mirrors the server limit so an oversized draft can never trigger an error.
+     */
+    const AUTOCOMPLETE_MAX_TEXT_LENGTH = 255;
+
+    /** DOM id prefix of every rendered suggestion option, used by aria-activedescendant. */
+    const AUTOCOMPLETE_OPTION_ID_PREFIX = 'user-input-autocomplete-option-';
+
+    /** CSS class of a rendered suggestion option. */
+    const AUTOCOMPLETE_OPTION_CLASS = 'autocomplete-item';
+
+    /**
+     * Internal state of the autocomplete popup.
+     * All members are managed exclusively by the functions of this section.
+     */
+    const AutocompleteState = {
+        minLength: AUTOCOMPLETE_LIMITS.MIN_LENGTH_FALLBACK,
+        maxItems: AUTOCOMPLETE_LIMITS.MAX_ITEMS_FALLBACK,
+        listElement: null,
+        items: [],
+        activeIndex: -1,
+        requestSequence: 0,
+        debounceTimerId: null,
+        abortController: null
+    };
+
+    /**
+     * Parse an integer from an untrusted value and clamp it into an inclusive range.
+     * Unparsable, empty or out-of-range input resolves to a bounded value instead of
+     * NaN, so the caller always receives a usable number.
+     *
+     * @param {*}      rawValue     Untrusted value (string, number, boolean, null, ...).
+     * @param {number} fallbackValue Value returned when rawValue cannot be parsed.
+     * @param {number} lowerBound    Inclusive lower bound of the accepted range.
+     * @param {number} upperBound    Inclusive upper bound of the accepted range.
+     * @returns {number} The clamped integer.
+     */
+    function sanitizeBoundedInteger(rawValue, fallbackValue, lowerBound, upperBound) {
+        const parsed = parseIntSafe(rawValue, fallbackValue);
+        const low = parseIntSafe(lowerBound, fallbackValue);
+        const high = parseIntSafe(upperBound, fallbackValue);
+        if (high < low) { return fallbackValue; }
+        if (parsed < low) { return low; }
+        if (parsed > high) { return high; }
+        return parsed;
+    }
+
+    /**
+     * Read and validate the autocomplete configuration globals into AutocompleteState.
+     * Called once from initConfig().
+     */
+    function readAutocompleteConfig() {
+        AutocompleteState.minLength = getConfigValue(
+            'MIN_AUTOCOMPLETE_LENGTH',
+            AUTOCOMPLETE_LIMITS.MIN_LENGTH_FALLBACK,
+            (v) => sanitizeBoundedInteger(
+                v,
+                AUTOCOMPLETE_LIMITS.MIN_LENGTH_FALLBACK,
+                AUTOCOMPLETE_LIMITS.MIN_LENGTH_LOWER_BOUND,
+                AUTOCOMPLETE_LIMITS.MIN_LENGTH_UPPER_BOUND
+            )
+        );
+        AutocompleteState.maxItems = getConfigValue(
+            'MAX_POPUP_ITEMS',
+            AUTOCOMPLETE_LIMITS.MAX_ITEMS_FALLBACK,
+            (v) => sanitizeBoundedInteger(
+                v,
+                AUTOCOMPLETE_LIMITS.MAX_ITEMS_FALLBACK,
+                AUTOCOMPLETE_LIMITS.MAX_ITEMS_LOWER_BOUND,
+                AUTOCOMPLETE_LIMITS.MAX_ITEMS_UPPER_BOUND
+            )
+        );
+    }
+
+    /**
+     * Return the number of Unicode characters in a string.
+     * Array.from() counts code points, so an astral character (for example an emoji)
+     * counts once instead of twice as String.length would report it.
+     *
+     * @param {string} text
+     * @returns {number} Character count, 0 for any non-string input.
+     */
+    function getCharacterLength(text) {
+        if (typeof text !== 'string') { return 0; }
+        return Array.from(text).length;
+    }
+
+    /**
+     * Collect the unique words of the textarea content that are long enough to be
+     * used as autocomplete search terms.
+     * Splitting on whitespace therefore keeps the whole input out of the check: a
+     * 200 character sentence of two-letter words yields no term at all.
+     *
+     * @param {string} text Raw textarea content.
+     * @returns {Array<string>} Trimmed, de-duplicated words meeting the minimum length.
+     */
+    function collectAutocompleteSearchWords(text) {
+        if (typeof text !== 'string') { return []; }
+        const trimmedText = text.trim();
+        if (trimmedText === '') { return []; }
+        const candidates = trimmedText.split(/\s+/);
+        const words = [];
+        const seenWords = new Set();
+        for (let index = 0; index < candidates.length; index++) {
+            const word = candidates[index];
+            if (word === '') { continue; }
+            if (getCharacterLength(word) < AutocompleteState.minLength) { continue; }
+            if (seenWords.has(word)) { continue; }
+            seenWords.add(word);
+            words.push(word);
+        }
+        return words;
+    }
+
+    /**
+     * Derive the client timeout for a single lookup from the configured server
+     * timeout, always strictly inside the server-side budget.
+     *
+     * @returns {number} Timeout in milliseconds.
+     */
+    function getAutocompleteTimeoutMs() {
+        const serverTimeoutSec = (typeof AppState.requestTimeout === 'number' && AppState.requestTimeout > 0)
+            ? AppState.requestTimeout
+            : DEFAULT_CONFIG.REQUEST_TIMEOUT;
+        const derived = (serverTimeoutSec - 5) * 1000;
+        return Math.max(Math.min(derived, AUTOCOMPLETE_TIMEOUT_MS), AUTOCOMPLETE_MIN_TIMEOUT_MS);
+    }
+
+    /**
+     * Cancel a pending debounce timer and abort the lookup that is still in flight.
+     */
+    function cancelAutocompleteLookup() {
+        if (AutocompleteState.debounceTimerId !== null) {
+            clearTimeout(AutocompleteState.debounceTimerId);
+            AutocompleteState.debounceTimerId = null;
+        }
+        if (AutocompleteState.abortController !== null) {
+            AutocompleteState.abortController.abort();
+            AutocompleteState.abortController = null;
+        }
+    }
+
+    /**
+     * Validate the autocomplete API response and keep at most maxItems usable items.
+     *
+     * @param {*} data Decoded JSON response body.
+     * @returns {Array<string>} Sanitised suggestion prompts.
+     */
+    function extractAutocompleteItems(data) {
+        if (!isPlainObject(data) || data.success !== true) { return []; }
+        if (!Array.isArray(data.items)) { return []; }
+        const items = [];
+        const seenPrompts = new Set();
+        for (let index = 0; index < data.items.length; index++) {
+            if (items.length >= AutocompleteState.maxItems) { break; }
+            const prompt = (typeof data.items[index] === 'string') ? data.items[index].trim() : '';
+            if (prompt === '' || seenPrompts.has(prompt)) { continue; }
+            seenPrompts.add(prompt);
+            items.push(prompt);
+        }
+        return items;
+    }
+
+    /**
+     * Rebuild the option elements of the popup from AutocompleteState.items.
+     * Only textContent is used, so a prompt can never inject markup into the page.
+     */
+    function renderAutocompleteItems() {
+        const listElement = AutocompleteState.listElement;
+        if (!listElement) { return; }
+        while (listElement.firstChild) { listElement.removeChild(listElement.firstChild); }
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < AutocompleteState.items.length; index++) {
+            const prompt = AutocompleteState.items[index];
+            const optionElement = document.createElement('li');
+            optionElement.className = AUTOCOMPLETE_OPTION_CLASS;
+            optionElement.id = AUTOCOMPLETE_OPTION_ID_PREFIX + index;
+            optionElement.setAttribute('role', 'option');
+            optionElement.setAttribute('aria-selected', 'false');
+            optionElement.setAttribute('data-autocomplete-index', String(index));
+            optionElement.setAttribute('title', prompt);
+            const promptElement = document.createElement('span');
+            promptElement.className = 'autocomplete-item-prompt';
+            promptElement.textContent = prompt;
+            optionElement.appendChild(promptElement);
+            fragment.appendChild(optionElement);
+        }
+        listElement.appendChild(fragment);
+    }
+
+    /**
+     * Show the popup with the given suggestions.
+     *
+     * The highlight is deliberately reset to "none": a pre-selected row would make
+     * Enter insert text instead of sending the message, which is far more
+     * disruptive than an extra keypress.
+     *
+     * @param {Array<string>} items Sanitised suggestion prompts.
+     */
+    function openAutocomplete(items) {
+        const listElement = AutocompleteState.listElement;
+        if (!listElement) { return; }
+        if (!Array.isArray(items) || items.length === 0) {
+            closeAutocomplete();
+            return;
+        }
+        AutocompleteState.items = items.slice(0, AutocompleteState.maxItems);
+        AutocompleteState.activeIndex = -1;
+        renderAutocompleteItems();
+        listElement.hidden = false;
+        if (DOM.input) { DOM.input.setAttribute('aria-expanded', 'true'); }
+    }
+
+    /**
+     * Hide the popup, drop its items and clear the highlight.
+     */
+    function closeAutocomplete() {
+        const listElement = AutocompleteState.listElement;
+        AutocompleteState.items = [];
+        AutocompleteState.activeIndex = -1;
+        if (listElement) {
+            listElement.hidden = true;
+            while (listElement.firstChild) { listElement.removeChild(listElement.firstChild); }
+        }
+        if (DOM.input) {
+            DOM.input.setAttribute('aria-expanded', 'false');
+            DOM.input.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    /**
+     * Return true when the popup is currently showing suggestions.
+     *
+     * @returns {boolean}
+     */
+    function isAutocompleteOpen() {
+        const listElement = AutocompleteState.listElement;
+        return (listElement !== null && listElement.hidden === false);
+    }
+
+    /**
+     * Move the highlight to the given option index, wrapping around both ends.
+     *
+     * @param {number} requestedIndex Requested option index, may be out of range.
+     */
+    function setAutocompleteActiveIndex(requestedIndex) {
+        const listElement = AutocompleteState.listElement;
+        if (!listElement) { return; }
+        const optionElements = listElement.querySelectorAll('.' + AUTOCOMPLETE_OPTION_CLASS);
+        const itemCount = optionElements.length;
+        if (itemCount === 0) {
+            AutocompleteState.activeIndex = -1;
+            return;
+        }
+        const normalizedIndex = ((requestedIndex % itemCount) + itemCount) % itemCount;
+        AutocompleteState.activeIndex = normalizedIndex;
+        for (let index = 0; index < itemCount; index++) {
+            const isActive = (index === normalizedIndex);
+            if (isActive) { optionElements[index].classList.add('is-active'); }
+            else { optionElements[index].classList.remove('is-active'); }
+            optionElements[index].setAttribute('aria-selected', isActive ? 'true' : 'false');
+        }
+        if (DOM.input) {
+            DOM.input.setAttribute('aria-activedescendant', AUTOCOMPLETE_OPTION_ID_PREFIX + normalizedIndex);
+        }
+    }
+
+/**
+     * Fill the textarea with the highlighted suggestion and dismiss the popup.
+     *
+     * The whole draft is replaced by the stored prompt: the suggestion only makes
+     * sense as a complete message, and keeping the previous draft around would
+     * produce duplicated sentences once the user accepts it.
+     *
+     * @returns {boolean} True when a suggestion was applied.
+     */
+    function applyActiveAutocompleteItem() {
+        const index = AutocompleteState.activeIndex;
+        if (index < 0 || index >= AutocompleteState.items.length) { return false; }
+        const prompt = AutocompleteState.items[index];
+        if (prompt === '' || !DOM.input) { return false; }
+        DOM.input.value = prompt;
+        if (typeof DOM.input.setSelectionRange === 'function') {
+            const endPosition = DOM.input.value.length;
+            DOM.input.setSelectionRange(endPosition, endPosition);
+        }
+        // Auto-grow and clear invalid state without triggering a new autocomplete lookup.
+        DOM.input.style.height = 'auto';
+        DOM.input.style.height = DOM.input.scrollHeight + 'px';
+        DOM.input.classList.remove('is-invalid');
+        closeAutocomplete();
+        DOM.input.focus();
+        return true;
+    }
+
+    /**
+     * Ask the server for the suggestions matching the given textarea content.
+     *
+     * @param {string} text           Raw textarea content.
+     * @param {number} requestSequence Sequence number captured when the lookup was scheduled.
+     * @returns {Promise<void>} Rejects on network, HTTP or JSON errors; the caller reports them.
+     */
+    async function lookupAutocompleteSuggestions(text, requestSequence) {
+        const abortController = new AbortController();
+        AutocompleteState.abortController = abortController;
+        const timeoutId = setTimeout(function () { abortController.abort(); }, getAutocompleteTimeoutMs());
+        let response;
+        try {
+            response = await fetch(getApiUrl(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'autocomplete', text: text }),
+                signal: abortController.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+            if (AutocompleteState.abortController === abortController) {
+                AutocompleteState.abortController = null;
+            }
+        }
+        if (!response.ok) { throw new Error('HTTP ' + response.status); }
+        const data = await response.json();
+        // Drop the response when the user has typed again since this lookup started.
+        if (requestSequence !== AutocompleteState.requestSequence) { return; }
+        openAutocomplete(extractAutocompleteItems(data));
+    }
+
+    /**
+     * Surface a failed autocomplete lookup - fails silently.
+     *
+     * The popup is a non-essential feature; errors are only logged to console.
+     *
+     * @param {Error} err Failure raised by {@see lookupAutocompleteSuggestions}.
+     */
+    function notifyAutocompleteError(err) {
+        closeAutocomplete();
+        // An aborted lookup is the normal consequence of the user typing again.
+        if (err && err.name === 'AbortError') { return; }
+        const detail = (err && typeof err.message === 'string' && err.message !== '')
+            ? err.message
+            : 'unknown error';
+        console.warn('[Autocomplete] Lookup failed:', detail);
+    }
+
+    /**
+     * Debounce the lookup: fire it once the user stopped typing for the configured
+     * idle time, and only when a word long enough exists in the textarea.
+     */
+    function scheduleAutocompleteLookup() {
+        if (!DOM.input || !AutocompleteState.listElement) { return; }
+        // Every keystroke invalidates the previous lookup and any visible popup, so
+        // the list can never offer suggestions for text the user already replaced.
+        AutocompleteState.requestSequence += 1;
+        cancelAutocompleteLookup();
+        closeAutocomplete();
+        const text = DOM.input.value;
+        if (typeof text !== 'string' || text === '') { return; }
+        if (text.length > AUTOCOMPLETE_MAX_TEXT_LENGTH) { return; }
+        if (collectAutocompleteSearchWords(text).length === 0) { return; }
+        const requestSequence = AutocompleteState.requestSequence;
+        AutocompleteState.debounceTimerId = setTimeout(function () {
+            AutocompleteState.debounceTimerId = null;
+            lookupAutocompleteSuggestions(text, requestSequence).catch(notifyAutocompleteError);
+        }, AUTOCOMPLETE_DEBOUNCE_MS);
+    }
+
+    /**
+     * Consume a keydown event for the open popup.
+     *
+     * @param {KeyboardEvent} e Event raised on the textarea.
+     * @returns {boolean} True when the event was handled and must not reach handleKeydown().
+     */
+    function handleAutocompleteKeydown(e) {
+        if (!e || !isAutocompleteOpen() || AutocompleteState.items.length === 0) { return false; }
+        const hasHighlight = (AutocompleteState.activeIndex >= 0);
+        switch (e.key) {
+            case 'Escape':
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                closeAutocomplete();
+                return true;
+            case 'ArrowDown':
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                setAutocompleteActiveIndex(AutocompleteState.activeIndex + 1);
+                return true;
+            case 'ArrowUp':
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                setAutocompleteActiveIndex(AutocompleteState.activeIndex - 1);
+                return true;
+            case 'Enter':
+                // Without a highlight Enter keeps sending the message unchanged.
+                if (!hasHighlight) { return false; }
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                applyActiveAutocompleteItem();
+                return true;
+            case 'Tab':
+                if (!hasHighlight) { return false; }
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                applyActiveAutocompleteItem();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Cache the popup element and bind its pointer handling.
+     */
+    function initAutocomplete() {
+        AutocompleteState.listElement = document.getElementById('user-input-autocomplete');
+        if (!AutocompleteState.listElement) { return; }
+        // mousedown + preventDefault keeps the focus (and therefore the caret) in the
+        // textarea; a plain click handler would only run after blur already dismissed
+        // the list.
+        AutocompleteState.listElement.addEventListener('mousedown', function (e) {
+            if (!e) { return; }
+            e.preventDefault();
+            const optionElement = e.target && e.target.closest
+                ? e.target.closest('.' + AUTOCOMPLETE_OPTION_CLASS)
+                : null;
+            if (!optionElement) { return; }
+            const index = parseIntSafe(optionElement.getAttribute('data-autocomplete-index'), -1);
+            if (index < 0) { return; }
+            setAutocompleteActiveIndex(index);
+            applyActiveAutocompleteItem();
+        });
+    }
+
+    // =============================================================================
+    // SECTION 11: INITIALIZATION
     // =============================================================================
 
     /** Populate the DOM cache. */
@@ -2042,6 +2534,7 @@
                 return v.toUpperCase().trim();
             }
         );
+        readAutocompleteConfig();
         // Derive the compression threshold from validated values.
         const calculated = AppState.llmCtxSize -
                          (AppState.llmMaxResponseTokens + AppState.safetyMargin);
@@ -2053,6 +2546,9 @@
         if (DOM.input) {
             DOM.input.addEventListener('input', handleInput);
             DOM.input.addEventListener('keydown', handleKeydown);
+            // The popup is a helper for the textarea only: it must never linger
+            // over the chat once the composer is left.
+            DOM.input.addEventListener('blur', closeAutocomplete);
         }
         if (DOM.submitBtn) {
             DOM.submitBtn.addEventListener('click', (e) => {
@@ -2213,6 +2709,7 @@
                 displayChatHistory();
             }
             updateExportButtonVisibility();
+            initAutocomplete();
             initEvents();
             console.log('[Init] Chatbot initialised successfully');
             console.log('[Init] Memory mode:',         AppState.memoryMode);

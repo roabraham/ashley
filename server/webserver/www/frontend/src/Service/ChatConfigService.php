@@ -14,6 +14,12 @@ namespace App\Service;
  * All public getters return plain arrays for direct instantiation.
  */
 class ChatConfigService {
+    /** Minimum word length that activates the message input autocomplete popup */
+    protected const MIN_AUTOCOMPLETE_LENGTH = 3;
+
+    /** Number of suggestions shown in the message input autocomplete popup */
+    protected const MAX_POPUP_ITEMS = 3;
+
     /**
      * Absolute path to the shared server root.
      *
@@ -495,6 +501,18 @@ class ChatConfigService {
             }
         }
         return $persona;
+    }
+
+    /**
+     * Return autocomplete popup configuration.
+     *
+     * @return array{min_autocomplete_length:int, max_popup_items:int} integer values
+     */
+    public function getAutocompleteConfig(): array {
+        return [
+            'min_autocomplete_length' => self::MIN_AUTOCOMPLETE_LENGTH,
+            'max_popup_items' => self::MAX_POPUP_ITEMS
+        ];
     }
 
     /**

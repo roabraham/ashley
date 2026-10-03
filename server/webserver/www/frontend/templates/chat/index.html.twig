@@ -65,8 +65,9 @@
     <main class="chat-panel card shadow-lg">
         <div class="card-body chat-box" id="chat-box" role="region" aria-label="Chat messages"></div>
         <div class="card-footer">
-            <div id="chat-form" class="d-flex" autocomplete="off">
-                <textarea id="user-input" class="form-control me-2" rows="1" placeholder="Write your message..." autocomplete="off" aria-label="Type your message"></textarea>
+            <div id="chat-form" class="d-flex position-relative" autocomplete="off">
+                <ul id="user-input-autocomplete" class="autocomplete-popup" role="listbox" aria-label="Suggested messages" hidden></ul>
+                <textarea id="user-input" class="form-control me-2" rows="1" placeholder="Write your message..." autocomplete="off" aria-label="Type your message" aria-autocomplete="list" aria-controls="user-input-autocomplete" aria-expanded="false"></textarea>
                 <button id="submit-btn" class="btn btn-success" type="button">Submit</button>
                 <button id="stop-btn" class="btn btn-danger" type="button" style="display: none;" disabled>Stop</button>
             </div>
@@ -94,6 +95,9 @@
     var DEFAULT_THEME = {{ persona.default_theme|json_encode|raw }};
     var WARNING_THRESHOLD = {{ warning_threshold }};
     var REQUEST_TIMEOUT = {{ request_timeout }};
+    // Autocomplete popup limits. Values are already validated and clamped server-side.
+    var MIN_AUTOCOMPLETE_LENGTH = {{ autocomplete_config.min_autocomplete_length ?? 3 }};
+    var MAX_POPUP_ITEMS = {{ autocomplete_config.max_popup_items ?? 3 }};
     // Check if there's existing session conversation data (for response mode 1)
     var HAS_SESSION_CONVERSATION = {{ has_session_conversation ? 'true' : 'false' }};
 </script>

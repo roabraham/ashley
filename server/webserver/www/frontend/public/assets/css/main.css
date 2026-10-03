@@ -267,6 +267,48 @@ body {
     padding-right: calc(1.5em + 0.75rem);
 }
 
+/** Autocomplete suggestion popup for the message textarea */
+.autocomplete-popup {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 0.35rem);
+    z-index: 20;
+    margin: 0;
+    padding: 0.25rem;
+    list-style: none;
+    max-height: 15rem;
+    overflow-y: auto;
+    background-color: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 0.5rem;
+    box-shadow: 0 0.35rem 0.9rem rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/** Single suggestion row: the prompt on top, the bot answer as a muted preview below it */
+.autocomplete-item {
+    display: flex;
+    flex-direction: column;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    color: inherit;
+}
+
+/** Highlight state used for keyboard navigation (not hover - avoids false highlight on open) */
+.autocomplete-item.is-active {
+    background-color: rgba(13, 110, 253, 0.12);
+}
+
+/** The suggestion text; this is what fills the textarea when accepted */
+.autocomplete-item-prompt {
+    font-size: 0.95rem;
+    line-height: 1.25;
+    overflow-wrap: break-word;
+}
+
 /** Animated blinking dots keyframes */
 @keyframes blinkDots {
     0% { content: "."; }
@@ -451,6 +493,23 @@ body.dark-mode .card-header.bg-primary.text-white { background-color: rgba(13, 1
 
 /** Card header bottom border: subtle separator */
 body.dark-mode .card-header { border-bottom-color: rgba(255, 255, 255, 0.08); }
+
+/** Autocomplete popup: opaque dark surface with a stronger shadow */
+body.dark-mode .autocomplete-popup {
+    background-color: rgba(30, 30, 30, 0.97);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 0.35rem 0.9rem rgba(0, 0, 0, 0.5);
+}
+
+/** Autocomplete items: ensure readable text in dark mode */
+body.dark-mode .autocomplete-item {
+    color: #e0e0e0;
+}
+
+/** Autocomplete highlight in dark mode: translucent blue instead of the light tint */
+body.dark-mode .autocomplete-item.is-active {
+    background-color: rgba(13, 110, 253, 0.25);
+}
 
 /** Theme toggle button: subtle glass-like background */
 body.dark-mode .theme-toggle-btn {
