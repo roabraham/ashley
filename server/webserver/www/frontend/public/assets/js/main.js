@@ -1975,7 +1975,7 @@
     };
 
     /** Idle time (ms) the user must stop typing before a lookup is issued. */
-    const AUTOCOMPLETE_DEBOUNCE_MS = 200;
+    const AUTOCOMPLETE_DEBOUNCE_MS = 400;
 
     /** Upper bound (ms) the client waits for a single lookup before aborting it. */
     const AUTOCOMPLETE_TIMEOUT_MS = 3000;
@@ -2339,7 +2339,7 @@
         AutocompleteState.requestSequence += 1;
         cancelAutocompleteLookup();
         closeAutocomplete();
-        const text = DOM.input.value;
+        const text = DOM.input.value.trim();
         if (typeof text !== 'string' || text === '') { return; }
         if (text.length > AUTOCOMPLETE_MAX_TEXT_LENGTH) { return; }
         if (collectAutocompleteSearchWords(text).length === 0) { return; }
@@ -2359,6 +2359,8 @@
     function handleAutocompleteKeydown(e) {
         if (!e || !isAutocompleteOpen() || AutocompleteState.items.length === 0) { return false; }
         const hasHighlight = (AutocompleteState.activeIndex >= 0);
+        // Clear any mouse hover state so keyboard and mouse highlights are never both visible.
+        clearAutocompleteHover();
         switch (e.key) {
             case 'Escape':
                 e.preventDefault();
@@ -2399,6 +2401,37 @@
     }
 
     /**
+     * Cache the popup element and bind its pointer handling (active)
+     */
+    function clearAutocompleteActive() {
+        const listElement = AutocompleteState.listElement;
+        if (!listElement) { return; }
+        const optionElements = listElement.querySelectorAll('.' + AUTOCOMPLETE_OPTION_CLASS);
+        const itemCount = optionElements.length;
+        if (!itemCount) { return; }
+        AutocompleteState.activeIndex = -1;
+        for (let index = 0; index < itemCount; index++) {
+            optionElements[index].classList.remove('is-active');
+            optionElements[index].setAttribute('aria-selected', 'false');
+        }
+        if (DOM.input) { DOM.input.removeAttribute('aria-activedescendant'); }
+    }
+
+    /**
+     * Cache the popup element and bind its pointer handling (hover)
+     */
+    function clearAutocompleteHover() {
+        const listElement = AutocompleteState.listElement;
+        if (!listElement) { return; }
+        const optionElements = listElement.querySelectorAll('.' + AUTOCOMPLETE_OPTION_CLASS);
+        const itemCount = optionElements.length;
+        if (!itemCount) { return; }
+        for (let index = 0; index < itemCount; index++) {
+            optionElements[index].classList.remove('is-hovered');
+        }
+    }
+
+    /**
      * Cache the popup element and bind its pointer handling.
      */
     function initAutocomplete() {
@@ -2418,6 +2451,21 @@
             if (index < 0) { return; }
             setAutocompleteActiveIndex(index);
             applyActiveAutocompleteItem();
+        });
+        // Mouse hover uses a class so it can be cleared when keyboard navigation starts.
+        // Hover must also clear keyboard selection so both states are never visible together.
+        AutocompleteState.listElement.addEventListener('mouseover', function (e) {
+            const optionElement = e.target && e.target.closest
+                ? e.target.closest('.' + AUTOCOMPLETE_OPTION_CLASS)
+                : null;
+            if (!optionElement) { return; }
+            clearAutocompleteActive();
+            clearAutocompleteHover();
+            optionElement.classList.add('is-hovered');
+        });
+        // Clear hover when mouse leaves the entire list.
+        AutocompleteState.listElement.addEventListener('mouseleave', function () {
+            clearAutocompleteHover();
         });
     }
 

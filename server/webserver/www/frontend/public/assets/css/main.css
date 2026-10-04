@@ -297,9 +297,14 @@ body {
     color: inherit;
 }
 
-/** Highlight state used for keyboard navigation (not hover - avoids false highlight on open) */
+/** Highlight state used for keyboard navigation */
 .autocomplete-item.is-active {
     background-color: rgba(13, 110, 253, 0.12);
+}
+
+/** Hover state for mouse interaction (class-based so JS can clear it on keyboard nav) */
+.autocomplete-item.is-hovered {
+    background-color: rgba(13, 110, 253, 0.10);
 }
 
 /** The suggestion text; this is what fills the textarea when accepted */
@@ -509,6 +514,11 @@ body.dark-mode .autocomplete-item {
 /** Autocomplete highlight in dark mode: translucent blue instead of the light tint */
 body.dark-mode .autocomplete-item.is-active {
     background-color: rgba(13, 110, 253, 0.25);
+}
+
+/** Autocomplete hover in dark mode */
+body.dark-mode .autocomplete-item.is-hovered {
+    background-color: rgba(13, 110, 253, 0.20);
 }
 
 /** Theme toggle button: subtle glass-like background */
