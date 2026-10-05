@@ -2828,7 +2828,7 @@ begin
         end;
         RootObj.Add('embedding_parameters', ParamsObj);
         ParamsObj := nil;
-       end;
+      end;
       //Check embedding port availability
       if not(PortsReserved.IndexOf(IntToStr(llmEmbeddingPort)) = -1) then
         raise SaveSettingsFatal.Create('Error: embedding port already reserved: ' + IntToStr(llmEmbeddingPort));
