@@ -75,7 +75,7 @@ Before running Ashley, ensure the following prerequisites are installed on your 
    * **Vulkan** works on **AMD**, **Intel**, or **NVIDIA** GPUs without requiring the *CUDA toolkit*.
    * **HIP Radeon** requires a **Radeon** GPU and is not tested yet.
 7. Choose a model file with the `.gguf` extension for the engine to use.
-8. Click *OK* at the bottom of the window. Ashley configures everything, generates a *security certificate* if needed, and starts the AI service in the background.
+8. Click *OK* at the bottom of the window. Ashley configures everything, generates a *security certificate* if needed, and starts the services in the background. **Note**: the LLM and embedding servers are optional - you can run just the web server for fast rule-based responses from the personality database.
 9. Right-click the *tray icon* again and choose *Open Web UI* to launch the *chatbot window*. You can also access the service from your web browser at `http[s]://localhost:port/`, where *port* is the HTTP[S] port configured in the settings window.
 
 ---
@@ -166,7 +166,7 @@ This is the first and most important tab. It configures the core engine (for bot
     The engine choice highly affects performance. Select the engine that matches your hardware.
 * **Device**: a drop-down list that lets you select which specific device (*GPU*) the *LLM* and/or *embedding engine* should use. When you select an engine that supports multiple devices, the application queries the engine binary for available devices and populates this list. *N/A* will be selected for CPU or when device selection is not applicable. This choice also highly affects performance.
 * **Reload Devices**: runs the query for the selected engine to recreate the list of the available devices in the device combobox.
-* **Enable LLM server**: a checkbox that lets you enable or disable *LLM server*. Disabling LLM server may significantly improve response time but only rule-based responses will be returned (if embedding engine is enabled). This means a significant loss in the intelligence.
+* **Enable LLM server**: a checkbox that lets you enable or disable *LLM server*. Disabling LLM server means no conversational AI responses will be generated. If both LLM and embedding are disabled, the chatbot will only respond to exact behavior matches from the personality database (autocomplete suggestions will still work). This is useful if you only want fast rule-based responses without AI inference.
 * **Model**: a drop-down list that lets you select which `.gguf` model file the *LLM server* will load. The list is populated from the `model/` folder. Only one model can be selected at a time. The selected model determines the AI's capabilities and response quality.
 * **Add Model**: opens a file dialog to import a new `.gguf` model file into the `model/` folder. The file is copied into the model directory, and its name is sanitized (special characters and spaces are replaced with underscores). After importing, the model appears in the Model drop-down list.
 
@@ -194,7 +194,7 @@ This tab configures the embedding engine, which is used for behavior matching. T
 
 #### Embedding Model Group
 
-* **Enable Embedding**: a checkbox that enables or disables the *embedding engine*. When enabled, the embedding model and parameters below become active. When disabled, the embedding server is not started.
+* **Enable Embedding**: a checkbox that enables or disables the *embedding engine*. When enabled, the embedding model and parameters below become active. When disabled, the embedding server is not started. If both LLM and embedding are disabled, the chatbot will only respond to exact behavior matches from the personality database (autocomplete suggestions will still work). This is useful if you only want rule-based responses without AI inference.
 * **Model**: a drop-down list that lets you select which `.gguf` embedding model file to use. The list is populated from the `model/embedding/` folder.
 * **Add Model**: opens a file dialog to import a new `.gguf` embedding model file into the `model/embedding/` folder. The file is copied and sanitized the same way as conversational models.
 
@@ -307,7 +307,7 @@ The *About* dialog is accessible from the *Help* menu (both in the main window a
 * **Changing the Personality**: right-click the *Ashley tray icon* and choose *Settings*. Go to the *Persona* tab. Pick a personality from the drop-down list at the top of the tab. Optionally edit the personality *name*, *description*, *avatar image*, *background image* or *CSS theme*. Click *OK* to save and close.
 * **Changing the Model or compute device**: open *Settings* from the *tray menu*. Go to the *Engine Settings* tab. Change the engine or pick a different model file, then click *OK*.
 * **Adding a new Model**: in *Settings*, go to the *Engine Settings* tab and click *Add Model...*. Select a `.gguf` file from your computer. The model is copied into Ashley's `model` folder and appears in the drop-down list immediately. Click *OK*.
-* **Enabling and disabling the embedding engine**: open *Settings* from the *tray menu*. Go to the *Embedding* tab. Check or uncheck the *Enable embedding* option. Optionally select an *embedding model* and adjust its parameters. Click *OK*. Embedding models are used for smart *behavior matching*. Ashley can recognize what kind of question you are asking and respond more naturally as a result.
+* **Enabling and disabling the embedding engine**: open *Settings* from the *tray menu*. Go to the *Embedding* tab. Check or uncheck the *Enable embedding* option. Optionally select an *embedding model* and adjust its parameters. Click *OK*. Embedding models are used for smart *behavior matching*. Ashley can recognize what kind of question you are asking and respond more naturally as a result. **Note**: both LLM and embedding can be disabled simultaneously - in this mode, the chatbot will only respond to exact behavior matches from the personality database (autocomplete suggestions still work).
 * **Viewing and clearing log files**: open *Settings* from the *tray menu*. Go to the *Logging and Proxy* tab. Click *Open Log Folder* to open the log folder in File Explorer or click *Clear Log* to empty the log file.
 * **Stopping Ashley**: right-click the *tray icon* and choose *Exit*. Ashley will ask for confirmation and then stop all running services and close all windows. **Always use the tray icon to stop Ashley. Do NOT just end the process in Task Manager as this can leave temporary files behind and corrupt the configuration.**
 * **Restarting services**: right-click the *tray icon* and choose *Restart services*. All running services will be restarted automatically.
@@ -347,10 +347,11 @@ Ashley consists of three main components working together:
 The AI interaction flow works as follows:
 
 1. When you send a message in the chat window, the *frontend* sends the message to the *NGINX web server* which handles the *PHP code* and/or redirects the message to the *LLM* and/or *embedding server*.
-2. The *ChatController* sends the *request* through the *proxy* to the *LLM* and/or *embedding server*.
-3. The *LLM* and/or *embedding server* processes your input and generates a *response*.
-   * If *embedding* is enabled, your message may be analyzed for *behavior matching* before being sent to the *embedding server*.
-4. The *response* flows back through the same path to be displayed in the chat window.
+2. The *ChatController* first checks for an exact behavior match in the personality database (works without AI services). If found, returns the behavior response immediately.
+3. If no exact match and *embedding* is enabled, performs semantic similarity search via the *embedding server*.
+4. If no behavior match and *LLM* is enabled, sends the request through the *proxy* to the *LLM server* for conversational AI response.
+5. If neither AI service is enabled and no exact match, returns a polite fallback message.
+6. The *response* flows back through the same path to be displayed in the chat window.
 
 ---
 
@@ -380,7 +381,7 @@ The **Service Wrapper Documentation** option in the *Help* menu opens the *devel
 ## Troubleshooting
 
 * **The service failed to start**: a common cause is that the selected model file is missing or corrupted. Open *Settings* and check the *Engine Settings* tab to confirm a model file is selected and the path is correct. If you added a model manually, make sure the `.gguf` file is inside the model folder. Also check that no other application is using port **8080** or **8081** (or the HTTP[S] ports selected for the *LLM- and embedding engine*). This can happen if a previous instance of Ashley is still running. Open Task Manager, look for `manager.exe` and `wrapper.exe`, end them, then try again.
-* **Chatbot says Both AI Services Disabled**: At least one service (the *conversational LLM* and/or the *embedding server*) must be running. Open *Settings* and make sure *Enable LLM server* on the *Engine Settings* tab or *Enable embedding* on the *Embedding* tab is checked, and that a model is selected for all enabled servers.
+* **Chatbot only responds to exact behavior matches**: If both the *LLM server* and *embedding server* are disabled, the chatbot will only respond to exact text matches from the personality database (behaviors with `user_prompt` matching your message exactly). The autocomplete suggestions will still appear and work. To get full AI responses, enable at least one service in *Settings* (*Enable LLM server* on the *Engine Settings* tab or *Enable Embedding* on the *Embedding* tab) and select a model.
 * **Chatbot is slow or delays in responses**: on CPU-only hardware, responses are naturally slower than on a GPU. If you have a *CUDA*-capable *NVIDIA GPU*, open *Settings* and change the engine to *CUDA* on the *Engine Settings* tab. Large context window sizes also need more *RAM*. Reduce the context size at the parameters if you are running out of memory.
 * **Web UI cannot open or Connection refused**: make sure the services are running by checking the *system tray icon*. If the services are running but the *Web UI window* still fails to open, try opening the chatbot directly in a *browser* at `http://localhost/`. Port 80 or 443 may also be in use by another program such as *IIS*, *Apache* or *Skype*. Open *Settings*, go to the *Web Server* tab and change the ports or access the interface directly at `http://localhost:8080/` for *conversational* AI or `http://localhost:8081/` for the *embedding engine*.
 * **Chatbot says the model cannot be found**: the model file was moved, renamed, or deleted after Ashley was configured. Open *Settings*, go to the *Engine Settings* tab, select the correct `.gguf` file from the drop-down list and click *OK*.

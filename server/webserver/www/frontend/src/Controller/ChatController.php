@@ -633,13 +633,6 @@ class ChatController extends AbstractController
         $embeddingEnabled = $llmConfig['embedding_enabled'] ?? true;
         $requestTimeout = max(intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT), 60);
         $responseMode = intval($persona['response_mode'] ?? 1);
-        // Both services disabled
-        if (!$llmEnabled && !$embeddingEnabled) {
-            return $this->json([
-                'error'   => 'NO_SERVICES_AVAILABLE',
-                'message' => 'Both LLM and embedding services are disabled. Please enable at least one service.'
-            ], Response::HTTP_SERVICE_UNAVAILABLE);
-        }
         // Empty message guard
         $userMessage = trim((string) ($data['message'] ?? ''));
         if ($userMessage == '') {
@@ -653,9 +646,11 @@ class ChatController extends AbstractController
                 return $this->json(['reply' => "{$botName} is thinking!"]);
             }
         }
-        // Embedding behavior matching (pre-LLM, short-circuits on hit)
-        if (intval($persona['personality_id'] ?? 0) > 0 && $embeddingEnabled) {
-            $behaviorResult = $this->tryBehaviorMatching($userMessage, $session, $llmConfig, $persona);
+        // Behavior matching (pre-LLM, short-circuits on hit)
+        // Fast path (exact match on user_prompt) works without embedding service
+        // Slow path (embedding similarity) requires embedding service
+        if (intval($persona['personality_id'] ?? 0) > 0) {
+            $behaviorResult = $this->tryBehaviorMatching($userMessage, $session, $llmConfig, $persona, $embeddingEnabled);
             if (!empty($behaviorResult)) { return $this->json($behaviorResult); }
         }
         // Streaming mode (response mode 2)
@@ -979,7 +974,7 @@ class ChatController extends AbstractController
     /**
      * Attempt to match the user message against known personality behaviors.
      *
-     * First tries a fast, case-insensitive exact match on `user_prompt`. If no exact match is found, falls back to cosine similarity on pre-computed embedding vectors.
+     * First tries a fast, case-insensitive exact match on `user_prompt`. If no exact match is found, falls back to cosine similarity on pre-computed embedding vectors (requires embedding service).
      *
      * Returns `null` if matching is not applicable, the DB does not exist, or no match exceeds the configured similarity threshold.
      *
@@ -987,9 +982,10 @@ class ChatController extends AbstractController
      * @param SessionInterface $session Symfony session
      * @param array<string,mixed> $llmConfig LLM configuration from {@see ChatConfigService}
      * @param array<string,mixed> $persona Persona configuration from {@see ChatConfigService}
+     * @param bool $embeddingEnabled Whether embedding service is available for similarity matching
      * @return array<string,mixed>|null The best match response or null
      */
-    protected function tryBehaviorMatching(string $userMessage, SessionInterface $session, array $llmConfig, array $persona): ?array {
+    protected function tryBehaviorMatching(string $userMessage, SessionInterface $session, array $llmConfig, array $persona, bool $embeddingEnabled = true): ?array {
         $personalityDbPath = $this->configService->getPersonalityDbPath();
         if (!file_exists($personalityDbPath)) { return null; }
         try {
@@ -1011,7 +1007,8 @@ class ChatController extends AbstractController
             $stmtExact->execute();
             $exactMatch = $stmtExact->fetch(\PDO::FETCH_ASSOC);
             if ($exactMatch) { return $this->buildBehaviorMatchResult($exactMatch, $persona, $session, 1.0, $db, $userMessage, $llmConfig); }
-            // SLOW PATH: cosine similarity on embeddings
+            // SLOW PATH: cosine similarity on embeddings (requires embedding service)
+            if (!$embeddingEnabled) { return null; }
             $embeddingHost = '127.0.0.1';
             $embeddingPort = intval($llmConfig['proxy_port'] ?? 5123);
             $embeddingEndpoint = trim($llmConfig['embedding_endpoint'] ?? '/v1/embeddings');

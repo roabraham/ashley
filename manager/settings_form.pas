@@ -2709,7 +2709,7 @@ begin
     try
       //Basic validation
       if not(EnableLLMcheckBox.Checked) and not(EnableEmbeddingCheckBox.Checked) then
-        raise SaveSettingsFatal.Create('Error: no LLM/embedding server enabled! Unable to run server!');
+        MessageDlg('Warning', 'Both LLM and embedding services are disabled. AI chat functionality will not work.', mtWarning, [mbOK], 0);
       //Reset current directory
       chdir(appdir);
       //Validate config directory
@@ -2826,9 +2826,9 @@ begin
           else
             ParamsObj.Add(KeyName, NewValue);
         end;
-        RootObj.Add('embedding_parameters', ParamsObj);
-        ParamsObj := nil;
-      end;
+RootObj.Add('embedding_parameters', ParamsObj);
+         ParamsObj := nil;
+       end;
       //Check embedding port availability
       if not(PortsReserved.IndexOf(IntToStr(llmEmbeddingPort)) = -1) then
         raise SaveSettingsFatal.Create('Error: embedding port already reserved: ' + IntToStr(llmEmbeddingPort));

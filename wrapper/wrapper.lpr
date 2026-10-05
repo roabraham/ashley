@@ -1527,7 +1527,6 @@ begin
   { --- FINAL VALIDATION --- }
   if not(FileExists(FServerBinary)) then raise Exception.Create('Server binary missing: ' + FServerBinary);
   if (FEndpoint = '') and (FEmbeddingEndpoint = '') then raise Exception.Create('FATAL: no endpoint specified!');
-  if (FModelFile = '') and (FEmbeddingModelFile = '') then raise Exception.Create('FATAL: no model specified!');
   if not(FModelFile = '') then
   begin
     if (Pos(' ', FModelFile) > 0) or (Pos(PathDelim, FModelFile) > 0) then
@@ -1542,6 +1541,9 @@ begin
     FinalFEmbeddingModelFile := FEmbeddingModelDir + FEmbeddingModelFile;
     if not(FileExists(FinalFEmbeddingModelFile)) then raise Exception.Create('Model file not found: ' + FinalFEmbeddingModelFile);
   end;
+  // Warn if both AI services are disabled but continue anyway
+  if (FinalFModelFile = '') and (FinalFEmbeddingModelFile = '') then
+    WriteLn('[WARNING] Both LLM and embedding services are disabled. Only web server will be available.');
   // Set proxy host based on LLM/Embedding server host configuration
   // Priority: LLM host > Embedding host > default 127.0.0.1
   if not(FinalFModelFile = '') and not(FHost = '') then
@@ -1550,7 +1552,8 @@ begin
     FProxyHost := FEmbeddingHost
   else
     FProxyHost := '127.0.0.1';
-  if FProxyPort >= 1 then
+  // Only validate proxy settings if at least one AI service is enabled
+  if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then
   begin
     if (FProxyTimeout < 1) then raise Exception.Create('Invalid Proxy Service Timeout: ' + IntToStr(FProxyTimeout));
     if (FProxyMaxConnections < 1) then raise Exception.Create('Invalid Proxy Service Connection Limit: ' + IntToStr(FProxyMaxConnections));
@@ -1850,7 +1853,8 @@ begin
       end;
       PortsReserved.Add(IntToStr(EmbeddingPort));
     end;
-    if FProxyPort >= 1 then
+    // Only validate proxy port if at least one AI service is enabled
+    if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then
     begin
       if not(IsPortFree(FProxyPort)) then
       begin
@@ -1986,7 +1990,8 @@ begin
           // BULLETPROOF STEP: Wait here until the port is actually available
           if not(FinalFModelFile = '') and not(FProcess.Running) then WaitUntilPortFree(ChatPort);
           if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then WaitUntilPortFree(EmbeddingPort);
-          if FProxyPort >= 1 then WaitUntilPortFree(FProxyPort);
+          // Only wait for proxy port if at least one AI service is enabled
+          if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then WaitUntilPortFree(FProxyPort);
           if not(FPhpProcess.Running) then WaitUntilPortFree(FPhpPort);
           if not(FWebserverProcess.Running) then
           begin
@@ -2023,8 +2028,8 @@ begin
           if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then FEmbeddingProcess.Execute;
           if not(FPhpProcess.Running) then FPhpProcess.Execute;
           if not(FWebserverProcess.Running) then FWebserverProcess.Execute;
-          //Start Proxy Service if defined
-          if FProxyPort >= 1 then StartProxy(FProxyPort, ChatPort, EmbeddingPort);
+          // Start Proxy Service if defined AND at least one AI service is enabled
+          if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then StartProxy(FProxyPort, ChatPort, EmbeddingPort);
           {$IFDEF MSWINDOWS}
           if FJob = 0 then
           begin

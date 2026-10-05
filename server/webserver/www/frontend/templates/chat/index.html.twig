@@ -14,22 +14,7 @@
 {% set llmEnabled = llm_config.llm_enabled ?? true %}
 {% set embeddingEnabled = llm_config.embedding_enabled ?? true %}
 {% set bothDisabled = (not llmEnabled) and (not embeddingEnabled) %}
-<body{% if persona.background_img and not bothDisabled %} style="background-image:url('{{ persona.background_img|raw }}');"{% endif %}>
-{% if bothDisabled %}
-<div class="container mt-5">
-    <div class="alert alert-danger">
-        <h4 class="alert-heading">Both AI Services Disabled</h4>
-        <p>The chatbot is currently unavailable because both the LLM engine and the embedding engine are disabled.</p>
-        <hr>
-        <p class="mb-0">To fix this issue, please enable at least one of the following services in your configuration:</p>
-        <ul class="mt-2">
-            <li><strong>LLM Engine</strong> - For conversational responses</li>
-            <li><strong>Embedding Engine</strong> - For semantic behavior matching</li>
-        </ul>
-        <p class="mt-3"><small>Enable at least one of the services in the service manager or check your <code>wrapper.json</code> configuration file.</small></p>
-    </div>
-</div>
-{% else %}
+<body{% if persona.background_img %} style="background-image:url('{{ persona.background_img|raw }}');"{% endif %}>
 <div class="chat-layout">
     <aside class="sidebar card shadow-lg">
         <div class="card-header bg-primary text-white text-center">
@@ -73,6 +58,13 @@
             </div>
         </div>
     </main>
+</div>
+{% if bothDisabled %}
+<div class="container mt-3 mb-3">
+    <div class="alert alert-warning">
+        <h5 class="alert-heading"><small>AI Services Disabled</small></h5>
+        <p class="mb-0"><small>Both LLM and embedding services are disabled. The chatbot will only respond to exact behavior matches from the personality database. For full AI responses, enable at least one AI service.</small></p>
+    </div>
 </div>
 {% endif %}
 <script src="{{ asset('assets/js/bootstrap.bundle.min.js') }}"></script>

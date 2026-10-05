@@ -1727,16 +1727,8 @@
      * @param {string} message - The validated, trimmed user message.
      */
     function proceedWithSend(message) {
-        // Streaming mode without embedding → connect directly to llama.cpp.
-        if (AppState.responseMode === 2 && !AppState.embeddingEnabled) {
-            if (AppState.llmEnabled) {
-                connectToLlamaDirect(message, () => finishProcessing());
-            } else {
-                appendMessage('chatbot', "I'm sorry, I don't understand. Can you, please, be more specific?");
-                finishProcessing();
-            }
-            return;
-        }
+        // ALWAYS call the API first for behavior matching (works in both modes)
+        // The server will return behavior match if found, or appropriate fallback/error
         showThinkingMessage();
         sendToApi(message, (data) => {
             removeThinkingMessage();
@@ -1749,6 +1741,14 @@
             // Detect a server-requested mode upgrade.
             if (typeof data.response_mode === 'number' && data.response_mode === 2) {
                 AppState.responseMode = 2;
+            }
+            // Behavior match found (reply or response_action) - use it
+            if (
+                (typeof data.reply === 'string' && data.reply.trim().length > 0) ||
+                (typeof data.response_action === 'string' && data.response_action.trim().length > 0)) {
+                // Process behavior match response normally
+                handleApiResponse(data, message);
+                return;
             }
             // Error handling
             if (typeof data.error === 'string' && data.error.length > 0) {
@@ -1767,12 +1767,18 @@
                 }
                 if (errCode === 'LLM_PROXY_NOT_AVAILABLE_IN_STREAMING_MODE') {
                     console.log('[API] Streaming mode: using direct connection.');
-                    if (AppState.llmEnabled) {
-                        connectToLlamaDirect(message, () => finishProcessing());
-                    } else if (typeof data.reply === 'string' && data.reply.trim().length > 0) {
+                    // Server returns this error WITHOUT a reply when LLM is enabled
+                    // (see ChatController.php - returns error only, no reply field).
+                    // A reply would only be present when LLM is disabled (fallback message).
+                    if (typeof data.reply === 'string' && data.reply.trim().length > 0) {
+                        // Fallback: server sent a reply (LLM disabled case)
                         appendMessage('chatbot', data.reply.trim());
                         finishProcessing();
+                    } else if (AppState.llmEnabled) {
+                        // LLM enabled - connect directly to llama.cpp
+                        connectToLlamaDirect(message, () => finishProcessing());
                     } else {
+                        // Both disabled, no behavior match - show fallback
                         appendMessage('chatbot', "I'm sorry, I don't understand. Can you, please, be more specific?");
                         finishProcessing();
                     }
@@ -1786,60 +1792,68 @@
                 finishProcessing();
                 return;
             }
-            // Streaming-mode block_request
+            // Streaming-mode block_request (should not happen if behavior match found)
             if (AppState.responseMode === 2 && data.block_request) {
                 connectToLlamaDirect(message, () => finishProcessing());
                 return;
             }
-            // Optional TTS audio
-            if (typeof data.audio_data === 'string' && data.audio_data.length > 0) {
-                playAudioFromBase64(data.audio_data);
-            }
-            // Response with an action verb
-            if (typeof data.response_action === 'string' &&
-                    data.response_action.trim().length > 0) {
-                const action = data.response_action.trim();
-                if (action === '#LOOP_VIDEO' &&
-                        typeof data.media_data === 'string' &&
-                        data.media_data.length > 0) {
-                    appendVideoMessage(data.media_data);
-                    const videoReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
-                    if (videoReply.length > 0) {
-                        appendMessage('chatbot', videoReply);
-                        if (AppState.responseMode === 2) {
-                            AppState.chatHistory.push({ role: 'user',      content: message });
-                            AppState.chatHistory.push({ role: 'assistant', content: '*#LOOP_VIDEO* ' + videoReply });
-                            saveHistoryToStorage();
-                        }
+            // Normal response handling (legacy mode)
+            handleApiResponse(data, message);
+        });
+    }
+
+    /**
+     * Handle API response data (shared logic for legacy mode and streaming mode fallback)
+     */
+    function handleApiResponse(data, message) {
+        // Optional TTS audio
+        if (typeof data.audio_data === 'string' && data.audio_data.length > 0) {
+            playAudioFromBase64(data.audio_data);
+        }
+        // Response with an action verb
+        if (typeof data.response_action === 'string' &&
+                data.response_action.trim().length > 0) {
+            const action = data.response_action.trim();
+            if (action === '#LOOP_VIDEO' &&
+                    typeof data.media_data === 'string' &&
+                    data.media_data.length > 0) {
+                appendVideoMessage(data.media_data);
+                const videoReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
+                if (videoReply.length > 0) {
+                    appendMessage('chatbot', videoReply);
+                    if (AppState.responseMode === 2) {
+                        AppState.chatHistory.push({ role: 'user',      content: message });
+                        AppState.chatHistory.push({ role: 'assistant', content: '*#LOOP_VIDEO* ' + videoReply });
+                        saveHistoryToStorage();
                     }
-                    finishProcessing();
-                    return;
-                }
-                // All other action types.
-                const actionReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
-                appendMessage('chatbot', actionReply, action);
-                if (AppState.responseMode === 2 && actionReply.length > 0) {
-                    AppState.chatHistory.push({ role: 'user',      content: message });
-                    AppState.chatHistory.push({ role: 'assistant', content: '*' + action + '* ' + actionReply });
-                    saveHistoryToStorage();
                 }
                 finishProcessing();
                 return;
             }
-            // Plain text reply
-            if (typeof data.reply === 'string') {
-                const plainReply = data.reply.trim();
-                if (plainReply.length > 0) {
-                    appendMessage('chatbot', plainReply);
-                    if (AppState.responseMode === 2) {
-                        AppState.chatHistory.push({ role: 'user',      content: message });
-                        AppState.chatHistory.push({ role: 'assistant', content: plainReply });
-                        saveHistoryToStorage();
-                    }
-                }
+            // All other action types.
+            const actionReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
+            appendMessage('chatbot', actionReply, action);
+            if (AppState.responseMode === 2 && actionReply.length > 0) {
+                AppState.chatHistory.push({ role: 'user',      content: message });
+                AppState.chatHistory.push({ role: 'assistant', content: '*' + action + '* ' + actionReply });
+                saveHistoryToStorage();
             }
             finishProcessing();
-        });
+            return;
+        }
+        // Plain text reply
+        if (typeof data.reply === 'string') {
+            const plainReply = data.reply.trim();
+            if (plainReply.length > 0) {
+                appendMessage('chatbot', plainReply);
+                if (AppState.responseMode === 2) {
+                    AppState.chatHistory.push({ role: 'user',      content: message });
+                    AppState.chatHistory.push({ role: 'assistant', content: plainReply });
+                    saveHistoryToStorage();
+                }
+            }
+        }
+        finishProcessing();
     }
 
     /** Stop the ongoing llama.cpp stream in streaming mode and reset the UI. */
