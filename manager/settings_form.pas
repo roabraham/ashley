@@ -2826,8 +2826,8 @@ begin
           else
             ParamsObj.Add(KeyName, NewValue);
         end;
-RootObj.Add('embedding_parameters', ParamsObj);
-         ParamsObj := nil;
+        RootObj.Add('embedding_parameters', ParamsObj);
+        ParamsObj := nil;
        end;
       //Check embedding port availability
       if not(PortsReserved.IndexOf(IntToStr(llmEmbeddingPort)) = -1) then
