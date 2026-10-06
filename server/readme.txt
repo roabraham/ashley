@@ -36,20 +36,17 @@ Note: ROCm is officially supported on Linux; Windows support is experimental.
 
 3. On first startup (or when no configuration file detected), the application will open the `Settings` menu so you can make sure everything is configured properly before starting the actual services (confirmation required)
 
-4. When running the application normally (the services are configured properly), then application will start the services
-
-5. When configuration or fine-tuning needed, right-click the tray icon and choose `Settings` to open the Settings window
-
-6. The first thing to do is pick an LLM/EMBEDDING ENGINE. The engine selection is on the very first tab in the Settings window. Choose the engine that matches your hardware:
+4. **Optional**: Pick an LLM/Embedding engine on the first tab (`Engine Settings`). Choose the engine that matches your hardware:
 * CPU: works on every Windows PC; no extra software needed
 * CUDA: NVIDIA GPU required (faster than CPU)
 * Vulkan: AMD / Intel / NVIDIA GPU (no CUDA toolkit needed)
 * Radeon: Radeon GPU required (not tested yet!)
-Also choose a model file (".gguf") for the engine to use
+Also choose a model file (".gguf") for the engine to use.
+**Note**: Both LLM and embedding services are optional - you can run Ashley with just the personality database for exact behavior matching, enable embedding for semantic similarity matching, or enable LLM for full conversational AI.
 
-7. Click `OK` at the bottom of the window. Ashley configures everything, generates a security certificate if needed and starts the AI service in the background.
+5. Click `OK` at the bottom of the window. Ashley configures everything, generates a security certificate if needed and starts the AI service in the background.
 
-8. Right-click the tray icon again and choose `Open Web UI` to launch the chatbot window (but you can also access the service from your web browser on http[s]://localhost:port/, where `port` is the HTTP[S] port configured in the settings window)
+6. Right-click the tray icon again and choose `Open Web UI` to launch the chatbot window (but you can also access the service from your web browser on http[s]://localhost:port/, where `port` is the HTTP[S] port configured in the settings window)
 
 ----------------
   EVERYDAY USE
@@ -96,8 +93,8 @@ Restarting the AI service: right-click the tray icon and choose `Restart service
   TABS OVERVIEW (Settings window)
 -----------------------------------
 
-* `Engine Settings`: select the LLM/Embedding engine (CPU / CUDA / Vulkan / Radeon) and choose the model file that the engine will use. This is the first tab and the most important setup step.
-* `Embedding`: enable or disable the embedding engine and choose an embedding model file for behaviour matching.
+* `Engine Settings` (**Optional**): select the LLM engine (CPU / CUDA / Vulkan / Radeon) and choose the model file that the engine will use. Disable to run without LLM service.
+* `Embedding` (**Optional**): enable or disable the embedding engine and choose an embedding model file for semantic behavior matching. Disable to run with exact matching only.
 * `Logging and Proxy`: view or clear log files, and adjust the internal API proxy settings (port, timeout, max connections).
 * `Web Server`: configure the built-in web server ports (HTTP / HTTPS) and the SSL certificate. Normally leave these at their default values.
 * `Persona`: choose and customise the chatbot's personality, avatar, background image and CSS theme.
@@ -137,7 +134,7 @@ A common cause is that the selected model file is missing or corrupted. Open Set
 Also check that no other application is using port 8080 or 8081. This can happen if a previous instance of Ashley is still running. Open Task Manager, look for `manager.exe` and `wrapper.exe`, end them, then try again.
 
 Chatbot says `Both AI Services Disabled`:
-At least one service (the conversational LLM and/or the embedding engine) must be running. Open `Settings` and make sure `Enable LLM server` on the `Engine Settings` tab or `Enable embedding` on the `Embedding` tab is checked, and that a model is selected for all enabled servers.
+This is a **warning**, not an error. Ashley runs without LLM and/or embedding services - exact behavior matches from the personality database will still work. To enable full AI features: open `Settings` and check `Enable LLM server` on the `Engine Settings` tab for conversational AI, and/or `Enable embedding` on the `Embedding` tab for semantic behavior matching. A model must be selected for each enabled service.
 
 Chatbot is slow / delays in responses:
 On CPU-only hardware, responses are naturally slower than on a GPU. If you have a CUDA-capable NVIDIA GPU, open `Settings` and change the engine to CUDA (Engine Settings tab). Large context window sizes also need more RAM - reduce the context size at the parameters if you are running out of memory.
