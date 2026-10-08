@@ -3,6 +3,8 @@
 namespace App\Command;
 
 use App\Service\ChatConfigService;
+use App\Service\DatabaseConnection;
+use Doctrine\DBAL\ParameterType;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -38,16 +40,21 @@ class GenerateEmbeddingsCommand extends Command
     /** @var ChatConfigService Shared configuration provider for chat and LLM settings */
     protected ChatConfigService $configService;
 
+    /** @var DatabaseConnection Shared database connection provider */
+    protected DatabaseConnection $databaseConnection;
+
     /**
      * Constructor for the GenerateEmbeddingsCommand.
      *
      * Initializes the command with the required ChatConfigService dependency which is used to retrieve configuration values needed for database path and embedding service endpoint resolution.
      *
      * @param ChatConfigService $configService: shared configuration provider for retrieving server root, LLM config, and embedding settings
+     * @param DatabaseConnection $databaseConnection: shared database connection provider
      */
-    public function __construct(ChatConfigService $configService) {
+    public function __construct(ChatConfigService $configService, DatabaseConnection $databaseConnection) {
         parent::__construct();
         $this->configService = $configService;
+        $this->databaseConnection = $databaseConnection;
         $this->embedding_limit = intval(self::EMBEDDING_LIMIT);
     }
 
@@ -138,7 +145,7 @@ HELP);
      *
      * This method performs the following operations in sequence:
      *
-     * 1. Locates `personality.db` via `ChatConfigService::getServerRoot()`.
+     * 1. Opens personality.db via injected DatabaseConnection service.
      * 2. Queries the `behavior` table for rows where `embedding` is NULL or < 4 chars.
      * 3. For each row without embedding, calls the embedding proxy service.
      * 4. Stores the resulting vector as JSON in the `embedding` column.
@@ -155,9 +162,10 @@ HELP);
         // Handle --limit option
         $limit = intval($input->getOption('limit') ?: 0);
         if ($limit >= 1) { $this->embedding_limit = $limit; }
-        $dbPath = $this->configService->getPersonalityDbPath();
         // Guard: database must exist
-        if (!file_exists($dbPath)) {
+        try {
+            $db = $this->databaseConnection->getPersonalityConnection();
+        } catch (\RuntimeException $e) {
             $output->writeln('<error>ERROR: personality database not found!</error>');
             return Command::FAILURE;
         }
@@ -177,12 +185,13 @@ HELP);
         // Set resource limits
         @ini_set('memory_limit', $memory_limit);
         @ini_set('max_execution_time', '0');
-        // Open the behavior database
-        $db = new \PDO("sqlite:" . $dbPath);
-        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $db->exec("PRAGMA journal_mode = WAL;");
-        $stmt = $db->query("SELECT id, user_prompt FROM behavior WHERE embedding IS NULL OR LENGTH(embedding) < 4 LIMIT {$this->embedding_limit}");
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $rows = $db->createQueryBuilder()
+            ->select('id', 'user_prompt')
+            ->from('behavior')
+            ->where('embedding IS NULL OR LENGTH(embedding) < 4')
+            ->setMaxResults($this->embedding_limit)
+            ->executeQuery()
+            ->fetchAllAssociative();
         // All embeddings already exist
         if (empty($rows)) {
             $output->writeln('<info>All vector embeddings exist.</info>');
@@ -213,10 +222,13 @@ HELP);
                         $decoded = $response->toArray();
                         $embedding = ($decoded['data'][0]['embedding'] ?? $decoded['embedding']) ?? null;
                         if (is_array($embedding)) {
-                            $update = $db->prepare("UPDATE behavior SET embedding = :embed WHERE id = :id");
-                            $update->bindValue(':embed', json_encode($embedding));
-                            $update->bindValue(':id', $id, \PDO::PARAM_INT);
-                            $update->execute();
+                            $db->createQueryBuilder()
+                                ->update('behavior')
+                                ->set('embedding', ':embed')
+                                ->where('id = :id')
+                                ->setParameter('embed', json_encode($embedding))
+                                ->setParameter('id', $id, ParameterType::INTEGER)
+                                ->executeStatement();
                             ++$done;
                         } else {
                             ++$failed;

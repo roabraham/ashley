@@ -3,8 +3,8 @@
 namespace App\Controller;
 
 use App\Service\ChatConfigService;
+use App\Service\DatabaseConnection;
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\ParameterType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -87,12 +87,17 @@ class ChatController extends AbstractController
     /** @var ChatConfigService $configService: shared configuration provider */
     protected ChatConfigService $configService;
 
+    /** @var DatabaseConnection $databaseConnection: shared database connection provider */
+    protected DatabaseConnection $databaseConnection;
+
     /**
      * Constructor
      * @param ChatConfigService $configService Shared configuration provider
+     * @param DatabaseConnection $databaseConnection Shared database connection provider
      */
-    public function __construct(ChatConfigService $configService) {
+    public function __construct(ChatConfigService $configService, DatabaseConnection $databaseConnection) {
         $this->configService = $configService;
+        $this->databaseConnection = $databaseConnection;
     }
 
     // =========================================================================
@@ -824,8 +829,7 @@ class ChatController extends AbstractController
                 // Without an active personality there is no behavior list to suggest from.
                 return $this->json(['success' => true, 'items' => []]);
             }
-            $behaviorDatabase = $this->getPersonalityDbConnection();
-            $queryBuilder = $behaviorDatabase->createQueryBuilder();
+            $queryBuilder = $this->databaseConnection->getPersonalityConnection()->createQueryBuilder();
             $queryBuilder
                 ->select('user_prompt')
                 ->from('behavior')
@@ -935,38 +939,6 @@ class ChatController extends AbstractController
         return $items;
     }
 
-    /**
-     * Open a Doctrine DBAL connection to the SQLite personality database.
-     *
-     * The connection is short-lived and never cached, so the autocomplete lookup cannot interfere with the long-lived PDO handles of the chat flow. It is released as soon as the local variable goes out of scope.
-     *
-     * The `lower()` SQL function is registered as a Unicode-aware PHP function on this connection: the SQLite core implementation only folds ASCII characters, which would make `LOWER(TRIM(user_prompt)) LIKE '%word%'` miss accented characters such as "A" with diaeresis or "o" with double acute. Both sides of the comparison then use `mb_strtolower()`, so the match is case-insensitive across the whole UTF-8 range. The override only affects this connection, never the chat flow.
-     *
-     * @return Connection An open DBAL connection to the personality database
-     * @throws \RuntimeException When the personality database file does not exist
-     */
-    protected function getPersonalityDbConnection(): Connection {
-        $personalityDbPath = $this->configService->getPersonalityDbPath();
-        if (!file_exists($personalityDbPath)) { throw new \RuntimeException("Personality database not found: {$personalityDbPath}!"); }
-        $behaviorDatabase = DriverManager::getConnection([
-            'driver'        => 'pdo_sqlite',
-            'path'          => $personalityDbPath,
-            'driverOptions' => [\PDO::ATTR_TIMEOUT => self::SQLITE_BUSY_TIMEOUT_SECONDS]
-        ]);
-        $nativeConnection = $behaviorDatabase->getNativeConnection();
-        if ($nativeConnection instanceof \PDO) {
-            $nativeConnection->sqliteCreateFunction(
-                'lower',
-                static function (?string $value): ?string {
-                    return ($value === null) ? null : mb_strtolower($value, 'UTF-8');
-                },
-                1,
-                self::SQLITE_DETERMINISTIC_FLAG
-            );
-        }
-        return $behaviorDatabase;
-    }
-
     // =========================================================================
     // BEHAVIOR MATCHING
     // =========================================================================
@@ -986,27 +958,23 @@ class ChatController extends AbstractController
      * @return array<string,mixed>|null The best match response or null
      */
     protected function tryBehaviorMatching(string $userMessage, SessionInterface $session, array $llmConfig, array $persona, bool $embeddingEnabled = true): ?array {
-        $personalityDbPath = $this->configService->getPersonalityDbPath();
-        if (!file_exists($personalityDbPath)) { return null; }
         try {
-            $db = new \PDO("sqlite:{$personalityDbPath}");
-            $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            $db->exec("PRAGMA journal_mode = WAL;");
+            $db = $this->databaseConnection->getPersonalityConnection();
             $personalityId = intval($persona['personality_id'] ?? 0);
             if (empty($personalityId)) { return null; }
             // FAST PATH: case-insensitive exact match on user_prompt
             // A normalized, trimmed comparison avoids the embedding/LLM round-trip when the user typed a known prompt verbatim. This is orders of magnitude faster and returns the identical response payload.
             $normalizedMessage = trim($userMessage);
-            $stmtExact = $db->prepare(
-                "SELECT id, response_action, response_message FROM behavior" .
-                " WHERE (personality_id = :pid OR all_personalities != 0) AND LOWER(TRIM(user_prompt)) = LOWER(TRIM(:msg))" .
-                " LIMIT 1"
-            );
-            $stmtExact->bindValue(':pid', $personalityId, \PDO::PARAM_INT);
-            $stmtExact->bindValue(':msg', $normalizedMessage, \PDO::PARAM_STR);
-            $stmtExact->execute();
-            $exactMatch = $stmtExact->fetch(\PDO::FETCH_ASSOC);
-            if ($exactMatch) { return $this->buildBehaviorMatchResult($exactMatch, $persona, $session, 1.0, $db, $userMessage, $llmConfig); }
+            $exactMatch = $db->createQueryBuilder()
+                ->select('id', 'response_action', 'response_message')
+                ->from('behavior')
+                ->where('(personality_id = :pid OR all_personalities != 0) AND LOWER(TRIM(user_prompt)) = LOWER(TRIM(:msg))')
+                ->setParameter('pid', $personalityId, ParameterType::INTEGER)
+                ->setParameter('msg', $normalizedMessage, ParameterType::STRING)
+                ->setMaxResults(1)
+                ->executeQuery()
+                ->fetchAssociative();
+            if ($exactMatch) { return $this->buildBehaviorMatchResult($exactMatch, $persona, $session, 1.0, $userMessage, $llmConfig, $db); }
             // SLOW PATH: cosine similarity on embeddings (requires embedding service)
             if (!$embeddingEnabled) { return null; }
             $embeddingHost = '127.0.0.1';
@@ -1027,12 +995,12 @@ class ChatController extends AbstractController
             if (count($userVector) < 8) { return null; }
             // Similarity search
             $threshold = floatval($persona['behavior_similarity_threshold'] ?? 80) / 100;
-            $stmt = $db->prepare(
-                "SELECT id, similarity_threshold, embedding FROM behavior" .
-                " WHERE (personality_id = :pid OR all_personalities != 0) AND embedding IS NOT NULL AND LENGTH(embedding) >= 4"
-            );
-            $stmt->bindValue(':pid', $personalityId, \PDO::PARAM_INT);
-            $stmt->execute();
+            $stmt = $db->createQueryBuilder()
+                ->select('id', 'similarity_threshold', 'embedding')
+                ->from('behavior')
+                ->where('(personality_id = :pid OR all_personalities != 0) AND embedding IS NOT NULL AND LENGTH(embedding) >= 4')
+                ->setParameter('pid', $personalityId, ParameterType::INTEGER)
+                ->executeQuery();
             $userNorm = 0.0;
             foreach ($userVector as $v) {
                 $userNorm += $v * $v;
@@ -1041,7 +1009,7 @@ class ChatController extends AbstractController
             $bestScore = -1.0;
             $behaviorId = null;
             $bestThreshold = $threshold;
-            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            while ($row = $stmt->fetchAssociative()) {
                 $storedVector = json_decode($row['embedding'], true);
                 if (!is_array($storedVector)) { continue; }
                 if (count($storedVector) < 8) { continue; }
@@ -1064,12 +1032,16 @@ class ChatController extends AbstractController
             }
             if (!$behaviorId || $bestScore < $bestThreshold) { return null; }
             // Fetch the matched behavior entry
-            $stmt2 = $db->prepare("SELECT id, user_prompt, response_action, response_message FROM behavior WHERE id = :id LIMIT 1");
-            $stmt2->bindValue(':id', $behaviorId, \PDO::PARAM_INT);
-            $stmt2->execute();
-            $match = $stmt2->fetch(\PDO::FETCH_ASSOC);
+            $match = $db->createQueryBuilder()
+                ->select('id', 'user_prompt', 'response_action', 'response_message')
+                ->from('behavior')
+                ->where('id = :id')
+                ->setParameter('id', $behaviorId, ParameterType::INTEGER)
+                ->setMaxResults(1)
+                ->executeQuery()
+                ->fetchAssociative();
             if (!$match) { return null; }
-            return $this->buildBehaviorMatchResult($match, $persona, $session, $bestScore, $db, $userMessage, $llmConfig);
+            return $this->buildBehaviorMatchResult($match, $persona, $session, $bestScore, $userMessage, $llmConfig, $db);
         } catch (\Exception) {
             return null;
         }
@@ -1084,11 +1056,12 @@ class ChatController extends AbstractController
      * @param array<string,mixed> $persona     Persona configuration from {@see ChatConfigService}
      * @param SessionInterface    $session     Symfony session (for history updates)
      * @param float               $confidence  Match confidence (1.0 for exact, 0–1 for similarity)
-     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ChatConfigService}
      * @param string              $userMessage The original user message (for history)
+     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ChatConfigService}
+     * @param Connection $db      Database connection to reuse
      * @return array<string,mixed> Standardized match result
      */
-    protected function buildBehaviorMatchResult(array $match, array $persona, SessionInterface $session, float $confidence, \PDO $db, string $userMessage, array $llmConfig): array {
+    protected function buildBehaviorMatchResult(array $match, array $persona, SessionInterface $session, float $confidence, string $userMessage, array $llmConfig, Connection $db): array {
         $responseAction = trim((string) ($match['response_action']  ?? ''));
         $responseMessage = trim((string) ($match['response_message'] ?? ''));
         $string_replacements = $this->getStringReplacements($persona);
@@ -1106,7 +1079,7 @@ class ChatController extends AbstractController
         ];
         if ($responseAction != '') { $result['response_action'] = $responseAction; }
         if ($responseAction == '#LOOP_VIDEO') {
-            $mediaData = $this->getRandomMediaData($db, $behaviorId, $session, $llmConfig);
+            $mediaData = $this->getRandomMediaData($behaviorId, $session, $llmConfig, $db);
             if (!empty($mediaData)) { $result['media_data'] = $mediaData; }
         }
         if ($responseMessage != '') { $result['reply'] = $responseMessage; }
@@ -1168,28 +1141,32 @@ class ChatController extends AbstractController
      * Pick a random media record for the given behavior, ensuring no repeats
      * until the track is exhausted, then reshuffle.
      *
-     * @param \PDO $db      Connected personality database handle
      * @param int  $behaviorId   Behavior row to pull media for
      * @param SessionInterface $session   Symfony session (tracks used media in the current session)
      * @param array $llmConfig  LLM configuration from {@see ChatConfigService}
+     * @param Connection $db  Database connection to reuse
      * @return string|null   Base-32 media identifier, or null if none available
      */
-    protected function getRandomMediaData(\PDO $db, int $behaviorId, SessionInterface $session, array $llmConfig): ?string {
+    protected function getRandomMediaData(int $behaviorId, SessionInterface $session, array $llmConfig, Connection $db): ?string {
         $maxMediaSession = intval($llmConfig['max_media_session'] ?? 255);
         if (empty($maxMediaSession)) { return null; }
-        $stmt = $db->prepare("SELECT DISTINCT media.data FROM media" .
-            " INNER JOIN behavior_media_xref ON behavior_media_xref.media_id = media.id" .
-            " WHERE behavior_media_xref.behavior_id = :behavior_id"
-        );
-        $stmt->bindValue(':behavior_id', $behaviorId, \PDO::PARAM_INT);
-        $stmt->execute();
-        $mediaRecords = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        // Load ALL media records for this behavior (same as original PDO code)
+        $mediaRecords = $db->createQueryBuilder()
+            ->select('DISTINCT media.data AS data')
+            ->from('media')
+            ->innerJoin('media', 'behavior_media_xref', 'behavior_media_xref', 'behavior_media_xref.media_id = media.id')
+            ->where('behavior_media_xref.behavior_id = :behavior_id')
+            ->setParameter('behavior_id', $behaviorId, ParameterType::INTEGER)
+            ->executeQuery()
+            ->fetchAllAssociative();
+        // Extract just the data column values
+        $mediaRecords = array_column($mediaRecords, 'data');
         if (empty($mediaRecords)) { return null; }
         $used = $session->get('media_data_used', []);
         $available = array_values(array_diff($mediaRecords, $used));
         if (empty($available)) {
             $session->remove('media_data_used');
-            return $this->getRandomMediaData($db, $behaviorId, $session, $llmConfig);
+            return $this->getRandomMediaData($behaviorId, $session, $llmConfig, $db);
         }
         $mediaData = trim($available[array_rand($available)]);
         if ($mediaData == '') { return null; }

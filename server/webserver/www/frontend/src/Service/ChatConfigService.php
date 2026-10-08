@@ -2,6 +2,8 @@
 
 namespace App\Service;
 
+use Doctrine\DBAL\ParameterType;
+
 /**
  * ChatConfigService
  *
@@ -21,29 +23,6 @@ class ChatConfigService {
     protected const MAX_POPUP_ITEMS = 3;
 
     /**
-     * Absolute path to the shared server root.
-     *
-     * Walk-up path:
-     *   {@code src/Service/ } → {@code frontend/ } → {@code server/ }
-     * which resolves to {@code config/} folder.
-     */
-    protected string $serverRoot;
-
-    /**
-     * Absolute path to the wrapper SQLite database (e.g. `database/wrapper.db`).
-     *
-     * Sourced from the `WRAPPER_DB_PATH` environment variable (see .env), falling back to a `database/wrapper.db` file next to the server root.
-     */
-    protected string $wrapperDbPath;
-
-    /**
-     * Absolute path to the personality SQLite database (e.g. `database/personality.db`).
-     *
-     * Sourced from the `PERSONALITY_DB_PATH` environment variable (see .env), falling back to a `database/personality.db` file next to the server root.
-     */
-    protected string $personalityDbPath;
-
-    /**
      * Absolute path to the wrapper JSON configuration file (e.g. `config/wrapper.json`).
      *
      * Sourced from the `WRAPPER_JSON_PATH` environment variable (see .env), falling back to a `config/wrapper.json` file next to the server root.
@@ -57,65 +36,35 @@ class ChatConfigService {
      */
     protected string $personalityJsonPath;
 
+    /** @var DatabaseConnection Shared database connection provider */
+    protected DatabaseConnection $databaseConnection;
+
     /**
      * Build the service, resolving the server root at construction time.
      *
-     * Designed to work without a Symfony container by computing {$serverRoot} relative to the physical location of this class file. Database and JSON configuration locations are injected via the corresponding parameters (resolved from the environment) and fall back to the server root when not provided.
+     * Designed to work without a Symfony container by computing {$serverRoot} relative to the physical location of this class file.
+     * JSON configuration locations are injected via the corresponding parameters (resolved from the environment) and fall back to the server root when not provided.
+     * Database connection is injected as a service dependency.
      *
-     * @param string|null $wrapperDbPath Injected `WRAPPER_DB_PATH` value
-     * @param string|null $personalityDbPath Injected `PERSONALITY_DB_PATH` value
+     * @param DatabaseConnection $databaseConnection Database connection provider (injected via services.yaml)
      * @param string|null $wrapperJsonPath Injected `WRAPPER_JSON_PATH` value
      * @param string|null $personalityJsonPath Injected `PERSONALITY_JSON_PATH` value
      */
     public function __construct (
-        ?string $wrapperDbPath = null,
-        ?string $personalityDbPath = null,
+        DatabaseConnection $databaseConnection,
         ?string $wrapperJsonPath = null,
         ?string $personalityJsonPath = null
     ) {
-        $this->serverRoot = realpath(dirname(__DIR__, 5));
-        if (!$this->serverRoot) { throw new \RuntimeException('Could not reliably determine the server root directory!'); }
-        $this->wrapperDbPath = "{$this->serverRoot}/database/wrapper.db";
-        $wrapperDbPathFixed = trim($wrapperDbPath ?? '');
-        if ($wrapperDbPathFixed) { $this->wrapperDbPath = $wrapperDbPathFixed; }
-        $this->personalityDbPath = "{$this->serverRoot}/database/personality.db";
-        $personalityDbPathFixed = trim($personalityDbPath ?? '');
-        if ($personalityDbPathFixed) { $this->personalityDbPath = $personalityDbPathFixed; }
-        $this->wrapperJsonPath = "{$this->serverRoot}/config/wrapper.json";
+        $serverRoot = realpath(dirname(__DIR__, 5));
+        if (!$serverRoot) { throw new \RuntimeException('Could not reliably determine the server root directory!'); }
+        $this->wrapperJsonPath = "{$serverRoot}/config/wrapper.json";
         $wrapperJsonPathFixed = trim($wrapperJsonPath ?? '');
         if ($wrapperJsonPathFixed) { $this->wrapperJsonPath = $wrapperJsonPathFixed; }
-        $this->personalityJsonPath = "{$this->serverRoot}/config/personality.json";
+        $this->personalityJsonPath = "{$serverRoot}/config/personality.json";
         $personalityJsonPathFixed = trim($personalityJsonPath ?? '');
         if ($personalityJsonPathFixed) { $this->personalityJsonPath = $personalityJsonPathFixed; }
+        $this->databaseConnection = $databaseConnection;
     }
-
-    /**
-     * Return the absolute path to the shared server root.
-     *
-     * Used by other services (e.g. `BehaviorMatcher`) that need direct
-     * filesystem access to the personality database.
-     *
-     * @return string Absolute filesystem path
-     */
-    public function getServerRoot(): string { return $this->serverRoot; }
-
-    /**
-     * Return the absolute path to the wrapper SQLite database.
-     *
-     * Sourced from the `WRAPPER_DB_PATH` environment variable.
-     *
-     * @return string Absolute filesystem path
-     */
-    public function getWrapperDbPath(): string { return $this->wrapperDbPath; }
-
-    /**
-     * Return the absolute path to the personality SQLite database.
-     *
-     * Sourced from the `PERSONALITY_DB_PATH` environment variable.
-     *
-     * @return string Absolute filesystem path
-     */
-    public function getPersonalityDbPath(): string { return $this->personalityDbPath; }
 
     /**
      * Return the absolute path to the wrapper JSON configuration file.
@@ -147,12 +96,7 @@ class ChatConfigService {
      * @return array<string,mixed> Key-value map
      */
     public function getLlmConfig(): array {
-        //Check Wrapper Database availability
-        $wrapperDbPath = $this->wrapperDbPath;
-        if (!file_exists($wrapperDbPath)) {
-            throw new \RuntimeException("Wrapper database not found: {$wrapperDbPath}!");
-        }
-        //Hard-coded defaults
+        // Hard-coded defaults
         $config = [
             'llm_host'             => '127.0.0.1',
             'llm_port'             => 8080,
@@ -177,10 +121,7 @@ class ChatConfigService {
         $wrapperJsonPath = $this->wrapperJsonPath;
         // Priority 1: wrapper.db engine configuration (sets SQLite defaults)
         try {
-            $db = new \PDO("sqlite:{$wrapperDbPath}");
-            $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            $db->exec("PRAGMA busy_timeout = 5000");
-            $db->exec("PRAGMA journal_mode = WAL;");
+            $db = $this->databaseConnection->getWrapperConnection();
             // Select active engine by llama_engine ID from wrapper.json
             $engineId = null;
             if (file_exists($wrapperJsonPath)) {
@@ -199,17 +140,21 @@ class ChatConfigService {
             $llmHost           = null;
             $llmPort           = null;
             $llmCtxSizeTmp     = null;
-            $sql = "SELECT id, server, endpoint, embedding_endpoint, proxy_port FROM config";
+            $queryBuilder = $db->createQueryBuilder()
+                ->select('id', 'server', 'endpoint', 'embedding_endpoint', 'proxy_port')
+                ->from('config');
             if ($engineId >= 1) {
-                $sql .= " WHERE id = :id LIMIT 1";
-                $stmt = $db->prepare($sql);
-                $stmt->bindValue(':id', $engineId, \PDO::PARAM_INT);
-                $stmt->execute();
+                $queryBuilder
+                    ->where('id = :id')
+                    ->setParameter('id', $engineId, ParameterType::INTEGER)
+                    ->setMaxResults(1);
             } else {
-                $sql .= " ORDER BY priority DESC, id ASC LIMIT 1";
-                $stmt = $db->query($sql);
+                $queryBuilder
+                    ->orderBy('priority', 'DESC')
+                    ->addOrderBy('id', 'ASC')
+                    ->setMaxResults(1);
             }
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $row = $queryBuilder->executeQuery()->fetchAssociative();
             if ($row) {
                 $engineId = intval(trim($row['id'] ?? ''));
                 $config['engine_id'] = $engineId;
@@ -222,11 +167,18 @@ class ChatConfigService {
             }
             if ($engineId >= 1) {
                 try {
-                    $dataSql = "SELECT config_data.name AS name, config_data.value AS value, config_data_type.name AS type_name, config_data.enable_server AS enable_server FROM config_data LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id WHERE config_id = :cid AND enable_server != 0";
-                    $dataStmt = $db->prepare($dataSql);
-                    $dataStmt->bindValue(':cid', $engineId, \PDO::PARAM_INT);
-                    $dataStmt->execute();
-                    $dataRows = $dataStmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $dataQueryBuilder = $db->createQueryBuilder()
+                        ->select(
+                            'config_data.name AS name',
+                            'config_data.value AS value',
+                            'config_data_type.name AS type_name',
+                            'config_data.enable_server AS enable_server')
+                        ->from('config_data')
+                        ->leftJoin('config_data', 'config_data_type', 'config_data_type', 'config_data_type.id = config_data.type_id')
+                        ->where('config_data.config_id = :cid')
+                        ->andWhere('config_data.enable_server != 0')
+                        ->setParameter('cid', $engineId, ParameterType::INTEGER);
+                    $dataRows = $dataQueryBuilder->executeQuery()->fetchAllAssociative();
                     if ($dataRows) {
                         foreach ($dataRows as $r) {
                             $name = strtolower(trim($r['name'] ?? ''));
@@ -278,7 +230,6 @@ class ChatConfigService {
                     // Fails silently - defaults remain
                 }
             }
-            $db = null;
         } catch (\Exception $e) {
             // Fails silently - defaults remain
         }
@@ -360,12 +311,15 @@ class ChatConfigService {
         }
         // Nginx proxy_location from web_server_config table
         try {
-            $db2 = new \PDO("sqlite:{$wrapperDbPath}");
-            $db2->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            $db2->exec("PRAGMA busy_timeout = 5000");
-            $db2->exec("PRAGMA journal_mode = WAL;");
-            $stmt = $db2->query("SELECT value FROM web_server_config WHERE UPPER(TRIM(name)) LIKE 'NGINX_PROXY_LOCATION' LIMIT 1");
-            $locRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $db = $this->databaseConnection->getWrapperConnection();
+            $stmt = $db->createQueryBuilder()
+                ->select('value')
+                ->from('web_server_config')
+                ->where('UPPER(TRIM(name)) LIKE :name')
+                ->setParameter('name', 'NGINX_PROXY_LOCATION', ParameterType::STRING)
+                ->setMaxResults(1)
+                ->executeQuery();
+            $locRow = $stmt->fetchAssociative();
             if ($locRow) {
                 $location = trim($locRow['value'] ?? '');
                 if ($location) { $config['proxy_location'] = $location; }
@@ -424,46 +378,45 @@ class ChatConfigService {
             }
         }
         // personality.db - query active personality row
-        $personalityDbPath = $this->personalityDbPath;
-        if (file_exists($personalityDbPath)) {
-            try {
-                $db = new \PDO("sqlite:" . $personalityDbPath);
-                $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-                $db->exec("PRAGMA busy_timeout = 5000");
-                $db->exec("PRAGMA journal_mode = WAL;");
-                if ($personalityName) {
-                    $stmt = $db->prepare("SELECT * FROM personalities WHERE name LIKE :name AND is_active = 1 LIMIT 1");
-                    $stmt->bindValue('name', $personalityName, \PDO::PARAM_STR);
-                    $stmt->execute();
-                } else {
-                    $stmt = $db->query("SELECT * FROM personalities WHERE is_active = 1 ORDER BY priority DESC, id ASC LIMIT 1");
-                }
-                $data = $stmt->fetch(\PDO::FETCH_ASSOC);
-                if ($data) {
-                    if (empty($personalityName)) { $personalityName = trim($data['name'] ?? ''); }
-                    $persona['personality_id'] = intval(trim($data['id'] ?? 0));
-                    $full_name = trim($data['full_name'] ?? '');
-                    if ($full_name) { $persona['chatbot_name'] = $full_name; }
-                    $persona['description'] = trim($data['description'] ?? '');
-                    $persona['initial_message'] = trim($data['initial_message'] ?? '');
-                    $persona['active_prompt'] = trim($data['system_prompt'] ?? '');
-                    $persona['summary_prompt'] = trim($data['summary_prompt'] ?? '');
-                    $persona['default_theme'] = strtoupper(trim($data['default_theme'] ?? ''));
-                    $persona['css_override'] = trim($data['css_override'] ?? '');
-                    $similarity_threshold = intval(trim($data['behavior_similarity_threshold'] ?? 0));
-                    if ($similarity_threshold >= 1) { $persona['behavior_similarity_threshold']  = $similarity_threshold; }
-                    // Format base-64 images stored in the DB
-                    foreach (['avatar' => 'avatar_img', 'background_image' => 'background_img'] as $dbField => $cfgKey) {
-                        $imgRaw = trim($data[$dbField] ?? '');
-                        if (empty($imgRaw)) { continue; }
-                        $imgJson = json_decode($imgRaw, true);
-                        if (!isset($imgJson['content'])) { continue; }
-                        $persona[$cfgKey] = $this->formatBase64Image($imgJson['content'], $imgJson['filename'] ?? '');
-                    }
-                }
-            } catch (\Exception $e) {
-                // Fails silently
+        try {
+            $db = $this->databaseConnection->getPersonalityConnection();
+            $queryBuilder = $db->createQueryBuilder()
+                ->select('*')
+                ->from('personalities')
+                ->where('is_active = 1')
+                ->orderBy('priority', 'DESC')
+                ->addOrderBy('id', 'ASC')
+                ->setMaxResults(1);
+            if ($personalityName) {
+                $queryBuilder
+                    ->andWhere('name LIKE :name')
+                    ->setParameter('name', $personalityName, ParameterType::STRING);
             }
+            $data = $queryBuilder->executeQuery()->fetchAssociative();
+            if ($data) {
+                if (empty($personalityName)) { $personalityName = trim($data['name'] ?? ''); }
+                $persona['personality_id'] = intval(trim($data['id'] ?? 0));
+                $full_name = trim($data['full_name'] ?? '');
+                if ($full_name) { $persona['chatbot_name'] = $full_name; }
+                $persona['description'] = trim($data['description'] ?? '');
+                $persona['initial_message'] = trim($data['initial_message'] ?? '');
+                $persona['active_prompt'] = trim($data['system_prompt'] ?? '');
+                $persona['summary_prompt'] = trim($data['summary_prompt'] ?? '');
+                $persona['default_theme'] = strtoupper(trim($data['default_theme'] ?? ''));
+                $persona['css_override'] = trim($data['css_override'] ?? '');
+                $similarity_threshold = intval(trim($data['behavior_similarity_threshold'] ?? 0));
+                if ($similarity_threshold >= 1) { $persona['behavior_similarity_threshold']  = $similarity_threshold; }
+                // Format base-64 images stored in the DB
+                foreach (['avatar' => 'avatar_img', 'background_image' => 'background_img'] as $dbField => $cfgKey) {
+                    $imgRaw = trim($data[$dbField] ?? '');
+                    if (empty($imgRaw)) { continue; }
+                    $imgJson = json_decode($imgRaw, true);
+                    if (!isset($imgJson['content'])) { continue; }
+                    $persona[$cfgKey] = $this->formatBase64Image($imgJson['content'], $imgJson['filename'] ?? '');
+                }
+            }
+        } catch (\Exception $e) {
+            // Fails silently
         }
         $persona['personality_name'] = $personalityName;
         // personality.json - apply field overrides (highest priority)

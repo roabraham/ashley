@@ -20,10 +20,14 @@ services:
         resource: '../src/'
 
     # SQLite database locations are sourced from environment variables (see .env)
-    App\Service\ChatConfigService:
+    App\Service\DatabaseConnection:
         bind:
             $wrapperDbPath: '%env(resolve:WRAPPER_DB_PATH)%'
             $personalityDbPath: '%env(resolve:PERSONALITY_DB_PATH)%'
+
+    # JSON config locations are sourced from environment variables (see .env)
+    App\Service\ChatConfigService:
+        bind:
             $wrapperJsonPath: '%env(resolve:WRAPPER_JSON_PATH)%'
             $personalityJsonPath: '%env(resolve:PERSONALITY_JSON_PATH)%'
 
