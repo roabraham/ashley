@@ -1942,15 +1942,21 @@ begin
       end;
     end;
     // Add all other params one-by-one
-    for i := 0 to FParams.Count - 1 do
+    if FParams.Count >= 1 then
     begin
-      if trim(FParams[i]) = '' then continue;
-      FProcess.Parameters.Add(FParams[i]);
+      for i := 0 to FParams.Count - 1 do
+      begin
+        if trim(FParams[i]) = '' then continue;
+        FProcess.Parameters.Add(FParams[i]);
+      end;
     end;
-    for i := 0 to FEmbeddingParams.Count - 1 do
+    if FEmbeddingParams.Count >= 1 then
     begin
-      if trim(FEmbeddingParams[i]) = '' then continue;
-      FEmbeddingProcess.Parameters.Add(FEmbeddingParams[i]);
+      for i := 0 to FEmbeddingParams.Count - 1 do
+      begin
+        if trim(FEmbeddingParams[i]) = '' then continue;
+        FEmbeddingProcess.Parameters.Add(FEmbeddingParams[i]);
+      end;
     end;
     // PHP process
     FPhpProcess.Executable := FPhpBinary;

@@ -9,7 +9,8 @@
         <Filename Value="wrapper.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <CursorPos X="21" Y="8"/>
+        <TopLine Value="1941"/>
+        <CursorPos X="9" Y="1960"/>
         <UsageCount Value="110"/>
         <Loaded Value="True"/>
       </Unit>
@@ -51,28 +52,6 @@
       </Unit>
     </Units>
     <JumpHistory HistoryIndex="29">
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1254" Column="116" TopLine="1228"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1167" Column="14" TopLine="1151"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1167" Column="24" TopLine="1140"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="1254" Column="116" TopLine="1228"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-      </Position>
       <Position>
         <Filename Value="wrapper.lpr"/>
         <Caret Line="1168" Column="43" TopLine="1149"/>
@@ -166,6 +145,29 @@
       </Position>
       <Position>
         <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="12" Column="35"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="790" Column="38" TopLine="776"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1410" Column="22" TopLine="1399"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1454" Column="61" TopLine="1433"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="1700" Column="21" TopLine="1678"/>
       </Position>
     </JumpHistory>
     <RunParams>
