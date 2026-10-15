@@ -391,6 +391,10 @@ type
     llmEmbeddingPort: integer;
     { Proxy location path for nginx. }
     llmProxyLocation: AnsiString;
+    { Indicates whether LLM/embedding service supports the hardware. }
+    llmEmbeddingDeviceFound: boolean;
+    { Stores the default PHP time zone read from the database. }
+    DefaultPHPtimezone: integer;
     { Replaces special characters in the specified filename. }
     function NormalizeFileName(const FilePath: AnsiString): AnsiString;
     { Copies a file progressively while updating the progress bar (helper). }
@@ -494,8 +498,6 @@ type
     MainLLMserverProcessRunning: boolean;
     { Indicates whether the Web UI (PHP Desktop) process is currently running. }
     WebUIprocessRunning: boolean;
-    { Stores the default PHP time zone read from the database. }
-    DefaultPHPtimezone: integer;
     { Saves configuration data to JSON and webserver config files. }
     procedure SaveConfigData;
     { Checkpoints and removes SQLite WAL/SHM files after database close. }
@@ -595,6 +597,7 @@ procedure TSettingsForm.ClearDeviceComboBox;
 var i: Integer;
 begin
   try
+    llmEmbeddingDeviceFound := false;
     DeviceLabel.Enabled := false;
     DeviceComboBox.Enabled := false;
     if not(DeviceComboBox.Items.Count >= 1) then Exit;
@@ -1244,6 +1247,7 @@ begin
     finally
       if DeviceComboBox.Items.Count >= 1 then
       begin
+        llmEmbeddingDeviceFound := true;
         DeviceComboBox.ItemIndex := 0;
         DeviceLabel.Enabled := true;
         DeviceComboBox.Enabled := true;
@@ -1283,6 +1287,7 @@ begin
     llmConversationalPort := 8080;
     llmEmbeddingPort := 8081;
     llmProxyLocation := '/llamacpp/';
+    llmEmbeddingDeviceFound := false;
     //Validate selected engine
     if LlamaEngineComboBox.ItemIndex < 0 then Exit;
     engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
@@ -2748,7 +2753,7 @@ begin
         end;
       end;
       //LLM device
-      if DeviceComboBox.Enabled and not(DeviceComboBox.ItemIndex = -1) then
+      if llmEmbeddingDeviceFound and not(DeviceComboBox.ItemIndex = -1) then
       begin
         if Assigned(DeviceComboBox.Items.Objects[DeviceComboBox.ItemIndex]) then
         begin
@@ -3109,6 +3114,7 @@ begin
     MainLLMserverProcessRunning := false;
     WebUIprocessRunning := false;
     DefaultPHPtimezone := -1;
+    llmEmbeddingDeviceFound := false;
     //Directories and files
     {$IFDEF MSWINDOWS}
     appdir := IncludeTrailingPathDelimiter(ExtractFilePath(application.ExeName));
