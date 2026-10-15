@@ -1263,14 +1263,14 @@ begin
           begin
             if enableServer then FEmbeddingModelFile := ParamValue;
           end
-          else if ParamName = 'host' then
-          begin
-            if enableServer then FEmbeddingHost := ParamValue;
-          end
           else if enableServer then
           begin
             FEmbeddingParams.Add('--' + ParamName);
-            if not(ParamValue = '') then FEmbeddingParams.Add(ParamValue);
+            if not(ParamValue = '') then
+            begin
+              FEmbeddingParams.Add(ParamValue);
+              if ParamName = 'host' then FEmbeddingHost := ParamValue;
+            end;
           end;
         end;
       end
@@ -1285,14 +1285,14 @@ begin
           begin
             if enableServer then FModelFile := ParamValue;
           end
-          else if ParamName = 'host' then
-          begin
-            if enableServer then FHost := ParamValue;
-          end
           else if enableServer then
           begin
             FParams.Add('--' + ParamName);
-            if not(ParamValue = '') then FParams.Add(ParamValue);
+            if not(ParamValue = '') then
+            begin
+              FParams.Add(ParamValue);
+              if ParamName = 'host' then FHost := ParamValue;
+            end;
           end;
         end;
       end;
@@ -1412,15 +1412,14 @@ begin
                   if ParamName = '' then continue;
                   if ParamName = 'device' then continue;
                   if ParamName = 'model' then continue;
-                  if ParamName = 'host' then
-                  begin
-                    FHost := trim(ParamsObj.Items[i].AsString);
-                    continue;
-                  end;
                   if AllowedParams.Values[ParamName] = '0' then continue;
                   FParams.Add('--' + ParamName); //Flag
                   if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
-                    FParams.Add(trim(ParamsObj.Items[i].AsString)); // Value
+                  begin
+                    ParamValue := trim(ParamsObj.Items[i].AsString);
+                    FParams.Add(ParamValue); // Value
+                    if (ParamName = 'host') and not(ParamValue = '') then FHost := ParamValue;
+                  end;
                 end;
               end;
             end;
@@ -1455,15 +1454,14 @@ begin
                       if ParamName = '' then continue;
                       if ParamName = 'device' then continue;
                       if ParamName = 'model' then continue;
-                      if ParamName = 'host' then
-                      begin
-                        FEmbeddingHost := trim(ParamsObj.Items[i].AsString);
-                        continue;
-                      end;
                       if AllowedEmbeddingParams.Values[ParamName] = '0' then continue;
                       FEmbeddingParams.Add('--' + ParamName); //Flag
                       if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
-                        FEmbeddingParams.Add(trim(ParamsObj.Items[i].AsString)); // Value
+                      begin
+                        ParamValue := trim(ParamsObj.Items[i].AsString);
+                        FEmbeddingParams.Add(ParamValue); // Value
+                        if (ParamName = 'host') and not(ParamValue = '') then FEmbeddingHost := ParamValue;
+                      end;
                     end;
                   end;
                 end;
