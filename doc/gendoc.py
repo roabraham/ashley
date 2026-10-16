@@ -261,7 +261,7 @@ def _extract_module_title(content: str) -> str:
         Human-readable module title string.
     """
     match = re.search(
-        r"\b(program|unit|library)\s+([a-zA-Z0-9_]+);",
+        r"\b(program|unit|library)\s+([a-zA-Z0-9_]+)\s*;",
         content,
         re.IGNORECASE,
     )
@@ -313,7 +313,7 @@ def _is_implementation_signature(code_sig: str) -> bool:
     """
     return bool(
         re.search(
-            r"\b(function|procedure|constructor|destructor)\s+[A-Za-z_][A-Za-z0-9_]*\.",
+            r"\b(function|procedure|constructor|destructor)\s+[A-Za-z_][A-Za-z0-9_]*\s*\.",
             code_sig,
             re.IGNORECASE,
         )
@@ -406,7 +406,7 @@ def _categorize_signature(
     sig_lower = code_sig.lower()
     if sig_lower.startswith(("function", "procedure", "constructor", "destructor")):
         return "methods"
-    if "class(" in sig_lower or sig_lower.startswith("type") or "record" in sig_lower:
+    if re.search(r"\bclass\s*\(", sig_lower) or sig_lower.startswith("type") or re.search(r"\brecord\b", sig_lower):
         return "types"
     if section_context == "const" or sig_lower.startswith("const "):
         return "constants"
@@ -506,17 +506,39 @@ def parse_pascal_source(file_path: str) -> Dict[str, Any]:
         if not comment_text:
             continue
 
-        # Lookahead: Inspect the next N lines to locate the associated code line
-        code_sig = ""
+        # Lookahead: Inspect the next N lines to locate the associated code signature.
+        # Multi-line routine signatures are accumulated until terminated by ';'.
+        code_sig_lines: List[str] = []
+        paren_depth = 0
         for next_line in lines[i + 1 : min(i + LOOKAHEAD_LINES + 1, len(lines))]:
             next_stripped = next_line.strip()
-            if (
-                next_stripped
-                and not next_stripped.startswith("{")
-                and not next_stripped.startswith("//")
-            ):
-                code_sig = next_stripped
+            # Skip blank lines and comments before the signature starts
+            if not code_sig_lines:
+                if not next_stripped or next_stripped.startswith("{") or next_stripped.startswith("//"):
+                    continue
+            # Stop at comments or compiler directives
+            if next_stripped.startswith("{") or next_stripped.startswith("//") or next_stripped.startswith("{$"):
                 break
+            # Skip blank lines within an in-progress multi-line signature
+            if not next_stripped:
+                if code_sig_lines:
+                    continue
+                break
+            code_sig_lines.append(next_stripped)
+            paren_depth += next_stripped.count("(") - next_stripped.count(")")
+            combined = " ".join(code_sig_lines)
+            # Complete when parentheses balanced and declaration ends with semicolon
+            if paren_depth == 0 and combined.rstrip().endswith(";"):
+                break
+            # Non-routine declarations (type/class/record headers) are complete on first line
+            if (
+                len(code_sig_lines) == 1
+                and paren_depth == 0
+                and not combined.rstrip().endswith(";")
+            ):
+                break
+
+        code_sig = " ".join(code_sig_lines)
 
         if not code_sig:
             continue
