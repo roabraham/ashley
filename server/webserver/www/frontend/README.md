@@ -79,7 +79,7 @@ frontend/
 │  │  │  └─ main.css          ← Main chatbot interface styling
 │  │  └─ js/
 │  │     ├─ bootstrap.*.js     ← Bootstrap 5 compiled files
-│  │     └─ main.js            ← Compiled main.js
+│  │     └─ chat.js            ← Main Javascript for chatbot application
 │  └─ media/ (directory listing blocked)
 ├─ src/ (PHP source: App\ namespace)
 │  ├─ Command/GenerateEmbeddingsCommand.php
