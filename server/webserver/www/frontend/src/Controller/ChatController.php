@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\Service\ChatConfigService;
+use App\Service\ConfigService;
 use App\Service\DatabaseConnection;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
@@ -40,6 +40,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * | import_conversation       | 1             | Upload history from JSON     */
 class ChatController extends AbstractController
 {
+    /** Characters-per-token ratio used for the token estimate (UTF-8). */
+    protected const CHARS_PER_TOKEN = 2.5;
+
     /** Context size */
     protected const DEFAULT_LLM_CTX_SIZE = 8192;
 
@@ -84,18 +87,18 @@ class ChatController extends AbstractController
      */
     protected const SQLITE_DETERMINISTIC_FLAG = 0x000000800;
 
-    /** @var ChatConfigService $configService: shared configuration provider */
-    protected ChatConfigService $configService;
+    /** @var ConfigService $configService: shared configuration provider */
+    protected ConfigService $configService;
 
     /** @var DatabaseConnection $databaseConnection: shared database connection provider */
     protected DatabaseConnection $databaseConnection;
 
     /**
      * Constructor
-     * @param ChatConfigService $configService Shared configuration provider
+     * @param ConfigService $configService Shared configuration provider
      * @param DatabaseConnection $databaseConnection Shared database connection provider
      */
-    public function __construct(ChatConfigService $configService, DatabaseConnection $databaseConnection) {
+    public function __construct(ConfigService $configService, DatabaseConnection $databaseConnection) {
         $this->configService = $configService;
         $this->databaseConnection = $databaseConnection;
     }
@@ -139,6 +142,10 @@ class ChatController extends AbstractController
             }
         }
         $requestTimeout = intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT);
+        $tts_enabled = ($llmConfig['tts_enabled'] ?? false);
+        $ttsMaxTokens = max(intval(trim($llmConfig['tts_max_tokens'] ?? self::MAX_TTS_TOKENS)), 1);
+        $ttsMaxChars = max(intval(floor($ttsMaxTokens * self::CHARS_PER_TOKEN)), 1);
+        $tts_api_endpoint = '/api/tts';
         return $this->render('chat/index.html.twig', [
             'persona'                  => $persona,
             'llm_config'               => $llmConfig,
@@ -148,7 +155,11 @@ class ChatController extends AbstractController
             'llm_max_response_tokens'  => $llmMaxResponseTokens,
             'safety_margin'            => $safetyMargin,
             'warning_threshold'        => $warningThreshold,
-            'request_timeout'          => $requestTimeout
+            'request_timeout'          => $requestTimeout,
+            'tts_enabled'              => $tts_enabled,
+            'tts_max_tokens'           => $ttsMaxTokens,
+            'tts_max_chars'            => $ttsMaxChars,
+            'tts_api_endpoint'         => $tts_api_endpoint
         ]);
     }
 
@@ -206,8 +217,8 @@ class ChatController extends AbstractController
      * Only available in response mode 1 (session-based history).
      *
      * @param SessionInterface $session   Symfony session
-     * @param array            $llmConfig LLM configuration from {@see ChatConfigService}
-     * @param array            $persona   Persona configuration from {@see ChatConfigService}
+     * @param array            $llmConfig LLM configuration from {@see ConfigService}
+     * @param array            $persona   Persona configuration from {@see ConfigService}
      * @return JsonResponse
      */
     protected function getConversationHistory(SessionInterface $session, array $llmConfig, array $persona): JsonResponse {
@@ -241,8 +252,8 @@ class ChatController extends AbstractController
      * Only available in response mode 1.
      *
      * @param SessionInterface $session   Symfony session
-     * @param array            $llmConfig LLM configuration from {@see ChatConfigService}
-     * @param array            $persona   Persona configuration from {@see ChatConfigService}
+     * @param array            $llmConfig LLM configuration from {@see ConfigService}
+     * @param array            $persona   Persona configuration from {@see ConfigService}
      * @return JsonResponse
      */
     protected function clearSession(SessionInterface $session, array $llmConfig, array $persona): JsonResponse {
@@ -272,7 +283,7 @@ class ChatController extends AbstractController
      * Only available in response mode 1.
      *
      * @param SessionInterface $session   Symfony session
-     * @param array            $persona   Persona configuration from {@see ChatConfigService}
+     * @param array            $persona   Persona configuration from {@see ConfigService}
      * @return Response                   File download response
      */
     protected function exportConversation(SessionInterface $session, array $persona): Response {
@@ -321,7 +332,7 @@ class ChatController extends AbstractController
      *
      * @param Request        $request    Incoming Symfony request (expects multipart)
      * @param SessionInterface $session  Symfony session
-     * @param array          $persona    Persona configuration from {@see ChatConfigService}
+     * @param array          $persona    Persona configuration from {@see ConfigService}
      * @return JsonResponse
      */
     protected function importConversation(Request $request, SessionInterface $session, array $persona): JsonResponse {
@@ -423,8 +434,8 @@ class ChatController extends AbstractController
      * Compresses conversation history via the LLM when the combined token count of history plus the pending message exceeds the context limit.
      *
      * @param array $data       Decoded request body
-     * @param array $llmConfig  LLM configuration from {@see ChatConfigService}
-     * @param array $persona    Persona configuration from {@see ChatConfigService}
+     * @param array $llmConfig  LLM configuration from {@see ConfigService}
+     * @param array $persona    Persona configuration from {@see ConfigService}
      * @return JsonResponse
      */
     protected function summarizeHistory(array $data, array $llmConfig, array $persona): JsonResponse {
@@ -437,7 +448,7 @@ class ChatController extends AbstractController
                 if (is_string($data['pending_message'])) {
                     $pendingMsg = trim($data['pending_message']);
                     if ($pendingMsg != '') {
-                        $tokenCount += intval(ceil(mb_strlen($pendingMsg, 'UTF-8') / 2.5));
+                        $tokenCount += intval(ceil(mb_strlen($pendingMsg, 'UTF-8') / self::CHARS_PER_TOKEN));
                     }
                 }
             }
@@ -449,7 +460,7 @@ class ChatController extends AbstractController
                         $active_prompt = trim(str_replace($variable, $replacement, $active_prompt));
                     }
                 }
-                if (!empty($active_prompt)) { $tokenCount += intval(ceil(mb_strlen($active_prompt, 'UTF-8') / 2.5)); }
+                if (!empty($active_prompt)) { $tokenCount += intval(ceil(mb_strlen($active_prompt, 'UTF-8') / self::CHARS_PER_TOKEN)); }
             }
             $llmCtxSize = intval($llmConfig['llm_ctx_size'] ?? self::DEFAULT_LLM_CTX_SIZE);
             $safetyMargin = intval($llmConfig['token_safety_margin'] ?? self::DEFAULT_TOKEN_SAFETY_MARGIN);
@@ -469,7 +480,7 @@ class ChatController extends AbstractController
      * Estimate the total token count of an array of chat messages.
      *
      * @param array<string,array<string,mixed>> $messages Array of `{role, content}` messages
-     * @return int Token count using the same `ceil(mb_strlen / 2.5)` heuristic.
+     * @return int Token count using the same `ceil(mb_strlen / self::CHARS_PER_TOKEN)` heuristic.
      */
     protected function estimateTokenCount(array $messages): int {
         $total = 0;
@@ -477,7 +488,7 @@ class ChatController extends AbstractController
             if (!isset($msg['content'])) { continue; }
             $text = trim((string) $msg['content']);
             if ($text == '') { continue; }
-            $total += intval(ceil(mb_strlen($text, 'UTF-8') / 2.5));
+            $total += intval(ceil(mb_strlen($text, 'UTF-8') / self::CHARS_PER_TOKEN));
         }
         return $total;
     }
@@ -506,8 +517,8 @@ class ChatController extends AbstractController
      * Sends the most-recent messages (backwards from newest) to the LLM asking for a 2-3 sentence summary. Returns a single system-message array that the caller can use as replacement history.
      *
      * @param array<string,mixed> $history    Conversation history array
-     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ChatConfigService}
-     * @param array<string,mixed> $persona    Persona configuration from {@see ChatConfigService}
+     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ConfigService}
+     * @param array<string,mixed> $persona    Persona configuration from {@see ConfigService}
      * @return array<string,array<string,mixed>> Single-message array or default summary
      */
     protected function doSummarize(array $history, array $llmConfig, array $persona): array {
@@ -545,9 +556,9 @@ class ChatController extends AbstractController
         // Include the ": \n\n" suffix in header length
         // Also include the configured safety margin so the compression
         // window calculation mirrors the summarize threshold budgeting.
-        $headerLength = intval(ceil(mb_strlen("{$summaryPromptText}:\n\n", 'UTF-8') / 2.5));
+        $headerLength = intval(ceil(mb_strlen("{$summaryPromptText}:\n\n", 'UTF-8') / self::CHARS_PER_TOKEN));
         if (!empty($activePrompt)) {
-            $headerLength += intval(ceil(mb_strlen($activePrompt, 'UTF-8') / 2.5));
+            $headerLength += intval(ceil(mb_strlen($activePrompt, 'UTF-8') / self::CHARS_PER_TOKEN));
         }
         $currentTokens = $headerLength + intval($llmConfig['token_safety_margin'] ?? self::DEFAULT_TOKEN_SAFETY_MARGIN);
         $conversationText = '';
@@ -563,7 +574,7 @@ class ChatController extends AbstractController
                 $content = trim((string) ($msg['content'] ?? ''));
                 if ($content == '') { continue; }
                 $msgToAdd  = "{$role}: {$content}\n";
-                $msgTokens = intval(ceil(mb_strlen($msgToAdd, 'UTF-8') / 2.5));
+                $msgTokens = intval(ceil(mb_strlen($msgToAdd, 'UTF-8') / self::CHARS_PER_TOKEN));
                 if ($currentTokens + $msgTokens >= $llmCtxSize) { break; }
                 $conversationText = "{$msgToAdd}{$conversationText}";
                 $currentTokens += $msgTokens;
@@ -629,8 +640,8 @@ class ChatController extends AbstractController
      * @param array             $data        Decoded request body
      * @param Request           $request     Incoming Symfony request
      * @param SessionInterface  $session     Symfony session
-     * @param array             $llmConfig   LLM configuration from {@see ChatConfigService}
-     * @param array             $persona     Persona configuration from {@see ChatConfigService}
+     * @param array             $llmConfig   LLM configuration from {@see ConfigService}
+     * @param array             $persona     Persona configuration from {@see ConfigService}
      * @return JsonResponse
      */
     protected function sendMessage(array $data, Request $request, SessionInterface $session, array $llmConfig, array $persona): JsonResponse {
@@ -699,8 +710,8 @@ class ChatController extends AbstractController
         $warningThreshold = max($llmCtxSize - ($llmMaxRespTokens + $safetyMargin), 0);
         // History compression check
         $historyTokens = $this->estimateTokenCount($history);
-        $inputTokens = intval(ceil(mb_strlen($userMessage, 'UTF-8') / 2.5));
-        $systemPromptTokens = empty($active_prompt) ? 0 : intval(ceil(mb_strlen($active_prompt, 'UTF-8') / 2.5));
+        $inputTokens = intval(ceil(mb_strlen($userMessage, 'UTF-8') / self::CHARS_PER_TOKEN));
+        $systemPromptTokens = empty($active_prompt) ? 0 : intval(ceil(mb_strlen($active_prompt, 'UTF-8') / self::CHARS_PER_TOKEN));
         if (($historyTokens + $inputTokens + $systemPromptTokens) > $warningThreshold && !empty($history)) {
             $memoryMode = intval($persona['memory_mode'] ?? 1);
             if ($memoryMode === 1) {
@@ -733,7 +744,7 @@ class ChatController extends AbstractController
             $response = $client->request('POST', $url, [
                 'json' => [
                     'messages'   => $messages,
-                    'stream'     => false,
+                    'stream'     => true,
                     'max_tokens' => $llmMaxRespTokens
                 ]
             ]);
@@ -800,8 +811,8 @@ class ChatController extends AbstractController
      * Success response: `{"success": true, "items": ["<user_prompt>", ...]}` where `items` is empty whenever no word qualifies yet or nothing matches.
      *
      * @param array $data Decoded request body
-     * @param array $llmConfig LLM configuration from {@see ChatConfigService}
-     * @param array $persona Persona configuration from {@see ChatConfigService}
+     * @param array $llmConfig LLM configuration from {@see ConfigService}
+     * @param array $persona Persona configuration from {@see ConfigService}
      * @return JsonResponse
      */
     protected function autocomplete(array $data, array $llmConfig, array $persona): JsonResponse {
@@ -952,8 +963,8 @@ class ChatController extends AbstractController
      *
      * @param string $userMessage The incoming user message text
      * @param SessionInterface $session Symfony session
-     * @param array<string,mixed> $llmConfig LLM configuration from {@see ChatConfigService}
-     * @param array<string,mixed> $persona Persona configuration from {@see ChatConfigService}
+     * @param array<string,mixed> $llmConfig LLM configuration from {@see ConfigService}
+     * @param array<string,mixed> $persona Persona configuration from {@see ConfigService}
      * @param bool $embeddingEnabled Whether embedding service is available for similarity matching
      * @return array<string,mixed>|null The best match response or null
      */
@@ -1053,11 +1064,11 @@ class ChatController extends AbstractController
      * Centralizes response construction so both the fast exact-match path and the slower embedding-similarity path return identical payloads.
      *
      * @param array<string,mixed> $match       Behavior row with `id`, `response_action`, `response_message`
-     * @param array<string,mixed> $persona     Persona configuration from {@see ChatConfigService}
+     * @param array<string,mixed> $persona     Persona configuration from {@see ConfigService}
      * @param SessionInterface    $session     Symfony session (for history updates)
      * @param float               $confidence  Match confidence (1.0 for exact, 0–1 for similarity)
      * @param string              $userMessage The original user message (for history)
-     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ChatConfigService}
+     * @param array<string,mixed> $llmConfig  LLM configuration from {@see ConfigService}
      * @param Connection $db      Database connection to reuse
      * @return array<string,mixed> Standardized match result
      */
@@ -1118,7 +1129,7 @@ class ChatController extends AbstractController
      *
      * Values are generated at runtime using the server's current timezone and locale-independent PHP date formatting.
      *
-     * @param array<string,mixed> $persona Persona configuration from {@see ChatConfigService}
+     * @param array<string,mixed> $persona Persona configuration from {@see ConfigService}
      * @return array<string,string> Associative array where the key is the placeholder token and the value is its runtime replacement.
      */
     protected function getStringReplacements(array $persona): array
@@ -1143,7 +1154,7 @@ class ChatController extends AbstractController
      *
      * @param int  $behaviorId   Behavior row to pull media for
      * @param SessionInterface $session   Symfony session (tracks used media in the current session)
-     * @param array $llmConfig  LLM configuration from {@see ChatConfigService}
+     * @param array $llmConfig  LLM configuration from {@see ConfigService}
      * @param Connection $db  Database connection to reuse
      * @return string|null   Base-32 media identifier, or null if none available
      */

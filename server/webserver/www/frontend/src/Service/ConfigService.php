@@ -5,7 +5,7 @@ namespace App\Service;
 use Doctrine\DBAL\ParameterType;
 
 /**
- * ChatConfigService
+ * ConfigService
  *
  * Configuration sources for chatbot settings:
  *
@@ -15,12 +15,15 @@ use Doctrine\DBAL\ParameterType;
  *
  * All public getters return plain arrays for direct instantiation.
  */
-class ChatConfigService {
+class ConfigService {
     /** Minimum word length that activates the message input autocomplete popup */
     protected const MIN_AUTOCOMPLETE_LENGTH = 3;
 
     /** Number of suggestions shown in the message input autocomplete popup */
     protected const MAX_POPUP_ITEMS = 3;
+
+    /** Maximal number of TTS tokens */
+    protected const MAX_TTS_TOKENS = 64;
 
     /**
      * Absolute path to the wrapper JSON configuration file (e.g. `config/wrapper.json`).
@@ -101,13 +104,18 @@ class ChatConfigService {
             'llm_host'             => '127.0.0.1',
             'llm_port'             => 8080,
             'llm_endpoint'         => '/v1/chat/completions',
+            'llm_ctx_size'         => 8192,
+            'llm_enabled'          => true,
             'embedding_host'       => '127.0.0.1',
             'embedding_port'       => 0,
             'embedding_endpoint'   => '/v1/embeddings',
             'embedding_ctx_size'   => 8192,
-            'llm_ctx_size'         => 8192,
-            'llm_enabled'          => true,
             'embedding_enabled'    => true,
+            'tts_host'             => '127.0.0.1',
+            'tts_port'             => 0,
+            'tts_endpoint'         => '/v1/audio/speech',
+            'tts_max_tokens'       => self::MAX_TTS_TOKENS,
+            'tts_enabled'          => false,
             'proxy_location'       => '/llamacpp/',
             'proxy_port'           => 5123,
             'memory_limit'         => '1G',
@@ -122,49 +130,77 @@ class ChatConfigService {
         // Priority 1: wrapper.db engine configuration (sets SQLite defaults)
         try {
             $db = $this->databaseConnection->getWrapperConnection();
-            // Select active engine by llama_engine ID from wrapper.json
+            // Select active engine and TTS fallback request by llama_engine ID from wrapper.json
             $engineId = null;
+            $ttsFallbackNeeded = false;
             if (file_exists($wrapperJsonPath)) {
                 try {
                     $wjson = json_decode(file_get_contents($wrapperJsonPath), true);
                     if ($wjson && is_array($wjson)) {
                         $engineId = intval(trim($wjson['llama_engine'] ?? 0));
+                        $ttsFallbackNeeded = (intval(trim($wjson['tts_fallback_needed'] ?? 0)) != 0);
                     }
                 } catch (\Exception) {}
             }
-            $hasEmbeddingModel = false;
+            //Helpers
             $hasLlmModel       = false;
-            $embeddingHost     = null;
-            $embeddingPort     = null;
-            $embeddingCtxSize  = null;
             $llmHost           = null;
             $llmPort           = null;
             $llmCtxSizeTmp     = null;
+            $hasEmbeddingModel = false;
+            $embeddingHost     = null;
+            $embeddingPort     = null;
+            $embeddingCtxSize  = null;
+            $hasTTSMainmodel   = false;
+            $hasTTSVoicemodel  = false;
+            $ttsHost           = null;
+            $ttsPort           = null;
+            $ttsMaxTokens      = null;
+            //Get main engine data
             $queryBuilder = $db->createQueryBuilder()
-                ->select('id', 'server', 'endpoint', 'embedding_endpoint', 'proxy_port')
+                ->select('id', 'endpoint', 'embedding_endpoint', 'tts_endpoint', 'proxy_port')
                 ->from('config');
             if ($engineId >= 1) {
                 $queryBuilder
                     ->where('id = :id')
-                    ->setParameter('id', $engineId, ParameterType::INTEGER)
-                    ->setMaxResults(1);
+                    ->setParameter('id', $engineId, ParameterType::INTEGER);
             } else {
                 $queryBuilder
                     ->orderBy('priority', 'DESC')
-                    ->addOrderBy('id', 'ASC')
-                    ->setMaxResults(1);
+                    ->addOrderBy('id', 'ASC');
             }
+            $queryBuilder->setMaxResults(1);
             $row = $queryBuilder->executeQuery()->fetchAssociative();
             if ($row) {
                 $engineId = intval(trim($row['id'] ?? ''));
                 $config['engine_id'] = $engineId;
                 $llmEp = trim($row['endpoint'] ?? '');
-                $embEp = trim($row['embedding_endpoint'] ?? '');
                 if (!empty($llmEp)) { $config['llm_endpoint'] = '/' . trim(ltrim($llmEp, '/')); }
+                $embEp = trim($row['embedding_endpoint'] ?? '');
                 if (!empty($embEp)) { $config['embedding_endpoint'] = '/' . trim(ltrim($embEp, '/')); }
+                $ttsEp = trim($row['tts_endpoint'] ?? '');
+                if (!empty($ttsEp)) { $config['tts_endpoint'] = '/' . trim(ltrim($ttsEp, '/')); }
                 $proxyPortRaw = intval(trim($row['proxy_port'] ?? ''));
                 if ($proxyPortRaw > 0) { $config['proxy_port'] = $proxyPortRaw; }
             }
+            $queryBuilder = null;
+            $row = null;
+            //Get TTS fallback engine data (if needed)
+            if ($ttsFallbackNeeded) {
+                $queryBuilder = $db->createQueryBuilder()
+                    ->select('id', 'tts_endpoint')
+                    ->from('config')
+                    ->where('tts_uses_gpu = 0')
+                    ->orderBy('priority', 'DESC')
+                    ->addOrderBy('id', 'ASC')
+                    ->setMaxResults(1);
+                $row = $queryBuilder->executeQuery()->fetchAssociative();
+                if ($row) {
+                    $ttsEp = trim($row['tts_endpoint'] ?? '');
+                    if (!empty($ttsEp)) { $config['tts_endpoint'] = '/' . trim(ltrim($ttsEp, '/')); }
+                }
+            }
+            //Get default config for the selected engine (use TTS fallback if needed)
             if ($engineId >= 1) {
                 try {
                     $dataQueryBuilder = $db->createQueryBuilder()
@@ -172,60 +208,105 @@ class ChatConfigService {
                             'config_data.name AS name',
                             'config_data.value AS value',
                             'config_data_type.name AS type_name',
-                            'config_data.enable_server AS enable_server')
+                            'config_data.enable_server AS enable_server',
+                            'config.tts_uses_gpu AS tts_uses_gpu',
+                            'config_data.config_id AS config_id')
                         ->from('config_data')
                         ->leftJoin('config_data', 'config_data_type', 'config_data_type', 'config_data_type.id = config_data.type_id')
-                        ->where('config_data.config_id = :cid')
-                        ->andWhere('config_data.enable_server != 0')
+                        ->leftJoin('config_data', 'config', 'config', 'config.id = config_data.config_id')
+                        ->where('config_data.enable_server != 0')
+                        ->andWhere("config_data.config_id = :cid OR (config.tts_uses_gpu = 0 AND UPPER(TRIM(config_data_type.name)) LIKE 'TTS')")
+                        ->orderBy('config_data.id', 'ASC')
                         ->setParameter('cid', $engineId, ParameterType::INTEGER);
                     $dataRows = $dataQueryBuilder->executeQuery()->fetchAllAssociative();
                     if ($dataRows) {
                         foreach ($dataRows as $r) {
+                            $configId = intval(trim($r['config_id'] ?? -1));
+                            $ttsUsesGpu = (intval(trim($r['tts_uses_gpu'] ?? -1)) != 0);
                             $name = strtolower(trim($r['name'] ?? ''));
                             $value = trim($r['value'] ?? '');
                             $typeName = strtoupper(trim($r['type_name'] ?? ''));
+                            //Load default TTS configuration with fallback logic
+                            if ($typeName == 'TTS') {
+                                //Get default main model
+                                if ($name == 'model') {
+                                    $hasTTSMainmodel = true;
+                                    continue;
+                                }
+                                //Get default voice model
+                                if ($name == 'voice') {
+                                    $hasTTSVoicemodel = true;
+                                    continue;
+                                }
+                                //Get default port
+                                if ($name == 'port') {
+                                    $ttsPort = intval($value);
+                                    continue;
+                                }
+                                //Get default host
+                                if ($name == 'host') {
+                                    $ttsHost = $value;
+                                    continue;
+                                }
+                                //Get default context-size
+                                if (in_array($name, ['max_tokens', 'max-tokens'])) {
+                                    $ttsMaxTokens = intval($value);
+                                }
+                                continue;
+                            }
+                            //No fallback for LLM and embedding engines
+                            if ($configId != $engineId) { continue; }
+                            //Get default model
                             if ($name == 'model') {
                                 if ($typeName == 'EMBEDDING') {
                                     $hasEmbeddingModel = true;
-                                } else {
+                                } else if ($typeName == 'CONVERSATIONAL') {
                                     $hasLlmModel = true;
                                 }
                                 continue;
                             }
+                            //Get default port
                             if ($name == 'port') {
                                 if ($typeName === 'EMBEDDING') {
                                     $embeddingPort = intval($value);
-                                } else {
+                                } else if ($typeName == 'CONVERSATIONAL') {
                                     $llmPort = intval($value);
                                 }
                                 continue;
                             }
+                            //Get default host
                             if ($name == 'host') {
                                 if ($typeName === 'EMBEDDING') {
                                     $embeddingHost = $value;
-                                } else {
+                                } else if ($typeName == 'CONVERSATIONAL') {
                                     $llmHost = $value;
                                 }
                                 continue;
                             }
+                            //Get default context-size
                             if (in_array($name, ['ctx_size', 'ctx-size'])) {
                                 if ($typeName === 'EMBEDDING') {
                                     $embeddingCtxSize = intval($value);
-                                } else {
+                                } else if ($typeName == 'CONVERSATIONAL') {
                                     $llmCtxSizeTmp = intval($value);
                                 }
                                 continue;
                             }
                         }
                     }
-                    if ($embeddingHost) { $config['embedding_host'] = $embeddingHost; }
-                    if ($embeddingPort > 0) { $config['embedding_port'] = $embeddingPort; }
-                    if ($embeddingCtxSize > 0) { $config['embedding_ctx_size'] = $embeddingCtxSize; }
+                    //Final validation
                     if ($llmHost) { $config['llm_host'] = $llmHost; }
                     if ($llmPort > 0) { $config['llm_port'] = $llmPort; }
                     if ($llmCtxSizeTmp > 0) { $config['llm_ctx_size'] = $llmCtxSizeTmp; }
+                    if ($embeddingHost) { $config['embedding_host'] = $embeddingHost; }
+                    if ($embeddingPort > 0) { $config['embedding_port'] = $embeddingPort; }
+                    if ($embeddingCtxSize > 0) { $config['embedding_ctx_size'] = $embeddingCtxSize; }
+                    if ($ttsHost) { $config['tts_host'] = $ttsHost; }
+                    if ($ttsPort > 0) { $config['tts_port'] = $ttsPort; }
+                    if ($ttsMaxTokens > 0) { $config['tts_max_tokens'] = $ttsMaxTokens; }
                     $config['llm_enabled'] = (!empty($config['llm_endpoint']) && $hasLlmModel);
                     $config['embedding_enabled'] = (!empty($config['embedding_endpoint']) && $hasEmbeddingModel);
+                    $config['tts_enabled'] = (!empty($config['tts_endpoint']) && $hasTTSMainmodel && $hasTTSVoicemodel);
                 } catch (\Exception) {
                     // Fails silently - defaults remain
                 }
@@ -238,10 +319,12 @@ class ChatConfigService {
             try {
                 $json = json_decode(file_get_contents($wrapperJsonPath), true);
                 if ($json && is_array($json)) {
+                    //Proxy overrides
                     $proxyPortJson = intval(trim($json['proxy_port'] ?? 0));
                     if ($proxyPortJson > 0) { $config['proxy_port'] = $proxyPortJson; }
                     $proxyTimeoutJson = intval(trim($json['proxy_timeout'] ?? 0));
                     if ($proxyTimeoutJson > 0) { $config['request_timeout'] = $proxyTimeoutJson; }
+                    //Enable or disable LLM service
                     if (isset($json['llm_enabled'])) {
                         $llm = $json['llm_enabled'];
                         if (is_numeric($llm)) {
@@ -250,6 +333,7 @@ class ChatConfigService {
                             $config['llm_enabled'] = (!in_array(strtolower(trim(strval($llm))), ['0', 'false', 'no']));
                         }
                     }
+                    //Enable or disable embedding service
                     if (isset($json['embedding'])) {
                         $emb = $json['embedding'];
                         if (is_numeric($emb)) {
@@ -258,6 +342,16 @@ class ChatConfigService {
                             $config['embedding_enabled'] = (!in_array(strtolower(trim(strval($emb))), ['0', 'false', 'no']));
                         }
                     }
+                    //Enable or disable TTS service
+                    if (isset($json['tts'])) {
+                        $tts = $json['tts'];
+                        if (is_numeric($tts)) {
+                            $config['tts_enabled'] = (intval($tts) !== 0);
+                        } else {
+                            $config['tts_enabled'] = (!in_array(strtolower(trim(strval($tts))), ['0', 'false', 'no']));
+                        }
+                    }
+                    //LLM parameter overrides
                     if (isset($json['parameters'])) {
                         if (is_array($json['parameters'])) {
                             if (!empty($json['parameters'])) {
@@ -281,6 +375,7 @@ class ChatConfigService {
                             }
                         }
                     }
+                    //Embedding parameter overrides
                     if (isset($json['embedding_parameters'])) {
                         if (is_array($json['embedding_parameters'])) {
                             if (!empty($json['embedding_parameters'])) {
@@ -299,6 +394,30 @@ class ChatConfigService {
                                     if (in_array($nl, ['ctx_size', 'ctx-size'])) {
                                         $embeddingCtxSize = intval(trim($value));
                                         if ($embeddingCtxSize > 0) { $config['embedding_ctx_size'] = $embeddingCtxSize; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    //TTS parameter overrides
+                    if (isset($json['tts_parameters'])) {
+                        if (is_array($json['tts_parameters'])) {
+                            if (!empty($json['tts_parameters'])) {
+                                foreach ($json['tts_parameters'] as $name => $value) {
+                                    $nl = strtolower(trim($name));
+                                    if ($nl === 'port') {
+                                        $ttsPort = intval(trim($value));
+                                        if ($ttsPort > 0) { $config['tts_port'] = $ttsPort; }
+                                        continue;
+                                    }
+                                    if ($nl === 'host') {
+                                        $ttsHost = trim($value);
+                                        if ($ttsHost) { $config['tts_host'] = $ttsHost; }
+                                        continue;
+                                    }
+                                    if (in_array($nl, ['max_tokens', 'max-tokens'])) {
+                                        $ttsMaxTokens = intval(trim($value));
+                                        if ($ttsMaxTokens > 0) { $config['max_tokens'] = $ttsMaxTokens; }
                                     }
                                 }
                             }

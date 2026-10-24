@@ -21,6 +21,10 @@
 - [Embedding Tab](#embedding-tab)
   - [Embedding Model Group](#embedding-model-group)
   - [Embedding Parameters Group](#embedding-parameters-group)
+- [TTS Tab](#tts-tab)
+  - [General TTS Settings Group](#general-tts-settings-group)
+  - [TTS Models Group](#tts-models-group)
+  - [TTS Parameters Group](#tts-parameters-group)
 - [Logging and Proxy Tab](#logging-and-proxy-tab)
   - [Logging Group](#logging-group)
   - [LLM Proxy Service Group](#llm-proxy-service-group)
@@ -139,9 +143,10 @@ The *Settings window* is the main configuration interface for Ashley. It contain
 
 1. **Engine Settings**
 2. **Embedding**
-3. **Logging and Proxy**
-4. **Web Server**
-5. **Persona**
+3. **TTS**
+4. **Logging and Proxy**
+5. **Web Server**
+6. **Persona**
 
 At the bottom of the *Settings window* are the following buttons:
 
@@ -207,6 +212,31 @@ This tab configures the embedding engine, which is used for behavior matching. T
   * Other embedding-specific parameters.
 * **Add**: adds a new custom embedding parameter.
 * **Remove**: removes the selected embedding parameter after confirmation.
+
+### TTS Tab
+
+<img title="TTS Tab" src="../media/screenshot/tts_settings.jpg" alt="TTS Tab" data-align="center">
+
+This tab configures the text-to-speech (TTS) engine, which synthesizes spoken audio from text responses.
+
+#### General TTS Settings Group
+
+* **Enable text-to-speech (TTS)**: a checkbox that enables or disables the *TTS server*. When enabled, the TTS models and parameters below become active. When disabled, the TTS server is not started.
+* **Device**: a drop-down list that lets you select which device (CPU/GPU) the *TTS server* should use.
+* **Reload Devices**: runs the query for the selected engine to recreate the list of available devices.
+
+#### TTS Models Group
+
+* **Main TTS model**: a drop-down list that lets you select the main `.gguf` TTS model file to load. The list is populated from the `model/tts/` folder.
+* **Add Main TTS model**: opens a file dialog to import a new main TTS model file into the `model/tts/` folder.
+* **Voice TTS model**: a drop-down list that lets you select the voice model used for synthesis. The list is populated from the `model/tts/` folder.
+* **Add Voice TTS model**: opens a file dialog to import a new voice model file into the `model/tts/` folder.
+
+#### TTS Parameters Group
+
+* **Parameters**: a key-value editor for *TTS server* parameters. Works the same way as the *LLM parameters* or *embedding parameters* editor.
+* **Add**: adds a new custom TTS parameter.
+* **Remove**: removes the selected TTS parameter after confirmation.
 
 ### Logging and Proxy Tab
 
@@ -324,6 +354,7 @@ The *About* dialog is accessible from the *Help* menu (both in the main window a
   - **`radeon` subdirectory**: contains the *Radeon* engine but it is not tested yet.
 * **`model` folder**: your AI *model* files with the `.gguf` extension are stored here. Place your *conversational* models directly in this folder.
   - **`model\embedding` folder**: *embedding model* files are stored here. Embedding models are used for behavior matching.
+  - **`model\tts` folder**: *text-to-speech model* files are stored here. Contains the main TTS model and voice model used for speech synthesis.
 * **webserver folder**: this folder contains the *NGINX web server*, *PHP runtime*, and *web chatbot application*. Do not modify files in this folder unless you know what you are doing.
   - **`webserver\webclient.exe`**: this is the *CEF*-based chat window application. It is a standalone browser window that loads the chat interface.
   - **`webserver\settings.json`**: this file contains the web client settings including window size and web server configuration.

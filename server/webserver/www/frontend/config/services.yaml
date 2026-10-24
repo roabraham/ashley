@@ -26,7 +26,7 @@ services:
             $personalityDbPath: '%env(resolve:PERSONALITY_DB_PATH)%'
 
     # JSON config locations are sourced from environment variables (see .env)
-    App\Service\ChatConfigService:
+    App\Service\ConfigService:
         bind:
             $wrapperJsonPath: '%env(resolve:WRAPPER_JSON_PATH)%'
             $personalityJsonPath: '%env(resolve:PERSONALITY_JSON_PATH)%'

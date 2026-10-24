@@ -393,6 +393,8 @@ Copy-Item "path\to\model-license.txt"     "server\model\license.txt"
 
 The `server/model/embedding/` subdirectory is for optional embedding models. Place any `.gguf` embedding models here.
 
+TTS (Text-to-Speech) is optional and is not included in this source repository. To enable TTS, obtain the CrispASR TTS engine binaries and place them in `server/crispasr/` (subdirectories `cpu/`, `cuda12/`, `cuda13/`, `vulkan/`), and place TTS model files (e.g. `kokoro-82m-q8_0.gguf` plus a voice pack such as `kokoro-voice-af_heart.gguf`) in `server/model/tts/`. Ashley runs without TTS when these are absent.
+
 ---
 
 #### Step 4 — Build the Symfony Web Frontend (if needed)
@@ -449,7 +451,9 @@ server/
 │  ├─ embedding/
 │  │  └─ nomic_embed_text_v2_moe_q4_k_m.gguf
 │  ├─ h2o_danube_1_8b_chat_q2_k.gguf
-│  └─ license.txt
+│  ├─ license.txt
+│  └─ tts/                              # Optional TTS model files (kokoro-82m-q8_0.gguf + voice pack, e.g. kokoro-voice-af_heart.gguf); not in this source repo
+├─ crispasr/                            # Optional CrispASR TTS engine binaries (cpu/, cuda12/, cuda13/, vulkan/); not in this source repo
 ├─ readme.txt                           # Quick start guide
 ├─ sqlite3.def                          # SQLite import library
 ├─ sqlite3.dll                          # SQLite runtime DLL

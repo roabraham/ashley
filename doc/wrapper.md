@@ -39,6 +39,14 @@ Extended Windows Job Object information structure with memory limits.
 JOBOBJECT_EXTENDED_LIMIT_INFORMATION = record
 ```
 
+### `ServiceType`
+
+enumerated service types.
+
+```pascal
+TServiceType = (CONVERSATIONAL, EMBEDDING, TTS);
+```
+
 ### `EWatchdogFatal`
 
 Exception raised when a fatal error occurs in the watchdog thread, causing termination.
@@ -160,7 +168,7 @@ procedure Execute; override;
 Initializes the worker thread with connection and routing parameters.
 
 ```pascal
-constructor Create(AHandle: TSocket; ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: string; ATimeout, AmaxPackageSize: Integer);
+constructor Create( AHandle: TSocket; ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer; AEndpoint, AEmbeddingEndpoint, ATTSendpoint: string; ATimeout, AmaxPackageSize: Integer);
 ```
 
 ### `TProxyThread.CleanupFinishedWorkers`
@@ -192,7 +200,7 @@ procedure Execute; override;
 Initializes the proxy thread with routing and connection parameters.
 
 ```pascal
-constructor Create(AProxyHost: String; APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
+constructor Create( AProxyHost: String; APort, ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer; AEndpoint, AEmbeddingEndpoint, ATTSendpoint: String; ATimeout, AMax, Apmax: Integer);
 ```
 
 ### `TProxyThread.Destroy`
@@ -288,7 +296,7 @@ procedure WaitUntilPortFree(APort: Integer);
 Starts the API proxy service on the given port.
 
 ```pascal
-procedure StartProxy(AProxyPort, ATargetPort, ATargetEmbeddingPort: Integer);
+procedure StartProxy(AProxyPort, ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer);
 ```
 
 ### `TServiceWrapper.StopProxy`
@@ -409,10 +417,18 @@ FTargetPort: Integer;
 
 ### `TWorkerThread.FTargetEmbeddingPort`
 
-The target port for the embedding LLM server.
+The target port for the embedding server.
 
 ```pascal
 FTargetEmbeddingPort: Integer;
+```
+
+### `TWorkerThread.FTargetTTSport`
+
+The target port for the TTS server.
+
+```pascal
+FTargetTTSport: Integer;
 ```
 
 ### `TWorkerThread.FTargetEndpoint`
@@ -425,10 +441,18 @@ FTargetEndpoint: string;
 
 ### `TWorkerThread.FTargetEmbeddingEndpoint`
 
-The endpoint path for the embedding LLM server.
+The endpoint path for the embedding server.
 
 ```pascal
 FTargetEmbeddingEndpoint: string;
+```
+
+### `TWorkerThread.FTargetTTSendpoint`
+
+The endpoint path for the TTS server.
+
+```pascal
+FTargetTTSendpoint: string;
 ```
 
 ### `TWorkerThread.FProxyTimeout`
@@ -505,10 +529,18 @@ FTargetPort: Integer;
 
 ### `TProxyThread.FTargetEmbeddingPort`
 
-The target port for the embedding LLM server.
+The target port for the embedding server.
 
 ```pascal
 FTargetEmbeddingPort: Integer;
+```
+
+### `TProxyThread.FTargetTTSport`
+
+The target port for the TTS server.
+
+```pascal
+FTargetTTSport: Integer;
 ```
 
 ### `TProxyThread.FTargetEndpoint`
@@ -521,10 +553,18 @@ FTargetEndpoint: String;
 
 ### `TProxyThread.FTargetEmbeddingEndpoint`
 
-The endpoint path for the embedding LLM server.
+The endpoint path for the embedding server.
 
 ```pascal
 FTargetEmbeddingEndpoint: String;
+```
+
+### `TProxyThread.FTargetTTSendpoint`
+
+The endpoint path for the TTS server.
+
+```pascal
+FTargetTTSendpoint: String;
 ```
 
 ### `TProxyThread.FProxyTimeout`
@@ -609,10 +649,18 @@ FProcess: TProcess;
 
 ### `TServiceWrapper.FEmbeddingProcess`
 
-Process object for the embedding LLM server.
+Process object for the embedding server.
 
 ```pascal
 FEmbeddingProcess: TProcess;
+```
+
+### `TServiceWrapper.FTTSprocess`
+
+Process object for the TTS server.
+
+```pascal
+FTTSprocess: TProcess;
 ```
 
 ### `TServiceWrapper.FPhpProcess`
@@ -663,6 +711,14 @@ Embedding model files directory path.
 FEmbeddingModelDir: AnsiString;
 ```
 
+### `TServiceWrapper.FTTSmodelDir`
+
+TTS model files directory path.
+
+```pascal
+FTTSmodelDir: AnsiString;
+```
+
 ### `TServiceWrapper.FLlamaDir`
 
 LLM server binaries directory path.
@@ -671,20 +727,68 @@ LLM server binaries directory path.
 FLlamaDir: AnsiString;
 ```
 
+### `TServiceWrapper.FcrispasrDir`
+
+TTS server binaries directory path.
+
+```pascal
+FcrispasrDir: AnsiString;
+```
+
 ### `TServiceWrapper.FServerBinary`
 
-Full path to the LLM server executable.
+Full path to the LLM/embedding server executable.
 
 ```pascal
 FServerBinary: AnsiString;
 ```
 
+### `TServiceWrapper.FTTSbinary`
+
+Full path to the TTS server executable.
+
+```pascal
+FTTSbinary: AnsiString;
+```
+
 ### `TServiceWrapper.FDeviceID`
 
-Device identifier for GPU/CPU selection.
+Device identifier for LLM/embedding GPU/CPU selection.
 
 ```pascal
 FDeviceID: string;
+```
+
+### `TServiceWrapper.FTTSdeviceID`
+
+Device identifier for TTS GPU/CPU selection.
+
+```pascal
+FTTSdeviceID: string;
+```
+
+### `TServiceWrapper.FTTSuserHomeDir`
+
+User home directory for TTS engine (HOME environment variable).
+
+```pascal
+FTTSuserHomeDir: AnsiString;
+```
+
+### `TServiceWrapper.FTTScacheDir`
+
+Cache directory for TTS engine (CRISPASR_CACHE_DIR environment variable).
+
+```pascal
+FTTScacheDir: AnsiString;
+```
+
+### `TServiceWrapper.FTTSvoiceDir`
+
+Voice directory for TTS engine.
+
+```pascal
+FTTSvoiceDir: AnsiString;
 ```
 
 ### `TServiceWrapper.FEndpoint`
@@ -697,10 +801,18 @@ FEndpoint: string;
 
 ### `TServiceWrapper.FEmbeddingEndpoint`
 
-Embedding LLM endpoint path.
+embedding endpoint path.
 
 ```pascal
 FEmbeddingEndpoint: string;
+```
+
+### `TServiceWrapper.FTTSendpoint`
+
+TTS endpoint path.
+
+```pascal
+FTTSendpoint: string;
 ```
 
 ### `TServiceWrapper.FinalFModelFile`
@@ -719,6 +831,22 @@ Resolved full path to the embedding model file.
 FinalFEmbeddingModelFile: AnsiString;
 ```
 
+### `TServiceWrapper.FinalFTTSmainModelFile`
+
+Resolved full path to the main TTS model file.
+
+```pascal
+FinalFTTSmainModelFile: AnsiString;
+```
+
+### `TServiceWrapper.FinalFTTSvoiceModelFile`
+
+Resolved full path to the TTS voice model file.
+
+```pascal
+FinalFTTSvoiceModelFile: AnsiString;
+```
+
 ### `TServiceWrapper.FParams`
 
 Command-line parameters for the conversational LLM server.
@@ -729,10 +857,18 @@ FParams: TStringList;
 
 ### `TServiceWrapper.FEmbeddingParams`
 
-Command-line parameters for the embedding LLM server.
+Command-line parameters for the embedding server.
 
 ```pascal
 FEmbeddingParams: TStringList;
+```
+
+### `TServiceWrapper.FTTSparams`
+
+Command-line parameters for the TTS server.
+
+```pascal
+FTTSparams: TStringList;
 ```
 
 ### `TServiceWrapper.FUseLogFile`

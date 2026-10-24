@@ -12,6 +12,7 @@
     {% endif %}
 </head>
 {% set llmEnabled = llm_config.llm_enabled ?? true %}
+{% set ttsEnabled = llm_config.tts_enabled ?? false %}
 {% set embeddingEnabled = llm_config.embedding_enabled ?? true %}
 {% set bothDisabled = (not llmEnabled) and (not embeddingEnabled) %}
 <body{% if persona.background_img %} style="background-image:url('{{ persona.background_img|raw }}');"{% endif %}>
@@ -41,6 +42,9 @@
                 {% if llmEnabled %}
                 <a href="{{ llm_config.proxy_location ?? '/llamacpp/' }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank" title="Open llama.cpp interface">llama.cpp</a>
                 {% endif %}
+                {% if ttsEnabled %}
+                <a href="{{ path('app_tts_index') }}" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" target="_blank" title="Open Text-To-Speech interface">Text-To-Speech</a>
+                {% endif %}
                 <button id="export-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="display: none; border-radius: 15px; font-size: 0.8rem;" title="Export conversation">Export</button>
                 <button id="import-conversation-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" title="Import conversation">Import</button>
                 <button id="new-session-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100" style="border-radius: 15px; font-size: 0.8rem;" title="Start new session">New</button>
@@ -69,6 +73,7 @@
 {% endif %}
 <script src="{{ asset('assets/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ asset('assets/js/chat.js') }}"></script>
+<script src="{{ asset('assets/js/tts.js') }}"></script>
 <script>
     // Chatbot configuration from PHP
     var CHATBOT_NAME = {{ persona.chatbot_name|json_encode|raw }};
@@ -83,6 +88,10 @@
     var SAFETY_MARGIN = {{ safety_margin }};
     var EMBEDDING_ENABLED = {{ embeddingEnabled ? 'true' : 'false' }};
     var LLM_ENABLED = {{ llmEnabled ? 'true' : 'false' }};
+    var TTS_ENABLED = {{ tts_enabled ? 'true' : 'false' }};
+    var TTS_API_ENDPOINT = {{ tts_api_endpoint|json_encode|raw }};
+    var TTS_MAX_CHARS = {{ tts_max_chars }};
+    var TTS_MAX_TOKENS = {{ tts_max_tokens }};
     var SYSTEM_PROMPT = {{ persona.active_prompt|json_encode|raw }};
     var DEFAULT_THEME = {{ persona.default_theme|json_encode|raw }};
     var WARNING_THRESHOLD = {{ warning_threshold }};

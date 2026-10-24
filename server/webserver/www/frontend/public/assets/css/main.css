@@ -1,7 +1,7 @@
 /**
- * Main Stylesheet for Chatbot Application.
+ * Main Stylesheet
  *
- * Provides styling for the chat interface including:
+ * Provides styling for the interfaces including:
  * - Responsive chat container with backdrop blur effect
  * - Message bubble styling for user and bot messages
  * - Avatar and description layout
@@ -552,6 +552,12 @@ body:not(.dark-mode) .theme-toggle-btn .theme-icon-sun { display: inline; }
 /** Hide moon icon in light mode */
 body:not(.dark-mode) .theme-toggle-btn .theme-icon-moon { display: none; }
 
+/** TTS label: readable text color on dark background */
+body.dark-mode .tts-label { color: #e0e0e0; }
+
+/** TTS character-count hint: readable muted text on dark background */
+body.dark-mode .tts-hint { color: #aaa; }
+
 /** Tablet/desktop video max-height increase */
 @media (min-width: 768px) {
     .chat-video { max-height: 360px; }
@@ -602,4 +608,12 @@ body:not(.dark-mode) .theme-toggle-btn .theme-icon-moon { display: none; }
         width: 100%;
         height: auto;
     }
+}
+
+/** TTS sidebar description */
+.description-text.tts-description { display: block !important; }
+
+/** Hide description on small screens (tablet/mobile) */
+@media (max-height: 280px) {
+    .description-text.tts-description { display: none !important; }
 }

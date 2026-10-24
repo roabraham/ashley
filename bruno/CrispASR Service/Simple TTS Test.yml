@@ -1,0 +1,21 @@
+info:
+  name: Simple TTS Test
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://127.0.0.1:5123/v1/audio/speech
+  body:
+    type: json
+    data: |-
+      {
+        "input": "Hello there, I am Ashley, your local AI assistant. How can I help you today?"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

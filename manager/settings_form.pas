@@ -9,78 +9,111 @@ uses
   Classes, LCLIntf, SysUtils, DB, SQLite3Conn, SQLDB, Forms, Controls, Graphics,
   Dialogs, StdCtrls, ExtCtrls, ValEdit, ComCtrls, DBCtrls, Grids, Spin, fpjson,
   jsonparser, StrUtils, RegExpr, process, FileUtil, SynHighlighterCss, SynEdit,
-  math, base64, Types, progress_form;
+  math, base64, Types, fgl, progress_form;
 
 type
 
   { TEngineComboBoxItem: item in the LLM engine combo box containing engine configuration from database. }
   TEngineComboBoxItem = class
-    { Unique identifier for the engine configuration. }
-    ID: string;
-    { Path to the server executable binary. }
-    ServerBinary: ansistring;
-    { Determines whether the engine uses CPU or GPU for processing. }
-    UsesGPU: integer;
-    { Proxy port number configured for this engine. }
-    ProxyPort: string;
-    { Timeout in seconds for proxy connections. }
-    ProxyTimeout: integer;
-    { Maximum number of concurrent proxy connections. }
-    ProxyMaxConnections: integer;
-    { Maximum package size in bytes for proxy transfers. }
-    ProxyMaxPackageSize: integer;
+    public
+      { Unique identifier for the engine configuration. }
+      ID: string;
+      { Path to the server executable binary. }
+      ServerBinary: ansistring;
+      { Determines whether the main engine uses CPU or GPU for processing. }
+      UsesGPU: integer;
+      { Proxy port number configured for this engine. }
+      ProxyPort: string;
+      { Timeout in seconds for proxy connections. }
+      ProxyTimeout: integer;
+      { Maximum number of concurrent proxy connections. }
+      ProxyMaxConnections: integer;
+      { Maximum package size in bytes for proxy transfers. }
+      ProxyMaxPackageSize: integer;
+      { Path to the TTS server executable binary. }
+      TTSbinary: ansistring;
+      { Determines whether the TTS engine uses CPU or GPU for processing. }
+      TTSusesGPU: integer;
   end;
 
   { TDeviceComboBoxItem: item in the device combo box containing GPU/device information. }
   TDeviceComboBoxItem = class
-    { Device identifier string. }
-    ID: string;
-    { Display title for the device. }
-    Title: string;
+    public
+      { Device identifier string. }
+      ID: string;
+      { Display title for the device. }
+      Title: string;
+  end;
+
+  { TTTSmodel: object to store default TTS model information. }
+  TTTSmodel = class
+    public
+      { Model type name. }
+      Name: string;
+      { Display title for the model type. }
+      Title: string;
+      { Description for the model type. }
+      Description: string;
+      { Model filename. }
+      FileName: string;
+      { Additional information. }
+      Comments: string;
+  end;
+
+  { TTTSmodelList: list to store default model information. }
+  TTTSmodelList = class(specialize TFPGObjectList<TTTSmodel>)
+    public
+      { Find TTS model by name. }
+      function FindByName(const AName: string): TTTSmodel;
+      { Find TTS model by filename. }
+      function FindByFileName(const AFileName: string): TTTSmodel;
   end;
 
   { TPersonaComboBoxItem: item in the persona combo box containing persona configuration from database. }
   TPersonaComboBoxItem = class
-    { Unique identifier for the persona. }
-    ID: string;
-    { Short persona name/key. }
-    Name: string;
-    { Full display name of the persona. }
-    FullName: string;
-    { Description text for the persona. }
-    Description: string;
-    { System prompt that defines the persona behavior. }
-    SystemPrompt: AnsiString;
-    { Summary prompt for generating conversation summaries. }
-    SummaryPrompt: AnsiString;
-    { Initial message sent when persona is loaded. }
-    InitialMessage: AnsiString;
-    { Threshold for behavior similarity matching. }
-    BehaviorSimilarityThreshold: integer;
-    { Base64-encoded avatar image data. }
-    Avatar: AnsiString;
-    { Base64-encoded background image data. }
-    BackgroundImage: AnsiString;
-    { Short default color theme name/key. }
-    defaultTheme: string;
-    { CSS override string for custom styling. }
-    CSSoverride: AnsiString;
+    public
+      { Unique identifier for the persona. }
+      ID: string;
+      { Short persona name/key. }
+      Name: string;
+      { Full display name of the persona. }
+      FullName: string;
+      { Description text for the persona. }
+      Description: string;
+      { System prompt that defines the persona behavior. }
+      SystemPrompt: AnsiString;
+      { Summary prompt for generating conversation summaries. }
+      SummaryPrompt: AnsiString;
+      { Initial message sent when persona is loaded. }
+      InitialMessage: AnsiString;
+      { Threshold for behavior similarity matching. }
+      BehaviorSimilarityThreshold: integer;
+      { Base64-encoded avatar image data. }
+      Avatar: AnsiString;
+      { Base64-encoded background image data. }
+      BackgroundImage: AnsiString;
+      { Short default color theme name/key. }
+      defaultTheme: string;
+      { CSS override string for custom styling. }
+      CSSoverride: AnsiString;
   end;
 
   { TResponseModeComboBoxItem: item in the response mode combo box for selecting chat completion behavior. }
   TResponseModeComboBoxItem = class
-    { Numeric identifier for the response mode. }
-    ID: integer;
-    { Display title for the response mode. }
-    Title: string;
+    public
+      { Numeric identifier for the response mode. }
+      ID: integer;
+      { Display title for the response mode. }
+      Title: string;
   end;
 
   { TMemoryModeComboBoxItem: item in the memory mode combo box for selecting chat completion behavior. }
   TMemoryModeComboBoxItem = class
-    { Numeric identifier for the memory mode. }
-    ID: integer;
-    { Display title for the memory mode. }
-    Title: string;
+    public
+      { Numeric identifier for the memory mode. }
+      ID: integer;
+      { Display title for the memory mode. }
+      Title: string;
   end;
 
   { SaveSettingsFatal: exception raised when invalid settings prevent saving configuration. }
@@ -88,7 +121,45 @@ type
 
   { TSettingsForm: settings dialog form for configuring LLM engines, proxy settings, models, and personas. }
   TSettingsForm = class(TForm)
-    { Button to reload the list of available devices. }
+    { Button to add a new main TTS model to the list. }
+    AddMainTTSmodelButton: TButton;
+    { Button to add a new voice TTS model to the list. }
+    AddVoiceTTSmodelButton: TButton;
+    { Button to add a new TTS parameter row. }
+    AddTTSparameterButton: TButton;
+    { SQL query component for loading default TTS models from the database. }
+    TTSmodelQuery: TSQLQuery;
+    { Process component for running the TTS server. }
+    TTSserverProcess: TProcess;
+    { Combo box for selecting the GPU/CPU device for TTS server to use. }
+    TTSdeviceCombobox: TComboBox;
+    { Label for the TTS device selection combo box. }
+    TTSdeviceLabel: TLabel;
+    { Checkbox to enable or disable the TTS service. }
+    EnableTTScheckBox: TCheckBox;
+    { Group box containing general TTS controls. }
+    GeneralTTSsettingsGroupBox: TGroupBox;
+    { Combo box for selecting the main TTS model. }
+    MainTTSmodelComboBox: TComboBox;
+    { Button to reload the list of available TTS devices. }
+    TTSreloadDevicesButton: TButton;
+    { Combo box for selecting the voice TTS model. }
+    VoiceTTSmodelComboBox: TComboBox;
+    { Label for the main TTS model combo box. }
+    MainTTSmodelLabel: TLabel;
+    { Label for the voice TTS model combo box. }
+    VoiceTTSmodelLabel: TLabel;
+    { Group box containing TTS model controls. }
+    TTSmodelsGroupBox: TGroupBox;
+    { Group box containing TTS parameters. }
+    TTSparameterGroupBox: TGroupBox;
+    { Value list editor grid for TTS parameters. }
+    TTSparameterListEditor: TValueListEditor;
+    { Button to remove the selected TTS parameter row. }
+    RemoveTTSparameterButton: TButton;
+    { Scrollable container for the TTS tab sheet. }
+    TTStabSheetScrollBox: TScrollBox;
+    { Button to reload the list of available LLM/embedding devices. }
     ReloadDevicesButton: TButton;
     { Checkbox to enable or disable the LLM service. }
     EnableLLMcheckBox: TCheckBox;
@@ -110,6 +181,8 @@ type
     DefaultThemeLightRadioButton: TRadioButton;
     { Radio button for choosing dark color theme on frontpage. }
     DefaultThemeDarkRadioButton: TRadioButton;
+    { Tab sheet containing TTS configuration settings. }
+    TTStabSheet: TTabSheet;
     { Group box containing temporary directory controls. }
     TempDirGroupBox: TGroupBox;
     { SQL query component for loading PHP time zones from the database. }
@@ -216,7 +289,7 @@ type
     OpenLogFolderButton: TButton;
     { Button to clear all log files. }
     ClearLogButton: TButton;
-    { Combo box for selecting the GPU/CPU device to use. }
+    { Combo box for selecting the GPU/CPU device for LLM/embedding server to use. }
     DeviceCombobox: TComboBox;
     { Checkbox to enable or disable the embedding service. }
     EnableEmbeddingCheckBox: TCheckBox;
@@ -224,7 +297,7 @@ type
     EmbeddingModelComboBox: TComboBox;
     { Group box containing embedding model configuration. }
     EmbeddingModelGroupBox: TGroupBox;
-    { Label for the device selection combo box. }
+    { Label for the LLM/embedding device selection combo box. }
     DeviceLabel: TLabel;
     { Label for the maximum package size field. }
     MaxPackageSizeLabel: TLabel;
@@ -310,7 +383,17 @@ type
     LoggingAndProxyTabSheet: TTabSheet;
     { Spin edit control for the LLM proxy service timeout in seconds. }
     LLMproxyServiceTimeout: TSpinEdit;
-    { Handles device reload button click. }
+    { Handles add TTS voice model button click. }
+    procedure AddVoiceTTSmodelButtonClick(Sender: TObject);
+    { Handles add TTS main model button click. }
+    procedure AddMainTTSmodelButtonClick(Sender: TObject);
+    { Handles add TTS parameter button click. }
+    procedure AddTTSparameterButtonClick(Sender: TObject);
+    { Handles remove TTS parameter button click. }
+    procedure RemoveTTSparameterButtonClick(Sender: TObject);
+    { Enables or disables TTS service based on checkbox. }
+    procedure EnableTTScheckBoxChange(Sender: TObject);
+    { Handles LLM/embedding device reload button click. }
     procedure ReloadDevicesButtonClick(Sender: TObject);
     { Enables or disables LLM parameters based on checkbox. }
     procedure EnableLLMcheckBoxChange(Sender: TObject);
@@ -366,6 +449,10 @@ type
     procedure RemoveButtonClick(Sender: TObject);
     { Handles remove embedding parameter button click. }
     procedure RemoveEmbeddingParameterButtonClick(Sender: TObject);
+    { Handles mouse move over TTS parameter grid for tooltip display. }
+    procedure TTSparameterListEditorMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    { Handles TTS device reload button click. }
+    procedure TTSreloadDevicesButtonClick(Sender: TObject);
   protected
     { Flag to prevent engine change handling during initialization. }
     canHandleEngineChange: boolean;
@@ -373,6 +460,8 @@ type
     TitleList: TStringList;
     { List of embedding parameter titles for grid hints. }
     EmbeddingTitleList: TStringList;
+    { List of TTS parameter titles for grid hints. }
+    TTStitleList: TStringList;
     { Image format for avatar (png, jpg, etc.). }
     AvatarImageFormat: string;
     { Image format for background (png, jpg, etc.). }
@@ -389,10 +478,22 @@ type
     llmConversationalPort: integer;
     { Embedding service port number. }
     llmEmbeddingPort: integer;
+    { TTS service port number. }
+    llmTTSport: integer;
     { Proxy location path for nginx. }
     llmProxyLocation: AnsiString;
+    { Flag to load TTS fallback parameters on unsupprted hardware. }
+    ttsFallbackNeeded: boolean;
+    { CPU fallback binary for TTS engine. }
+    ttsFallbackBinary: AnsiString;
+    { Flag to disable TTS engine when no model is available. }
+    ttsModelsAvailable: boolean;
     { Indicates whether LLM/embedding service supports the hardware. }
     llmEmbeddingDeviceFound: boolean;
+    { Indicates whether TTS service supports the hardware. }
+    ttsDeviceFound: boolean;
+    { Default TTS model container. }
+    defaultTTSmodelList: TTTSmodelList;
     { Stores the default PHP time zone read from the database. }
     DefaultPHPtimezone: integer;
     { Replaces special characters in the specified filename. }
@@ -411,8 +512,12 @@ type
     procedure ImportModel(const ModelType: String);
     { Loads LLM model files from the model or embedding directory. }
     procedure LoadLLMfiles(const LLMtype: string; const DefaultFile: string = '');
+    { Loads the list of available devices for Llama.cpp engine. }
+    procedure LoadLLMdevices(EngineItem: TEngineComboBoxItem);
+    { Loads the list of available devices for TTS engine. }
+    procedure LoadTTSdevices(EngineItem: TEngineComboBoxItem);
     { Loads the list of available devices for the selected engine. }
-    procedure LoadDevices;
+    procedure LoadDevices(const Engine: string = 'LLAMA_CPP');
     { Loads default configuration values for the selected engine. }
     procedure LoadDefaultConfig;
     { Loads configuration data from wrapper.json file. }
@@ -429,8 +534,10 @@ type
     procedure LoadPersonaImages(RootObj: TJSONObject; const FieldName: string; ImageControl: TImage);
     { Clears the engine combo box and frees all associated items. }
     procedure ClearEngineComboBox;
-    { Clears the device combo box and frees all associated items. }
-    procedure ClearDeviceComboBox;
+    { Clears the LLM/embedding device combo box and frees all associated items. }
+    procedure ClearLLMdeviceComboBox;
+    { Clears the TTS device combo box and frees all associated items. }
+    procedure ClearTTSdeviceComboBox;
     { Clears the persona combo box and frees all associated items. }
     procedure ClearPersonaComboBox;
     { Clears log files or directory based on server running state. }
@@ -443,6 +550,8 @@ type
     procedure RemoveParameter(ValueListEditor: TValueListEditor; StringList: TStringList);
     { Show hint for coordinates at valuelist editor control (helper). }
     procedure ShowHintForValueListCoords(ValueListEditor: TValueListEditor; StringList: TStringList; X, Y: Integer);
+    { Helper procedure to enable/disable TTS device listing. }
+    procedure UpdateTTSdeviceListAvailability(const want_to_enable_list, want_to_enable_reload: boolean);
   public
     { Path to the application directory. }
     appdir: AnsiString;
@@ -452,6 +561,10 @@ type
     modeldir: AnsiString;
     { Path to the embedding models directory. }
     embeddingModeldir: AnsiString;
+    { Path to the TTS models directory. }
+    ttsModeldir: AnsiString;
+    { Full path to the TTS register file for imported models. }
+    ttsRegisterFile: AnsiString;
     { Path to the configuration directory. }
     configdir: AnsiString;
     { Full path to the wrapper SQLite database. }
@@ -511,6 +624,62 @@ implementation
 
 {$R *.lfm}
 
+{ TTTSmodelList }
+
+//Find TTS model by name
+function TTTSmodelList.FindByName(const AName: string): TTTSmodel;
+var
+  ANameFixed: string;
+  Item: TTTSmodel;
+begin
+  Result := nil;
+  try
+    ANameFixed := trim(AName);
+    if not(length(ANameFixed) >= 1) then
+    begin
+      MessageDlg('Error', 'Model type not specified!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if not(Self.Count >= 1) then Exit;
+    for Item in Self do
+    begin
+      if not(SameText(trim(Item.Name), ANameFixed)) then continue;
+      Result := Item;
+      Exit;
+    end;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+//Find TTS model by filename
+function TTTSmodelList.FindByFileName(const AFileName: string): TTTSmodel;
+var
+  AFileNameFixed: string;
+  Item: TTTSmodel;
+begin
+  Result := nil;
+  try
+    AFileNameFixed := trim(AFileName);
+    if not(length(AFileNameFixed) >= 1) then
+    begin
+      MessageDlg('Error', 'Filename not specified!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if not(Self.Count >= 1) then Exit;
+    for Item in Self do
+    begin
+      if not(SameText(trim(Item.FileName), AFileNameFixed)) then continue;
+      Result := Item;
+      Exit;
+    end;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
 { TSettingsForm }
 
 //Normalize filename
@@ -521,25 +690,37 @@ begin
   try
     //DirectoryPath := '';
     FilePathFixed := trim(FilePath);
-    if FilePathFixed = '' then Exit;
+    if not(length(FilePathFixed) >= 1) then Exit;
     BaseName := trim(ExtractFileName(FilePathFixed));
-    if BaseName = '' then Exit;
+    if not(length(BaseName) >= 1) then Exit;
     {if not(BaseName = FilePathFixed) then} DirectoryPath := trim(ExtractFilePath(FilePathFixed));
     FileExtension := trim(ExtractFileExt(BaseName));
     BaseName := trim(ChangeFileExt(BaseName, ''));
-    if BaseName = '' then Exit;
+    if not(length(BaseName) >= 1) then Exit;
     BaseName := ReplaceRegExpr('[^a-zA-Z0-9_-]', BaseName, '_');
     BaseName := ReplaceRegExpr('_+', BaseName, '_');
     BaseName := ReplaceRegExpr('-+', BaseName, '-');
     BaseName := ReplaceRegExpr('[-_]{2,}', BaseName, '_');
     BaseName := TrimSet(BaseName, ['_', '-']);
-    if BaseName = '' then Exit;
+    if not(length(BaseName) >= 1) then Exit;
     BaseName := BaseName + FileExtension;
     Result := DirectoryPath + BaseName;
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
   end;
+end;
+
+//Add new TTS voice model
+procedure TSettingsForm.AddVoiceTTSmodelButtonClick(Sender: TObject);
+begin
+  ImportModel('TTS_VOICE');
+end;
+
+//Add new main TTS model
+procedure TSettingsForm.AddMainTTSmodelButtonClick(Sender: TObject);
+begin
+  ImportModel('TTS_MAIN');
 end;
 
 //Open Folder
@@ -592,8 +773,8 @@ begin
   end;
 end;
 
-//Clear Device Combobox
-procedure TSettingsForm.ClearDeviceComboBox;
+//Clear LLM/embedding device Combobox
+procedure TSettingsForm.ClearLLMdeviceComboBox;
 var i: Integer;
 begin
   try
@@ -618,6 +799,32 @@ begin
   end;
 end;
 
+//Clear TTS device Combobox
+procedure TSettingsForm.ClearTTSdeviceComboBox;
+var i: Integer;
+begin
+  try
+    ttsDeviceFound := false;
+    TTSdeviceLabel.Enabled := false;
+    TTSdeviceComboBox.Enabled := false;
+    if not(TTSdeviceComboBox.Items.Count >= 1) then Exit;
+    for i := 0 to TTSdeviceComboBox.Items.Count - 1 do
+    begin
+      try
+        if not(Assigned(TTSdeviceComboBox.Items.Objects[i])) then continue;
+        TTSdeviceComboBox.Items.Objects[i].Free;
+      except
+        on x: Exception do
+          MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+      end;
+    end;
+    TTSdeviceComboBox.Items.Clear;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
 //Load LLM files
 procedure TSettingsForm.LoadLLMfiles(const LLMtype: string; const DefaultFile: string = '');
 var
@@ -625,8 +832,13 @@ var
   ModelDirectory: ansistring;
   ComboBox: TComboBox;
   CheckBox: TCheckBox;
-  FoundIndex: Integer;
+  FoundIndex, i: Integer;
   SR: TSearchRec;
+  ttsModelItem: TTTSmodel;
+  SL: TStringList;
+  JsonData: TJSONData;
+  Root: TJSONObject;
+  ModelFilesArray: TJSONArray;
 begin
   try
     //Validate parameters and variables
@@ -644,17 +856,91 @@ begin
       ModelDirectory := embeddingModeldir;
       ComboBox := EmbeddingModelComboBox;
       CheckBox := EnableEmbeddingCheckBox;
+      if not(Assigned(CheckBox)) then
+      begin
+        MessageDlg('Error', 'Target checkbox not assigned!', mtError, [mbOK], 0);
+        Exit;
+      end;
     end
     else if LLMtypeFixed = 'CONVERSATIONAL' then
     begin
       ModelDirectory := modeldir;
       ComboBox := ModelComboBox;
       CheckBox := EnableLLMcheckBox;
+      if not(Assigned(CheckBox)) then
+      begin
+        MessageDlg('Error', 'Target checkbox not assigned!', mtError, [mbOK], 0);
+        Exit;
+      end;
     end
     else
     begin
-      MessageDlg('Error', 'Invalid LLM type!', mtError, [mbOK], 0);
-      Exit;
+      //Only if TTS engine is available
+      if not(length(ttsModeldir) >= 1) then Exit;
+      ModelDirectory := ttsModeldir;
+      if LLMtypeFixed = 'TTS_MAIN' then
+        ComboBox := MainTTSmodelComboBox
+      else if LLMtypeFixed = 'TTS_VOICE' then
+        ComboBox := VoiceTTSmodelComboBox
+      else
+      begin
+        MessageDlg('Error', 'Invalid LLM type!', mtError, [mbOK], 0);
+        Exit;
+      end;
+      if length(ttsRegisterFile) >= 1 then
+      begin
+        if FileExists(ttsRegisterFile) then
+        begin
+          JsonData := nil;
+          SL := nil;
+          SL := TStringList.Create;
+          try
+            SL.LoadFromFile(ttsRegisterFile);
+            JsonData := GetJSON(SL.Text);
+            if JsonData is TJSONObject then
+            begin
+              Root := TJSONObject(JsonData);
+              ModelFilesArray := nil;
+              if LLMtypeFixed = 'TTS_MAIN' then
+                ModelFilesArray := Root.Get('main_models', TJSONArray(nil))
+              else if LLMtypeFixed = 'TTS_VOICE' then
+                ModelFilesArray := Root.Get('voice_models', TJSONArray(nil));
+              if Assigned(ModelFilesArray) then
+              begin
+                if ModelFilesArray.Count > 0 then
+                begin
+                  for i := 0 to ModelFilesArray.Count - 1 do
+                  begin
+                    try
+                      ModelFile := trim(ModelFilesArray[i].AsString);
+                      if not(length(ModelFile) >= 1) then continue;
+                      ttsModelItem := defaultTTSmodelList.FindByFileName(ModelFile);
+                      if Assigned(ttsModelItem) then continue;
+                      ttsModelItem := TTTSmodel.Create;
+                      try
+                        if LLMtypeFixed = 'TTS_MAIN' then
+                          ttsModelItem.Name := 'model'
+                        else if LLMtypeFixed = 'TTS_VOICE' then
+                          ttsModelItem.Name := 'voice';
+                        ttsModelItem.FileName := ModelFile;
+                        defaultTTSmodelList.Add(ttsModelItem);
+                        ttsModelItem := nil;
+                      finally
+                        if Assigned(ttsModelItem) then FreeAndNil(ttsModelItem);
+                      end;
+                    except
+                      //Silent skip
+                    end;
+                  end;
+                end;
+              end;
+            end;
+          finally
+            if Assigned(SL) then FreeAndNil(SL);
+            if Assigned(JsonData) then FreeAndNil(JsonData);
+          end;
+        end;
+      end;
     end;
     if not(length(ModelDirectory) >= 1) then
     begin
@@ -671,11 +957,6 @@ begin
       MessageDlg('Error', 'Target combobox not assigned!', mtError, [mbOK], 0);
       Exit;
     end;
-    if not(Assigned(CheckBox)) then
-    begin
-      MessageDlg('Error', 'Target checkbox not assigned!', mtError, [mbOK], 0);
-      Exit;
-    end;
     //Load models
     FoundIndex := -1;
     DefaultFileFixed := trim(DefaultFile);
@@ -687,7 +968,23 @@ begin
         repeat
           if not((SR.Attr and faDirectory) = 0) then continue;
           ModelFile := trim(SR.Name);
+          if not(length(ModelFile) >= 1) then continue;
           if (Pos(' ', ModelFile) > 0) or (Pos(PathDelim, ModelFile) > 0) then continue;
+          if MatchStr(LLMtypeFixed, ['TTS_MAIN', 'TTS_VOICE']) then
+          begin
+            ttsModelItem := defaultTTSmodelList.FindByFileName(ModelFile);
+            if Assigned(ttsModelItem) then
+            begin
+              if LLMtypeFixed = 'TTS_MAIN' then
+              begin
+                if not(SameText(ttsModelItem.Name, 'model')) then continue;
+              end
+              else if LLMtypeFixed = 'TTS_VOICE' then
+              begin
+                if not(SameText(ttsModelItem.Name, 'voice')) then continue;
+              end
+            end;
+          end;
           ComboBox.Items.Add(ModelFile);
         until not(FindNext(SR) = 0);
       finally
@@ -720,6 +1017,21 @@ begin
         if (ComboBox.Items.Count > 1) and CheckBox.Checked then ComboBox.Enabled := true;
       end;
       if (ComboBox.Items.Count <= 1) or not(CheckBox.Checked) then ComboBox.Enabled := false;
+      Exit;
+    end;
+    if MatchStr(LLMtypeFixed, ['TTS_MAIN', 'TTS_VOICE']) then
+    begin
+      //Checkbox status applies to entire group boxes here not just the model combobox (and checkbox is in its own, separate group box)
+      if ComboBox.Items.Count >= 1 then
+      begin
+        ttsModelsAvailable := true;
+        if length(DefaultFileFixed) >= 1 then FoundIndex := ComboBox.Items.IndexOf(DefaultFileFixed);
+        ComboBox.ItemIndex := max(FoundIndex, 0);
+        if ComboBox.Items.Count > 1 then ComboBox.Enabled := true;
+      end
+      else
+        ttsModelsAvailable := false;
+      if ComboBox.Items.Count <= 1 then ComboBox.Enabled := false;
       Exit;
     end;
     MessageDlg('Error', 'Internal error!', mtError, [mbOK], 0);
@@ -916,11 +1228,17 @@ procedure TSettingsForm.ImportModel(const ModelType: String);
 var
   ModelDirectory, FileToImport, TargetFileName, TargetFilePath: AnsiString;
   ModelTypeFixed: String;
+  ttsModelItem: TTTSmodel;
+  RootObj: TJSONObject;
+  MainModelFilesArray: TJSONArray;
+  VoiceModelFilesArray: TJSONArray;
+  JSONList: TStringList;
+  SaveRegisterFile: Boolean;
 begin
   try
     //Validate model type
     ModelTypeFixed := UpperCase(Trim(ModelType));
-    if ModelTypeFixed = '' then
+    if not(length(ModelTypeFixed) >= 1) then
     begin
       MessageDlg('Error', 'Model type not specified!', mtError, [mbOK], 0);
       Exit;
@@ -929,6 +1247,12 @@ begin
       ModelDirectory := embeddingModeldir
     else if ModelTypeFixed = 'CONVERSATIONAL' then
       ModelDirectory := modeldir
+    else if MatchStr(ModelTypeFixed, ['TTS_MAIN', 'TTS_VOICE']) then
+    begin
+      //Only if TTS engine is available
+      if not(length(ttsModeldir) >= 1) then Exit;
+      ModelDirectory := ttsModeldir;
+    end
     else
     begin
       MessageDlg('Error', 'Invalid model type: ' + ModelTypeFixed, mtError, [mbOK], 0);
@@ -947,7 +1271,7 @@ begin
       Exit;
     end;
     FileToImport := trim(ImportModelDialog.FileName);
-    if FileToImport = '' then
+    if not(length(FileToImport) >= 1) then
     begin
       MessageDlg('Error', 'Model filename not specified!', mtError, [mbOK], 0);
       chdir(appdir);
@@ -974,7 +1298,7 @@ begin
     end;
     //Generate target filepath
     TargetFileName := NormalizeFileName(ExtractFileName(FileToImport));
-    if TargetFileName = '' then
+    if not(length(TargetFileName) >= 1) then
     begin
       MessageDlg('Error', 'Invalid filename!', mtError, [mbOK], 0);
       chdir(appdir);
@@ -984,13 +1308,88 @@ begin
     //Create intermediate directories if needed
     ForceDirectories(ExtractFilePath(TargetFilePath));
     //Perform model import
-    if CopyFileWithProgress(FileToImport, TargetFilePath) then
+    if not(CopyFileWithProgress(FileToImport, TargetFilePath)) then
     begin
       chdir(appdir);
-      LoadLLMfiles(ModelTypeFixed, String(TargetFileName));
       Exit;
     end;
     chdir(appdir);
+    //Register new TTS model file
+    if MatchStr(ModelTypeFixed, ['TTS_MAIN', 'TTS_VOICE']) then
+    begin
+      ttsModelItem := defaultTTSmodelList.FindByFileName(TargetFileName);
+      if not(Assigned(ttsModelItem)) then
+      begin
+        ttsModelItem := TTTSmodel.Create;
+        try
+          if ModelTypeFixed = 'TTS_MAIN' then
+            ttsModelItem.Name := 'model'
+          else if ModelTypeFixed = 'TTS_VOICE' then
+            ttsModelItem.Name := 'voice';
+          ttsModelItem.FileName := TargetFileName;
+          defaultTTSmodelList.Add(ttsModelItem);
+          ttsModelItem := nil;
+        finally
+          if Assigned(ttsModelItem) then FreeAndNil(ttsModelItem);
+        end;
+      end;
+      //Reload TTS model file list
+      if ModelTypeFixed = 'TTS_MAIN' then
+        LoadLLMfiles('TTS_MAIN', String(MainTTSmodelComboBox.Text))
+      else if ModelTypeFixed = 'TTS_VOICE' then
+        LoadLLMfiles('TTS_VOICE', String(VoiceTTSmodelComboBox.Text));
+      //Save TTS model registration file
+      SaveRegisterFile := false;
+      if length(ttsRegisterFile) >= 1 then
+      begin
+        RootObj := nil;
+        MainModelFilesArray := nil;
+        VoiceModelFilesArray := nil;
+        JSONList := nil;
+        try
+          MainModelFilesArray := TJSONArray.Create;
+          VoiceModelFilesArray := TJSONArray.Create;
+          MainModelFilesArray.Clear;
+          VoiceModelFilesArray.Clear;
+          RootObj := TJSONObject.Create;
+          for ttsModelItem in defaultTTSmodelList do
+          begin
+            if SameText(trim(ttsModelItem.Name), 'model') then
+            begin
+              MainModelFilesArray.Add(ttsModelItem.FileName);
+              continue;
+            end;
+            if not(SameText(trim(ttsModelItem.Name), 'voice')) then continue;
+            VoiceModelFilesArray.Add(ttsModelItem.FileName);
+          end;
+          if MainModelFilesArray.Count >= 1 then
+          begin
+            SaveRegisterFile := true;
+            RootObj.Add('main_models', MainModelFilesArray);
+            MainModelFilesArray := nil;
+          end;
+          if VoiceModelFilesArray.Count >= 1 then
+          begin
+            SaveRegisterFile := true;
+            RootObj.Add('voice_models', VoiceModelFilesArray);
+            VoiceModelFilesArray := nil;
+          end;
+          if not(SaveRegisterFile) then Exit;
+          JSONList := TStringList.Create;
+          JSONList.Text := RootObj.FormatJSON();
+          if FileExists(ttsRegisterFile) then DeleteFile(ttsRegisterFile);
+          JSONList.SaveToFile(ttsRegisterFile);
+        finally
+          if Assigned(RootObj) then FreeAndNil(RootObj);
+          if Assigned(MainModelFilesArray) then FreeAndNil(MainModelFilesArray);
+          if Assigned(VoiceModelFilesArray) then FreeAndNil(VoiceModelFilesArray);
+          if Assigned(JSONList) then FreeAndNil(JSONList);
+        end;
+      end;
+      Exit;
+    end;
+    //Reload LLM/embedding model file list
+    LoadLLMfiles(ModelTypeFixed, String(TargetFileName));
   except
     on x: Exception do
     begin
@@ -1011,7 +1410,7 @@ begin
     ParameterName := '';
     if not(InputQuery('New Parameter', 'Enter parameter name:', ParameterName)) then Exit;
     ParameterName := trim(ParameterName);
-    if ParameterName = '' then
+    if not(length(ParameterName) >= 1) then
     begin
       MessageDlg('Error', 'Parameter name cannot be empty!', mtError, [mbOK], 0);
       Exit;
@@ -1040,7 +1439,7 @@ begin
     RowIndex := ValueListEditor.Row;
     if (RowIndex <= 0) or (RowIndex >= ValueListEditor.RowCount) then Exit;
     ParameterName := trim(ValueListEditor.Keys[RowIndex]);
-    if ParameterName = '' then Exit;
+    if not(length(ParameterName) >= 1) then Exit;
     if MessageDlg(
       'Remove parameter',
       'Do you really want to delete "' + ParameterName + '"?',
@@ -1073,7 +1472,7 @@ begin
     gc := ValueListEditor.MouseToCell(Point(X, Y));
     if (gc.Y <= 0) or (gc.Y >= ValueListEditor.RowCount) or (gc.X < 0) then Exit;
     KeyName := trim(ValueListEditor.Keys[gc.Y]);
-    if KeyName = '' then
+    if not(length(KeyName) >= 1) then
     begin
       ValueListEditor.Hint := '';
       Exit;
@@ -1092,10 +1491,67 @@ begin
   end;
 end;
 
-//Load device list
+//Enable or disable TTS device list
+procedure TSettingsForm.UpdateTTSdeviceListAvailability(const want_to_enable_list, want_to_enable_reload: boolean);
+var EngineItem: TEngineComboBoxItem;
+begin
+  try
+    TTSdeviceLabel.Enabled := false;
+    TTSdeviceCombobox.Enabled := false;
+    TTSreloadDevicesButton.Enabled := false;
+    if not(EnableTTScheckBox.Checked) then Exit;
+    if LlamaEngineComboBox.ItemIndex < 0 then
+    begin
+      MessageDlg('Error', 'No engine selected!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    EngineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
+    if not(Assigned(EngineItem)) then
+    begin
+      MessageDlg('Error', 'Invalid engine!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if EngineItem.TTSusesGPU = 0 then Exit;
+    if want_to_enable_list then
+    begin
+      if TTSdeviceComboBox.Items.Count >= 1 then
+      begin
+        TTSdeviceLabel.Enabled := true;
+        TTSdeviceCombobox.Enabled := true;
+      end;
+    end;
+    if want_to_enable_reload then TTSreloadDevicesButton.Enabled := true;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+//Add TTS parameter
+procedure TSettingsForm.AddTTSparameterButtonClick(Sender: TObject);
+begin
+  AddParameter(TTSparameterListEditor);
+end;
+
+//Enable or disable TTS service
+procedure TSettingsForm.EnableTTScheckBoxChange(Sender: TObject);
+var enable_tts: boolean;
+begin
+  try
+    enable_tts := EnableTTScheckBox.Checked;
+    UpdateTTSdeviceListAvailability(enable_tts, enable_tts);
+    TTSmodelsGroupBox.Enabled := enable_tts;
+    TTSparameterGroupBox.Enabled := enable_tts;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+//Load LLM/embedding device list
 procedure TSettingsForm.ReloadDevicesButtonClick(Sender: TObject);
 begin
-  LoadDevices;
+  LoadDevices('LLAMA_CPP');
 end;
 
 //Enable or disable LLM server
@@ -1158,49 +1614,42 @@ begin
   ImportModel('CONVERSATIONAL');
 end;
 
-//Load device list
-procedure TSettingsForm.LoadDevices;
+//Load LLM/embedding device list
+procedure TSettingsForm.LoadLLMdevices(EngineItem: TEngineComboBoxItem);
 var
   SL: TStringList;
   i, j: Integer;
   output_line: String;
   foundDeviceHeader: Boolean;
-  engineItem: TEngineComboBoxItem;
   deviceItem: TDeviceComboBoxItem;
 begin
   try
     //Check selected engine
-    if LlamaEngineComboBox.ItemIndex < 0 then
-    begin
-      MessageDlg('Error', 'No engine selected!', mtError, [mbOK], 0);
-      Exit;
-    end;
-    engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
-    if not(Assigned(engineItem)) then
+    if not(Assigned(EngineItem)) then
     begin
       MessageDlg('Error', 'Invalid engine!', mtError, [mbOK], 0);
       Exit;
     end;
     try
-      ClearDeviceComboBox;
-      if engineItem.UsesGPU = 0 then Exit;
-      if engineItem.ServerBinary = '' then
+      ClearLLMdeviceComboBox;
+      if EngineItem.UsesGPU = 0 then Exit;
+      if not(length(EngineItem.ServerBinary) >= 1) then
       begin
         MessageDlg('Error', 'Engine path not defined!', mtError, [mbOK], 0);
         Exit;
       end;
       chdir(appdir);
-      if not(FileExists(engineItem.ServerBinary)) then
+      if not(FileExists(EngineItem.ServerBinary)) then
       begin
-        MessageDlg('Error', 'Server binary does not exist: ' + engineItem.ServerBinary, mtError, [mbOK], 0);
+        MessageDlg('Error', 'Server binary does not exist: ' + EngineItem.ServerBinary, mtError, [mbOK], 0);
         Exit;
       end;
       //Load devices
       foundDeviceHeader := false;
       SL := TStringList.Create;
       try
-        LLMserverProcess.Executable := engineItem.ServerBinary;
-        LLMserverProcess.CurrentDirectory := ExtractFilePath(engineItem.ServerBinary);
+        LLMserverProcess.Executable := EngineItem.ServerBinary;
+        LLMserverProcess.CurrentDirectory := ExtractFilePath(EngineItem.ServerBinary);
         LLMserverProcess.Execute;
         SL.LoadFromStream(LLMserverProcess.Output);
         if LLMserverProcess.Running then
@@ -1214,6 +1663,7 @@ begin
           for i := 0 to SL.Count - 1 do
           begin
             output_line := trim(SL[i]);
+            // Look for header
             if not(foundDeviceHeader) then
             begin
               if Pos('available devices:', lowercase(output_line)) > 0 then
@@ -1223,6 +1673,7 @@ begin
               end;
               continue;
             end;
+            // Parse device lines
             j := Pos(':', output_line);
             if not(j > 0) then continue;
             deviceItem := TDeviceComboBoxItem.Create;
@@ -1265,20 +1716,309 @@ begin
   end;
 end;
 
+//Load TTS device list (only if TTS engine is available)
+procedure TSettingsForm.LoadTTSdevices(EngineItem: TEngineComboBoxItem);
+var
+  SL: TStringList;
+  i, j, k, m: Integer;
+  output_line: String;
+  foundDeviceHeader: Boolean;
+  deviceItem: TDeviceComboBoxItem;
+  deviceIndex, deviceType, deviceName, deviceDesc, deviceMem, deviceID: String;
+  Buffer: array[0..4095] of Byte;
+  BytesRead: LongInt;
+  OutputStream: TMemoryStream;
+  ttsBinaryFinal: AnsiString;
+begin
+  try
+    //Check selected engine
+    if not(Assigned(EngineItem)) then
+    begin
+      MessageDlg('Error', 'Invalid engine!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    try
+      ClearTTSdeviceComboBox;
+      if EngineItem.TTSusesGPU = 0 then Exit;
+      ttsBinaryFinal := EngineItem.TTSbinary;
+      if not(length(ttsBinaryFinal) >= 1) then
+      begin
+        ttsFallbackNeeded := true;
+        ttsBinaryFinal := ttsFallbackBinary;
+      end;
+      if not(length(ttsBinaryFinal) >= 1) then Exit;
+      chdir(appdir);
+      if not(FileExists(ttsBinaryFinal)) then
+      begin
+        MessageDlg('Error', 'Server binary does not exist: ' + ttsBinaryFinal, mtError, [mbOK], 0);
+        Exit;
+      end;
+      //Load devices
+      foundDeviceHeader := false;
+      SL := TStringList.Create;
+      OutputStream := TMemoryStream.Create;
+      try
+        TTSserverProcess.Executable := ttsBinaryFinal;
+        TTSserverProcess.CurrentDirectory := ExtractFilePath(ttsBinaryFinal);
+        TTSserverProcess.Execute;
+        SL.Clear;
+        OutputStream.Clear;
+        repeat
+          while TTSserverProcess.Output.NumBytesAvailable > 0 do
+          begin
+            BytesRead := TTSserverProcess.Output.Read(Buffer, SizeOf(Buffer));
+            if BytesRead > 0 then OutputStream.WriteBuffer(Buffer, BytesRead);
+          end;
+          if TTSserverProcess.Running then Sleep(10);
+          Application.ProcessMessages;
+        until not(TTSserverProcess.Running) and (TTSserverProcess.Output.NumBytesAvailable = 0);
+        OutputStream.Position := 0;
+        SL.LoadFromStream(OutputStream);
+        if TTSserverProcess.Running then
+        begin
+          TTSserverProcess.Terminate(0);
+          TTSserverProcess.WaitOnExit;
+        end;
+        TTSserverProcess.Active := false;
+        if not(SL.Count >= 1) then Exit;
+        try
+          for i := 0 to SL.Count - 1 do
+          begin
+            output_line := trim(SL[i]);
+            if not(foundDeviceHeader) then
+            begin
+              // Look for "registered devices" header
+              if Pos('registered devices', lowercase(output_line)) > 0 then
+              begin
+                TTSdeviceComboBox.Items.BeginUpdate;
+                foundDeviceHeader := true;
+              end;
+              continue;
+            end;
+            // Parse device lines like: [0] igpu   name=Vulkan0 desc=Intel(R) UHD Graphics 630 mem=... id=?
+            if not(length(output_line) >= 1) then continue;
+            if not(output_line[1] = '[') then continue;
+            j := Pos(']', output_line);
+            if not(j >= 1) then continue;
+            deviceIndex := trim(Copy(output_line, 2, j - 2));
+            if not(length(deviceIndex) >= 1) then continue;
+            // Extract the rest: "igpu   name=Vulkan0 desc=Intel(R) UHD Graphics 630 mem=... id=?"
+            output_line := trim(Copy(output_line, j + 1, length(output_line)));
+            // Extract type (first word: cpu/gpu/igpu/accel)
+            k := Pos(' ', output_line);
+            if not(k >= 1) then continue;
+            deviceType := trim(Copy(output_line, 1, k - 1));
+            output_line := trim(Copy(output_line, k + 1, length(output_line)));
+            // Parse key=value pairs: extract desc=, mem=, id=
+            deviceDesc := '';
+            deviceMem := '';
+            deviceID := '';
+            // Find desc= and extract until next key ( mem= or  id=) or end
+            k := Pos('desc=', output_line);
+            if k >= 1 then
+            begin
+              k := k + 5; // skip 'desc=' (5 chars)
+              j := Pos(' mem=', output_line);
+              if j = 0 then j := Pos(' id=', output_line);
+              if j = 0 then j := length(output_line) + 1;
+              deviceDesc := trim(Copy(output_line, k, j - k));
+            end
+            else
+            begin
+              // Fallback to name= if no desc=
+              k := Pos('name=', output_line);
+              if k >= 1 then
+              begin
+                k := k + 5; // skip 'name=' (5 chars)
+                j := Pos(' ', Copy(output_line, k, Length(output_line)));
+                if j = 0 then
+                  deviceDesc := trim(Copy(output_line, k, Length(output_line)))
+                else
+                  deviceDesc := trim(Copy(output_line, k, j - 1));
+              end;
+            end;
+            // Find mem=
+            k := Pos('mem=', output_line);
+            if k >= 1 then
+            begin
+              k := k + 4; // skip 'mem=' (4 chars)
+              j := length(output_line) + 1;
+              for m := k to length(output_line) do
+              begin
+                if not(output_line[m] = ' ') then continue;
+                j := m;
+                break;
+              end;
+              deviceMem := trim(Copy(output_line, k, j - k));
+            end;
+            // Find id=
+            k := Pos('id=', output_line);
+            if k >= 1 then
+            begin
+              k := k + 3; // skip 'id=' (3 chars)
+              j := length(output_line) + 1;
+              for m := k to length(output_line) do
+              begin
+                if not(output_line[m] = ' ') then continue;
+                j := m;
+                break;
+              end;
+              deviceID := trim(Copy(output_line, k, j - k));
+            end;
+            // Build display title: name: desc mem=... id=...
+            deviceItem := TDeviceComboBoxItem.Create;
+            try
+              // ID = index from [0], [1], [2] - what --device expects
+              deviceItem.ID := deviceIndex;
+              // Extract name= for title prefix
+              deviceName := '';
+              k := Pos('name=', output_line);
+              if k >= 1 then
+              begin
+                k := k + 5; // skip 'name=' (5 chars)
+                j := Pos(' ', Copy(output_line, k, length(output_line)));
+                if j = 0 then
+                  deviceName := trim(Copy(output_line, k, Length(output_line)))
+                else
+                  deviceName := trim(Copy(output_line, k, j - 1));
+              end;
+              // Title = full description like: Vulkan0: Intel(R) UHD Graphics 630 mem=14661/16290 MiB id=?
+              if length(deviceName) >= 1 then
+                deviceItem.Title := deviceName
+              else
+                deviceItem.Title := deviceType;
+              if length(deviceDesc) >= 1 then deviceItem.Title := deviceItem.Title + ': ' + deviceDesc;
+              if (length(deviceMem) >= 1) or (length(deviceID) >= 1) then
+              begin
+                deviceItem.Title := deviceItem.Title + ' (';
+                if length(deviceMem) >= 1 then
+                begin
+                  deviceItem.Title := deviceItem.Title + 'mem: ' + deviceMem;
+                  if Pos('MIB', UpperCase(deviceMem)) = 0 then deviceItem.Title := deviceItem.Title + ' MiB';
+                end;
+                if length(deviceID) >= 1 then
+                begin
+                  if length(deviceMem) >= 1 then deviceItem.Title := deviceItem.Title + ', ';
+                  deviceItem.Title := deviceItem.Title + 'id: ' + deviceID;
+                end;
+                deviceItem.Title := deviceItem.Title + ')';
+              end;
+              if (length(deviceItem.ID) >= 1) and (length(deviceItem.Title) >= 1) then
+              begin
+                TTSdeviceComboBox.Items.AddObject(deviceItem.Title, deviceItem);
+                deviceItem := nil;
+              end;
+            finally
+              if Assigned(deviceItem) then FreeAndNil(deviceItem);
+            end;
+          end;
+        finally
+          if foundDeviceHeader then TTSdeviceComboBox.Items.EndUpdate;
+        end;
+      finally
+        FreeAndNil(SL);
+        FreeAndNil(OutputStream);
+        if not(TTSdeviceComboBox.Items.Count >= 1) then ttsFallbackNeeded := true;
+      end;
+    finally
+      if TTSdeviceComboBox.Items.Count >= 1 then
+      begin
+        ttsDeviceFound := true;
+        TTSdeviceComboBox.ItemIndex := 0;
+        UpdateTTSdeviceListAvailability(true, true);
+        Exit;
+      end;
+      TTSdeviceComboBox.Items.Add('N/A');
+      TTSdeviceComboBox.ItemIndex := 0;
+    end;
+  except
+    on x: Exception do
+    begin
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+      chdir(appdir);
+    end;
+  end;
+end;
+
+//Load device list
+procedure TSettingsForm.LoadDevices(const Engine: string = 'LLAMA_CPP');
+var
+  EngineFixed: string;
+  EngineItem: TEngineComboBoxItem;
+begin
+  try
+    //Check selected engine
+    if LlamaEngineComboBox.ItemIndex < 0 then
+    begin
+      MessageDlg('Error', 'No engine selected!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    EngineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
+    if not(Assigned(EngineItem)) then
+    begin
+      MessageDlg('Error', 'Invalid engine!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    //Load devices for the selected engine
+    EngineFixed := UpperCase(trim(Engine));
+    if not(length(EngineFixed) >= 1) then
+    begin
+      MessageDlg('Error', 'Target engine not specified!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    if EngineFixed = 'LLAMA_CPP' then
+    begin
+      LoadLLMdevices(EngineItem);
+      Exit;
+    end;
+    if EngineFixed = 'TTS' then
+    begin
+      LoadTTSdevices(EngineItem);
+      Exit;
+    end;
+    MessageDlg('Error', 'Invalid engine: ' + EngineFixed, mtError, [mbOK], 0);
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
 //Load default settings
 procedure TSettingsForm.LoadDefaultConfig;
 var
   engineItem: TEngineComboBoxItem;
-  configID: Integer;
+  configID, ttsUsesGPU, paramConfigID, RowIndex: Integer;
   modelFromDB, embeddingModelFromDB: String;
-  paramFound, embeddingParamFound: boolean;
+  ttsMainModelFromDB, ttsVoiceModelFromDB: String;
+  paramFound, embeddingParamFound, ttsParamFound: boolean;
   paramName, paramTitle, paramType, configName, configValue: String;
+  //Check if parameter can be processed (helper)
+  function CanProcessParameter(const isProcessed: boolean): boolean;
+  begin
+    Result := false;
+    if paramType = 'TTS' then
+    begin
+      if ttsFallbackNeeded then
+      begin
+        if not(ttsUsesGPU = 0) then Exit;
+        if isProcessed then Exit;
+        Result := true;
+        Exit;
+      end;
+    end;
+    if not(paramConfigID = configID) then Exit;
+    Result := true;
+  end;
 begin
   try
     //Defaults
     saveSettingsError := false;
     EnableLLMcheckBox.Checked := true;
     EnableEmbeddingCheckBox.Checked := true;
+    EnableTTScheckBox.Checked := false;
+    TTSdeviceLabel.Enabled := false;
+    TTSdeviceCombobox.Enabled := false;
+    TTSreloadDevicesButton.Enabled := false;
     LLMloggingCheckBox.Checked := true;
     LLMproxyServicePort.Text := '';
     LLMproxyServiceTimeout.Value := 60;
@@ -1286,8 +2026,11 @@ begin
     LLMproxyServiceMaxPackageSize.Value := 2097152;
     llmConversationalPort := 8080;
     llmEmbeddingPort := 8081;
+    llmTTSport := 8082;
     llmProxyLocation := '/llamacpp/';
+    ttsFallbackNeeded := false;
     llmEmbeddingDeviceFound := false;
+    ttsDeviceFound := false;
     //Validate selected engine
     if LlamaEngineComboBox.ItemIndex < 0 then Exit;
     engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
@@ -1299,16 +2042,23 @@ begin
     if engineItem.ProxyTimeout >= 1 then LLMproxyServiceTimeout.Value := engineItem.ProxyTimeout;
     if engineItem.ProxyMaxConnections >= 1 then LLMproxyServiceMaxConnections.Value := engineItem.ProxyMaxConnections;
     if engineItem.ProxyMaxPackageSize >= 1 then LLMproxyServiceMaxPackageSize.Value := engineItem.ProxyMaxPackageSize;
+    if not(length(engineItem.TTSbinary) >= 1) then ttsFallbackNeeded := true;
+    GeneralTTSsettingsGroupBox.Enabled := (((length(engineItem.TTSbinary) >= 1) or (length(ttsFallbackBinary) >= 1)) and ttsModelsAvailable);
     ReloadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
     //Load devices
-    LoadDevices;
+    LoadDevices('LLAMA_CPP');
+    LoadDevices('TTS');
     //Clear parameters
     ParameterListEditor.Strings.Clear;
     EmbeddingParameterListEditor.Strings.Clear;
+    TTSparameterListEditor.Strings.Clear;
     TitleList.Clear;
     EmbeddingTitleList.Clear;
+    TTStitleList.Clear;
     modelFromDB := '';
     embeddingModelFromDB := '';
+    ttsMainModelFromDB := '';
+    ttsVoiceModelFromDB := '';
     //Connect to database
     if not(LlamaDBconnection.Connected) then
     begin
@@ -1327,49 +2077,84 @@ begin
     ConfigDataQuery.Open;
     paramFound := false;
     embeddingParamFound := false;
+    ttsParamFound := false;
     while not(ConfigDataQuery.EOF) do
     begin
       //Load default parameters from database
+      paramConfigID := StrToIntDef(trim(ConfigDataQuery.FieldByName('config_id').AsString), -1);
+      ttsUsesGPU := StrToIntDef(trim(ConfigDataQuery.FieldByName('tts_uses_gpu').AsString), -1);
       paramName := trim(ConfigDataQuery.FieldByName('name').AsString);
       paramTitle := trim(ConfigDataQuery.FieldByName('title').AsString) + ': ' + trim(ConfigDataQuery.FieldByName('description').AsString);
       paramType := uppercase(trim(ConfigDataQuery.FieldByName('type_name').AsString));
-      //Load default models from database
+      //Load default model from database
       if SameText(paramName, 'model') then
       begin
-        if paramType = 'EMBEDDING' then
-          embeddingModelFromDB := trim(ConfigDataQuery.FieldByName('value').AsString)
-        else
-          modelFromDB := trim(ConfigDataQuery.FieldByName('value').AsString);
+        if CanProcessParameter(length(ttsMainModelFromDB) >= 1) then
+        begin
+          if paramType = 'TTS' then
+            ttsMainModelFromDB := trim(ConfigDataQuery.FieldByName('value').AsString)
+          else if paramType = 'EMBEDDING' then
+            embeddingModelFromDB := trim(ConfigDataQuery.FieldByName('value').AsString)
+          else if paramType = 'CONVERSATIONAL' then
+            modelFromDB := trim(ConfigDataQuery.FieldByName('value').AsString);
+        end;
       end
-      else if not(SameText(paramName, 'device')) then
+      else if not(MatchStr(paramName, ['device', 'user_home_dir', 'cache-dir', 'voice-dir', 'punctuation_restoration_model'])) then
       begin
         //Load default port from database
         if SameText(paramName, 'port') then
         begin
-          if paramType = 'EMBEDDING' then
-            llmEmbeddingPort := StrToIntDef(trim(ConfigDataQuery.FieldByName('value').AsString), 8081)
-          else
-            llmConversationalPort := StrToIntDef(trim(ConfigDataQuery.FieldByName('value').AsString), 8080);
+          if CanProcessParameter(llmTTSport = 8082) then
+          begin
+            if paramType = 'TTS' then
+              llmTTSport := StrToIntDef(trim(ConfigDataQuery.FieldByName('value').AsString), 8082)
+            else if paramType = 'EMBEDDING' then
+              llmEmbeddingPort := StrToIntDef(trim(ConfigDataQuery.FieldByName('value').AsString), 8081)
+            else if paramType = 'CONVERSATIONAL' then
+              llmConversationalPort := StrToIntDef(trim(ConfigDataQuery.FieldByName('value').AsString), 8080);
+          end;
         end;
-        //Load remaining embedding parameters from database
-        if paramType = 'EMBEDDING' then
+        //Load remaining default TTS parameters from database with fallback
+        if paramType = 'TTS' then
         begin
-          EmbeddingParameterListEditor.InsertRow(
-            paramName,
-            trim(ConfigDataQuery.FieldByName('value').AsString),
-            true);
-          EmbeddingTitleList.Values[paramName] := paramTitle;
-          embeddingParamFound := true;
+          //TTS voice model
+          if SameText(paramName, 'voice') then
+          begin
+            if CanProcessParameter(length(ttsVoiceModelFromDB) >= 1) then ttsVoiceModelFromDB := trim(ConfigDataQuery.FieldByName('value').AsString);
+          end
+          else if CanProcessParameter(TTSparameterListEditor.FindRow(paramName, RowIndex)) then
+          begin
+            //Generic TTS parameters
+            TTSparameterListEditor.InsertRow(
+              paramName,
+              trim(ConfigDataQuery.FieldByName('value').AsString),
+              true);
+            TTStitleList.Values[paramName] := paramTitle;
+            ttsParamFound := true;
+          end;
         end
-        else
+        else if paramConfigID = configID then
         begin
-          //Load remaining conversational parameters from database
-          ParameterListEditor.InsertRow(
-            paramName,
-            trim(ConfigDataQuery.FieldByName('value').AsString),
-            true);
-          TitleList.Values[ParamName] := paramTitle;
-          paramFound := true;
+          //Load remaining embedding parameters from database (no fallback)
+          if paramType = 'EMBEDDING' then
+          begin
+            EmbeddingParameterListEditor.InsertRow(
+              paramName,
+              trim(ConfigDataQuery.FieldByName('value').AsString),
+              true);
+            EmbeddingTitleList.Values[paramName] := paramTitle;
+            embeddingParamFound := true;
+          end
+          else if paramType = 'CONVERSATIONAL' then
+          begin
+            //Load remaining conversational parameters from database (no fallback)
+            ParameterListEditor.InsertRow(
+              paramName,
+              trim(ConfigDataQuery.FieldByName('value').AsString),
+              true);
+            TitleList.Values[ParamName] := paramTitle;
+            paramFound := true;
+          end;
         end;
       end;
       ConfigDataQuery.Next;
@@ -1403,6 +2188,7 @@ begin
       //Apply default parameters
       if paramFound then ParameterListEditor.Row := 1;
       if embeddingParamFound then EmbeddingParameterListEditor.Row := 1;
+      if ttsParamFound then TTSparameterListEditor.Row := 1;
       //Apply default LLM model
       if length(modelFromDB) >= 1 then
       begin
@@ -1421,6 +2207,24 @@ begin
         begin
           if EmbeddingModelComboBox.Items.Count >= 1 then EmbeddingModelComboBox.ItemIndex := 0;
           MessageDlg('Error', 'The selected embedding model not found in model directory!', mtError, [mbOK], 0);
+        end;
+      end;
+      //Apply default main TTS model
+      if length(ttsMainModelFromDB) >= 1 then
+      begin
+        MainTTSmodelComboBox.ItemIndex := MainTTSmodelComboBox.Items.IndexOf(ttsMainModelFromDB);
+        if MainTTSmodelComboBox.ItemIndex = -1 then
+        begin
+          if MainTTSmodelComboBox.Items.Count >= 1 then MainTTSmodelComboBox.ItemIndex := 0;
+        end;
+      end;
+      //Apply default TTS voice model
+      if length(ttsVoiceModelFromDB) >= 1 then
+      begin
+        VoiceTTSmodelComboBox.ItemIndex := VoiceTTSmodelComboBox.Items.IndexOf(ttsVoiceModelFromDB);
+        if VoiceTTSmodelComboBox.ItemIndex = -1 then
+        begin
+          if VoiceTTSmodelComboBox.Items.Count >= 1 then VoiceTTSmodelComboBox.ItemIndex := 0;
         end;
       end;
     finally
@@ -1876,8 +2680,14 @@ begin
     FormatExt := BackgroundImageFormat
   else
     FormatExt := 'png';
-  if FormatExt = '' then FormatExt := 'png';
+  if not(length(FormatExt) >= 1) then FormatExt := 'png';
   Result := 'image.' + FormatExt;
+end;
+
+//Remove TTS parameter
+procedure TSettingsForm.RemoveTTSparameterButtonClick(Sender: TObject);
+begin
+  RemoveParameter(TTSparameterListEditor, TTStitleList);
 end;
 
 //Open SSL certificate
@@ -2238,7 +3048,9 @@ end;
 
 //Handle LLM engine change
 procedure TSettingsForm.LlamaEngineComboBoxChange(Sender: TObject);
-var engineItem: TEngineComboBoxItem;
+var
+  engineItem: TEngineComboBoxItem;
+  TTSusesGPU: boolean;
 begin
   try
     if not(canHandleEngineChange) then Exit;
@@ -2256,8 +3068,14 @@ begin
     if LlamaEngineComboBox.ItemIndex < 0 then Exit;
     engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
     if not(Assigned(engineItem)) then Exit;
+    if not(length(engineItem.TTSbinary) >= 1) then ttsFallbackNeeded := true;
+    GeneralTTSsettingsGroupBox.Enabled := (((length(engineItem.TTSbinary) >= 1) or (length(ttsFallbackBinary) >= 1)) and ttsModelsAvailable);
+    if not(GeneralTTSsettingsGroupBox.Enabled) then EnableTTScheckBox.Checked := false;
     ReloadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
-    LoadDevices;
+    LoadDevices('LLAMA_CPP');
+    LoadDevices('TTS');
+    TTSusesGPU := not(engineItem.TTSusesGPU = 0);
+    UpdateTTSdeviceListAvailability(TTSusesGPU, TTSusesGPU);
   except
     on x: Exception do
       MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
@@ -2392,16 +3210,18 @@ end;
 //Load JSON Configuration
 procedure TSettingsForm.LoadConfigData;
 var
-  JSONData, EngineNode, LLMnode, EmbeddingNode, LogNode: TJSONData;
+  JSONData, EngineNode, LLMnode, EmbeddingNode, TTSnode, LogNode: TJSONData;
   WebServerData, ProxyPortNode, ProxyTimeoutNode, ProxyMaxConnectionsNode, ProxyMaxPackageSizeNode: TJSONData;
   httpPortNode, httpsPortNode, sslCertNode, sslKeyNode, phpPortNode: TJSONData;
   RootObj, ParamsObj, WebServerObj: TJSONObject;
   JSONList: TStringList;
-  loadedEngineID, loadedModel, loadedEmbeddingModel, loadedTimezone: String;
-  item: TEngineComboBoxItem;
+  loadedEngineID, loadedModel, loadedEmbeddingModel, loadedTTSmainModel, loadedTTSvoiceModel, loadedTimezone: String;
+  engineItem: TEngineComboBoxItem;
+  deviceItem: TDeviceComboBoxItem;
   i, foundIndex: Integer;
   paramFound: boolean;
   paramName, paramValue: String;
+  UsesGPU, TTSusesGPU: boolean;
 begin
   //Default values
   saveSettingsError := false;
@@ -2433,15 +3253,19 @@ begin
       else
         loadedEngineID := '';
       //Load defaults for selected engine
+      UsesGPU := false;
+      TTSusesGPU := false;
       if length(loadedEngineID) >= 1 then
       begin
         if LlamaEngineComboBox.Items.Count >= 1 then
         begin
           for i := 0 to LlamaEngineComboBox.Items.Count - 1 do
           begin
-            item := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[i]);
-            if not(Assigned(item)) then continue;
-            if not(item.ID = loadedEngineID) then continue;
+            engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[i]);
+            if not(Assigned(engineItem)) then continue;
+            if not(engineItem.ID = loadedEngineID) then continue;
+            UsesGPU := not(engineItem.UsesGPU = 0);
+            TTSusesGPU := not(engineItem.TTSusesGPU = 0);
             LlamaEngineComboBox.ItemIndex := i;
             //We must trigger LoadDefaultConfig here because changing the engine
             //usually changes which parameters and models are valid in the DB
@@ -2450,22 +3274,40 @@ begin
           end;
         end;
       end;
-      //Set device
-      if DeviceComboBox.Enabled and (DeviceComboBox.Items.Count >= 1) then
+      //Set LLM device
+      if UsesGPU and (DeviceComboBox.Items.Count >= 1) then
       begin
-        paramName := trim(RootObj.Get('llama_device', ''));
-        if length(paramName) >= 1 then
+        paramValue := trim(RootObj.Get('llama_device', ''));
+        if length(paramValue) >= 1 then
         begin
           foundIndex := -1;
           for i := 0 to DeviceComboBox.Items.Count -1 do
           begin
-             if TDeviceComboBoxItem(DeviceComboBox.Items.Objects[i]).ID = paramName then
-             begin
-               foundIndex := i;
-               break;
-             end;
+            deviceItem := TDeviceComboBoxItem(DeviceComboBox.Items.Objects[i]);
+            if not(Assigned(deviceItem)) then continue;
+            if not(deviceItem.ID = paramValue) then continue;
+            foundIndex := i;
+            break;
           end;
           if not(foundIndex = -1) then DeviceComboBox.ItemIndex := foundIndex;
+        end;
+      end;
+      //Set TTS device
+      if TTSusesGPU and (TTSdeviceCombobox.Items.Count >= 1) then
+      begin
+        paramValue := trim(RootObj.Get('tts_device', ''));
+        if length(paramValue) >= 1 then
+        begin
+          foundIndex := -1;
+          for i := 0 to TTSdeviceCombobox.Items.Count-1 do
+          begin
+            deviceItem := TDeviceComboBoxItem(TTSdeviceCombobox.Items.Objects[i]);
+            if not(Assigned(deviceItem)) then continue;
+            if not(deviceItem.ID = paramValue) then continue;
+            foundIndex := i;
+            break;
+          end;
+          if not(foundIndex = -1) then TTSdeviceCombobox.ItemIndex := foundIndex;
         end;
       end;
       //Load LLM model
@@ -2494,6 +3336,30 @@ begin
         else
           EmbeddingModelComboBox.ItemIndex := foundIndex;
       end;
+      //Load main TTS model
+      loadedTTSmainModel := trim(RootObj.Get('tts_model_main', ''));
+      if length(loadedTTSmainModel) >= 1 then
+      begin
+        foundIndex := MainTTSmodelComboBox.Items.IndexOf(loadedTTSmainModel);
+        if foundIndex = -1 then
+        begin
+          if MainTTSmodelComboBox.Items.Count >= 1 then MainTTSmodelComboBox.ItemIndex := 0;
+        end
+        else
+          MainTTSmodelComboBox.ItemIndex := foundIndex;
+      end;
+      //Load TTS voice model
+      loadedTTSvoiceModel := trim(RootObj.Get('tts_model_voice', ''));
+      if length(loadedTTSvoiceModel) >= 1 then
+      begin
+        foundIndex := VoiceTTSmodelComboBox.Items.IndexOf(loadedTTSvoiceModel);
+        if foundIndex = -1 then
+        begin
+          if VoiceTTSmodelComboBox.Items.Count >= 1 then VoiceTTSmodelComboBox.ItemIndex := 0;
+        end
+        else
+          VoiceTTSmodelComboBox.ItemIndex := foundIndex;
+      end;
       //Enable or disable LLM service
       LLMnode := RootObj.Find('llm_enabled');
       if Assigned(LLMnode) then
@@ -2511,6 +3377,15 @@ begin
           EnableEmbeddingCheckBox.Checked := not(EmbeddingNode.AsInteger = 0)
         else
           EnableEmbeddingCheckBox.Checked := (IndexStr(LowerCase(trim(EmbeddingNode.AsString)), ['0', 'false', 'no']) = -1);
+      end;
+      //Enable or disable TTS service
+      TTSnode := RootObj.Find('tts');
+      if Assigned(TTSnode) then
+      begin
+        if TTSnode.JSONType = jtNumber then
+          EnableTTScheckBox.Checked := (not(TTSnode.AsInteger = 0) and GeneralTTSsettingsGroupBox.Enabled)
+        else
+          EnableTTScheckBox.Checked := ((IndexStr(LowerCase(trim(TTSnode.AsString)), ['0', 'false', 'no']) = -1) and GeneralTTSsettingsGroupBox.Enabled);
       end;
       //Enable or disable logging
       LogNode := RootObj.Find('logging');
@@ -2597,6 +3472,25 @@ begin
           paramFound := true;
         end;
         if paramFound then EmbeddingParameterListEditor.Row := 1;
+      end;
+      //Get TTS parameters
+      ParamsObj := RootObj.Get('tts_parameters', TJSONObject(nil));
+      if Assigned(ParamsObj) then
+      begin
+        paramFound := false;
+        TTSparameterListEditor.Strings.Clear;
+        for i := 0 to ParamsObj.Count - 1 do
+        begin
+          paramName := trim(ParamsObj.Names[i]);
+          paramValue := trim(ParamsObj.Items[i].AsString);
+          TTSparameterListEditor.InsertRow(paramName, paramValue, true);
+          if Assigned(TTStitleList) and (TTStitleList.Values[paramName] = '') then
+            TTStitleList.Values[paramName] := paramName;
+          if SameText(paramName, 'port') then
+            llmTTSport := StrToIntDef(paramValue, 8082);
+          paramFound := true;
+        end;
+        if paramFound then TTSparameterListEditor.Row := 1;
       end;
       //Load web server settings
       WebServerData := RootObj.Find('webserver');
@@ -2790,7 +3684,7 @@ begin
         for i := 1 to ParameterListEditor.RowCount - 1 do
         begin
           KeyName := trim(ParameterListEditor.Keys[i]);
-          if KeyName = '' then continue;
+          if not(length(KeyName) >= 1) then continue;
           NewValue := trim(ParameterListEditor.Values[ParameterListEditor.Keys[i]]);
           if lowercase(KeyName) = 'port' then
           begin
@@ -2821,7 +3715,7 @@ begin
         for i := 1 to EmbeddingParameterListEditor.RowCount - 1 do
         begin
           KeyName := trim(EmbeddingParameterListEditor.Keys[i]);
-          if KeyName = '' then continue;
+          if not(length(KeyName) >= 1) then continue;
           NewValue := trim(EmbeddingParameterListEditor.Values[EmbeddingParameterListEditor.Keys[i]]);
           if lowercase(KeyName) = 'port' then
           begin
@@ -2838,6 +3732,50 @@ begin
       if not(PortsReserved.IndexOf(IntToStr(llmEmbeddingPort)) = -1) then
         raise SaveSettingsFatal.Create('Error: embedding port already reserved: ' + IntToStr(llmEmbeddingPort));
       PortsReserved.Add(IntToStr(llmEmbeddingPort));
+      //Enable or disable TTS
+      if EnableTTScheckBox.Checked then
+        RootObj.Add('tts', 1)
+      else
+        RootObj.Add('tts', 0);
+      //TTS device
+      if ttsDeviceFound and not(TTSdeviceCombobox.ItemIndex = -1) then
+      begin
+        if Assigned(TTSdeviceCombobox.Items.Objects[TTSdeviceCombobox.ItemIndex]) then
+        begin
+          deviceItem := TDeviceComboBoxItem(TTSdeviceCombobox.Items.Objects[TTSdeviceCombobox.ItemIndex]);
+          DeviceID := trim(deviceItem.ID);
+          if length(DeviceID) >= 1 then RootObj.Add('tts_device', DeviceID);
+        end;
+      end;
+      //TTS fallback status
+      if ttsFallbackNeeded then RootObj.Add('tts_fallback_needed', 1);
+      //TTS models
+      if length(trim(MainTTSmodelComboBox.Text)) >= 1 then RootObj.Add('tts_model_main', trim(MainTTSmodelComboBox.Text));
+      if length(trim(VoiceTTSmodelComboBox.Text)) >= 1 then RootObj.Add('tts_model_voice', trim(VoiceTTSmodelComboBox.Text));
+      //TTS parameters
+      if TTSparameterListEditor.RowCount >= 2 then
+      begin
+        ParamsObj := TJSONObject.Create;
+        for i := 1 to TTSparameterListEditor.RowCount - 1 do
+        begin
+          KeyName := trim(TTSparameterListEditor.Keys[i]);
+          if not(length(KeyName) >= 1) then continue;
+          NewValue := trim(TTSparameterListEditor.Values[TTSparameterListEditor.Keys[i]]);
+          if lowercase(KeyName) = 'port' then
+          begin
+            llmTTSport := StrToIntDef(NewValue, llmTTSport);
+            ParamsObj.Add(KeyName, IntToStr(llmTTSport));
+          end
+          else
+            ParamsObj.Add(KeyName, NewValue);
+        end;
+        RootObj.Add('tts_parameters', ParamsObj);
+        ParamsObj := nil;
+      end;
+      //Check TTS port availability
+      if not(PortsReserved.IndexOf(IntToStr(llmTTSport)) = -1) then
+        raise SaveSettingsFatal.Create('Error: TTS port already reserved: ' + IntToStr(llmTTSport));
+      PortsReserved.Add(IntToStr(llmTTSport));
       //Nginx settings
       ParamsObj := TJSONObject.Create;
       if not(PortsReserved.IndexOf(IntToStr(NginxHTTPport.Value)) = -1) then
@@ -3087,14 +4025,18 @@ var
   ServerFilePath: AnsiString;
   ServerCLIfileName: String;
   ServerCLIfilePath: AnsiString;
+  TTSserverFileName: String;
+  TTSserverFilePath: AnsiString;
   PHPtimezone: String;
   TimezoneIndex: integer;
   item: TEngineComboBoxItem;
+  ttsModelItem: TTTSmodel;
 begin
   try
     //Basic settings
     llmConversationalPort := 8080;
     llmEmbeddingPort := 8081;
+    llmTTSport := 8082;
     llmProxyLocation := '/llamacpp/';
     AvatarImageData := nil;
     BackgroundImageData := nil;
@@ -3108,13 +4050,21 @@ begin
     EmbeddingTitleList := TStringList.Create;
     EmbeddingTitleList.Sorted := true;
     EmbeddingTitleList.Duplicates := dupIgnore;
+    TTStitleList := TStringList.Create;
+    TTStitleList.Sorted := true;
+    TTStitleList.Duplicates := dupIgnore;
     canHandleEngineChange := false;
     configDataSaved := false;
     saveSettingsError := false;
     MainLLMserverProcessRunning := false;
     WebUIprocessRunning := false;
     DefaultPHPtimezone := -1;
+    ttsFallbackNeeded := false;
+    ttsFallbackBinary := '';
+    ttsModelsAvailable := false;
     llmEmbeddingDeviceFound := false;
+    ttsDeviceFound := false;
+    defaultTTSmodelList :=  TTTSmodelList.Create;
     //Directories and files
     {$IFDEF MSWINDOWS}
     appdir := IncludeTrailingPathDelimiter(ExtractFilePath(application.ExeName));
@@ -3146,6 +4096,12 @@ begin
     if not(DirectoryExists(modeldir)) then raise Exception.Create('LLM directory not found: ' + modeldir);
     embeddingModeldir := modeldir + 'embedding' + PathDelim;
     if not(DirectoryExists(embeddingModeldir)) then raise Exception.Create('Embedding directory not found: ' + embeddingModeldir);
+    ttsModeldir := modeldir + 'tts' + PathDelim;
+    if not(DirectoryExists(ttsModeldir)) then ttsModeldir := '';
+    if length(ttsModeldir) >= 1 then
+      ttsRegisterFile := ttsModeldir + 'register.json'
+    else
+      ttsRegisterFile := '';
     configdir := appdir + 'config' + PathDelim;
     if not(DirectoryExists(configdir)) then ForceDirectories(configdir);
     wrapperConfigFile := configdir + 'wrapper.json';
@@ -3185,9 +4141,37 @@ begin
           item.ProxyTimeout := StrToIntDef(trim(LlamaQuery.FieldByName('proxy_timeout').AsString), 1);
           item.ProxyMaxConnections := StrToIntDef(trim(LlamaQuery.FieldByName('max_proxy_connections').AsString), 1);
           item.ProxyMaxPackageSize := StrToIntDef(trim(LlamaQuery.FieldByName('max_package_size').AsString), 1);
+          item.TTSusesGPU := StrToIntDef(trim(LlamaQuery.FieldByName('tts_uses_gpu').AsString), 0);
+          TTSserverFileName := trim(LlamaQuery.FieldByName('tts_binary').AsString);
+          TTSserverFileName := StringReplace(TTSserverFileName, '/', PathDelim, [rfReplaceAll]);
+          TTSserverFilePath := appdir + 'crispasr' + PathDelim + TTSserverFileName;
+          if FileExists(TTSserverFilePath) then
+          begin
+            item.TTSbinary := TTSserverFilePath;
+            if item.TTSusesGPU = 0 then ttsFallbackBinary := item.TTSbinary;
+          end
+          else
+            item.TTSbinary := '';
           LlamaEngineComboBox.Items.AddObject(trim(LlamaQuery.FieldByName('name').AsString), item);
         end;
         LlamaQuery.Next;
+      end;
+      //Load default TTS models
+      TTSmodelQuery.Open;
+      defaultTTSmodelList.Clear;
+      while not(TTSmodelQuery.EOF) do
+      begin
+        ttsModelItem := TTTSmodel.Create;
+        ttsModelItem.Name := trim(TTSmodelQuery.FieldByName('name').AsString);
+        ttsModelItem.Title := trim(TTSmodelQuery.FieldByName('title').AsString);
+        ttsModelItem.Description := trim(TTSmodelQuery.FieldByName('description').AsString);
+        ttsModelItem.FileName := trim(TTSmodelQuery.FieldByName('value').AsString);
+        ttsModelItem.Comments := trim(TTSmodelQuery.FieldByName('comments').AsString);
+        if (length(ttsModelItem.Name) >= 1) and (length(ttsModelItem.FileName) >= 1) then
+          defaultTTSmodelList.Add(ttsModelItem)
+        else
+          FreeAndNil(ttsModelItem);
+        TTSmodelQuery.Next;
       end;
       //Get PHP time zones
       TimezoneQuery.Open;
@@ -3212,6 +4196,7 @@ begin
       PHPtimezoneCombobox.ItemIndex := DefaultPHPtimezone;
     finally
       LlamaQuery.Close;
+      TTSmodelQuery.Close;
       TimezoneQuery.Close;
       LlamaTransaction.Active := false;
       LlamaDBconnection.Close;
@@ -3233,6 +4218,11 @@ begin
     //Load models
     LoadLLMfiles('CONVERSATIONAL');
     LoadLLMfiles('EMBEDDING');
+    if length(ttsModeldir) >= 1 then
+    begin
+      LoadLLMfiles('TTS_MAIN');
+      LoadLLMfiles('TTS_VOICE');
+    end;
     //Load personalities
     PersonaMemoryMode.Items.AddObject('Delete old (default)', TMemoryModeComboBoxItem.Create);
     TMemoryModeComboBoxItem(PersonaMemoryMode.Items.Objects[0]).ID := 1;
@@ -3257,6 +4247,8 @@ begin
       if not(x.ClassType = EAbort) then MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
       if Assigned(TitleList) then FreeAndNil(TitleList);
       if Assigned(EmbeddingTitleList) then FreeAndNil(EmbeddingTitleList);
+      if Assigned(TTStitleList) then FreeAndNil(TTStitleList);
+      if Assigned(defaultTTSmodelList) then FreeAndNil(defaultTTSmodelList);
       Abort;
     end;
   end;
@@ -3280,6 +4272,18 @@ begin
   RemoveParameter(EmbeddingParameterListEditor, EmbeddingTitleList);
 end;
 
+//Show title for each TTS parameter
+procedure TSettingsForm.TTSparameterListEditorMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+begin
+  ShowHintForValueListCoords(TTSparameterListEditor, ttsTitleList, X, Y);
+end;
+
+//Load TTS device list
+procedure TSettingsForm.TTSreloadDevicesButtonClick(Sender: TObject);
+begin
+  LoadDevices('TTS');
+end;
+
 //Free up memory
 procedure TSettingsForm.FormDestroy(Sender: TObject);
 var i: integer;
@@ -3299,8 +4303,11 @@ begin
     end;
     if Assigned(TitleList) then FreeAndNil(TitleList);
     if Assigned(EmbeddingTitleList) then FreeAndNil(EmbeddingTitleList);
+    if Assigned(TTStitleList) then FreeAndNil(TTStitleList);
+    if Assigned(defaultTTSmodelList) then FreeAndNil(defaultTTSmodelList);
     ClearEngineComboBox;
-    ClearDeviceComboBox;
+    ClearLLMdeviceComboBox;
+    ClearTTSdeviceComboBox;
     ClearPersonaComboBox;
     if PersonaMemoryMode.Items.Count >= 1 then
     begin
@@ -3331,6 +4338,7 @@ begin
       PersonaResponseMode.Items.Clear;
     end;
     LlamaQuery.Close;
+    TTSmodelQuery.Close;
     TimezoneQuery.Close;
     LlamaTransaction.Active := false;
     LlamaDBconnection.Close;

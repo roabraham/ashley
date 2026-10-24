@@ -10,7 +10,7 @@ uses
   {$IFDEF UNIX}
   cthreads, BaseUnix, Unix,
   {$ENDIF}
-  Classes, SysUtils, CustApp, SQLDB, SQLite3Conn, fpjson, jsonparser, Process, StrUtils, md5, sockets, ssockets;
+  Classes, SysUtils, CustApp, SQLDB, SQLite3Conn, fpjson, jsonparser, Process, StrUtils, md5, sockets, ssockets, math;
 
 const
   { LLM_TIMEOUT_THRESHOLD: Seconds before proxy timeout to trigger early partial response. }
@@ -77,6 +77,9 @@ const INSTANCE_PREFIX = '/tmp/llama_service_wrapper_';
 
 type
 
+  { ServiceType: enumerated service types. }
+  TServiceType = (CONVERSATIONAL, EMBEDDING, TTS);
+
   { EWatchdogFatal: Exception raised when a fatal error occurs in the watchdog thread, causing termination. }
   EWatchdogFatal = class(Exception);
 
@@ -101,12 +104,16 @@ type
   protected
     { FTargetPort: The target port for the conversational LLM server. }
     FTargetPort: Integer;
-    { FTargetEmbeddingPort: The target port for the embedding LLM server. }
+    { FTargetEmbeddingPort: The target port for the embedding server. }
     FTargetEmbeddingPort: Integer;
+    { FTargetTTSport: The target port for the TTS server. }
+    FTargetTTSport: Integer;
     { FTargetEndpoint: The endpoint path for the conversational LLM server. }
     FTargetEndpoint: string;
-    { FTargetEmbeddingEndpoint: The endpoint path for the embedding LLM server. }
+    { FTargetEmbeddingEndpoint: The endpoint path for the embedding server. }
     FTargetEmbeddingEndpoint: string;
+    { FTargetTTSendpoint: The endpoint path for the TTS server. }
+    FTargetTTSendpoint: string;
     { FProxyTimeout: Maximum time in seconds before the connection times out. }
     FProxyTimeout: Integer;
     { FMaxPackageSize: Maximum allowed request/response size in bytes. }
@@ -127,7 +134,11 @@ type
     { FStartTime: Timestamp when the worker started processing the request. }
     FStartTime: TDateTime;
     { Create: Initializes the worker thread with connection and routing parameters. }
-    constructor Create(AHandle: TSocket; ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: string; ATimeout, AmaxPackageSize: Integer);
+    constructor Create(
+      AHandle: TSocket;
+      ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer;
+      AEndpoint, AEmbeddingEndpoint, ATTSendpoint: string;
+      ATimeout, AmaxPackageSize: Integer);
     { StartTime: Property to access the worker start timestamp. }
     property StartTime: TDateTime read FStartTime;
   end;
@@ -141,12 +152,16 @@ type
     FProxyPort: Integer;
     { FTargetPort: The target port for the conversational LLM server. }
     FTargetPort: Integer;
-    { FTargetEmbeddingPort: The target port for the embedding LLM server. }
+    { FTargetEmbeddingPort: The target port for the embedding server. }
     FTargetEmbeddingPort: Integer;
+    { FTargetTTSport: The target port for the TTS server. }
+    FTargetTTSport: Integer;
     { FTargetEndpoint: The endpoint path for the conversational LLM server. }
     FTargetEndpoint: String;
-    { FTargetEmbeddingEndpoint: The endpoint path for the embedding LLM server. }
+    { FTargetEmbeddingEndpoint: The endpoint path for the embedding server. }
     FTargetEmbeddingEndpoint: String;
+    { FTargetTTSendpoint: The endpoint path for the TTS server. }
+    FTargetTTSendpoint: String;
     { FProxyTimeout: Maximum time in seconds before a worker times out. }
     FProxyTimeout: Integer;
     { FProxyMaxConnections: Maximum number of concurrent worker connections. }
@@ -165,7 +180,11 @@ type
     procedure Execute; override;
   public
     { Create: Initializes the proxy thread with routing and connection parameters. }
-    constructor Create(AProxyHost: String; APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
+    constructor Create(
+      AProxyHost: String;
+      APort, ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer;
+      AEndpoint, AEmbeddingEndpoint, ATTSendpoint: String;
+      ATimeout, AMax, Apmax: Integer);
     { Destroy: Frees the proxy thread and cleans up resources. }
     destructor Destroy; override;
   end;
@@ -183,8 +202,10 @@ type
     FQuery: TSQLQuery;
     { FProcess: Process object for the conversational LLM server. }
     FProcess: TProcess;
-    { FEmbeddingProcess: Process object for the embedding LLM server. }
+    { FEmbeddingProcess: Process object for the embedding server. }
     FEmbeddingProcess: TProcess;
+    { FTTSprocess: Process object for the TTS server. }
+    FTTSprocess: TProcess;
     { FPhpProcess: Process object for PHP FastCGI server. }
     FPhpProcess: TProcess;
     { FWebserverProcess: Process object for Nginx web server. }
@@ -197,24 +218,46 @@ type
     FModelDir: AnsiString;
     { FEmbeddingModelDir: Embedding model files directory path. }
     FEmbeddingModelDir: AnsiString;
+    { FTTSmodelDir: TTS model files directory path. }
+    FTTSmodelDir: AnsiString;
     { FLlamaDir: LLM server binaries directory path. }
     FLlamaDir: AnsiString;
-    { FServerBinary: Full path to the LLM server executable. }
+    { FcrispasrDir: TTS server binaries directory path. }
+    FcrispasrDir: AnsiString;
+    { FServerBinary: Full path to the LLM/embedding server executable. }
     FServerBinary: AnsiString;
-    { FDeviceID: Device identifier for GPU/CPU selection. }
+    { FTTSbinary: Full path to the TTS server executable. }
+    FTTSbinary: AnsiString;
+    { FDeviceID: Device identifier for LLM/embedding GPU/CPU selection. }
     FDeviceID: string;
+    { FTTSdeviceID: Device identifier for TTS GPU/CPU selection. }
+    FTTSdeviceID: string;
+    { FTTSuserHomeDir: User home directory for TTS engine (HOME environment variable). }
+    FTTSuserHomeDir: AnsiString;
+    { FTTScacheDir: Cache directory for TTS engine (CRISPASR_CACHE_DIR environment variable). }
+    FTTScacheDir: AnsiString;
+    { FTTSvoiceDir: Voice directory for TTS engine. }
+    FTTSvoiceDir: AnsiString;
     { FEndpoint: Conversational LLM endpoint path. }
     FEndpoint: string;
-    { FEmbeddingEndpoint: Embedding LLM endpoint path. }
+    { FEmbeddingEndpoint: embedding endpoint path. }
     FEmbeddingEndpoint: string;
+    { FTTSendpoint: TTS endpoint path. }
+    FTTSendpoint: string;
     { FinalFModelFile: Resolved full path to the conversational model file. }
     FinalFModelFile: AnsiString;
     { FinalFEmbeddingModelFile: Resolved full path to the embedding model file. }
     FinalFEmbeddingModelFile: AnsiString;
+    { FinalFTTSmainModelFile: Resolved full path to the main TTS model file. }
+    FinalFTTSmainModelFile: AnsiString;
+    { FinalFTTSvoiceModelFile: Resolved full path to the TTS voice model file. }
+    FinalFTTSvoiceModelFile: AnsiString;
     { FParams: Command-line parameters for the conversational LLM server. }
     FParams: TStringList;
-    { FEmbeddingParams: Command-line parameters for the embedding LLM server. }
+    { FEmbeddingParams: Command-line parameters for the embedding server. }
     FEmbeddingParams: TStringList;
+    { FTTSparams: Command-line parameters for the TTS server. }
+    FTTSparams: TStringList;
     { FUseLogFile: Flag indicating whether to log to file. }
     FUseLogFile: boolean;
     { FProxyHost: Host address for the API proxy service to listen on. }
@@ -294,7 +337,7 @@ type
     { WaitUntilPortFree: Blocks until the specified port becomes available. }
     procedure WaitUntilPortFree(APort: Integer);
     { StartProxy: Starts the API proxy service on the given port. }
-    procedure StartProxy(AProxyPort, ATargetPort, ATargetEmbeddingPort: Integer);
+    procedure StartProxy(AProxyPort, ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer);
     { StopProxy: Stops the API proxy service. }
     procedure StopProxy;
     { RunWatchdog: Main watchdog loop that monitors and restarts failed processes. }
@@ -335,15 +378,21 @@ end;
 { TWorkerThread implementation. }
 
 { TWorkerThread.Create initializes the worker thread with connection and routing parameters. }
-constructor TWorkerThread.Create(AHandle: TSocket; ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: string; ATimeout, AmaxPackageSize: Integer);
+constructor TWorkerThread.Create(
+  AHandle: TSocket;
+  ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer;
+  AEndpoint, AEmbeddingEndpoint, ATTSendpoint: string;
+  ATimeout, AmaxPackageSize: Integer);
 begin
   inherited Create(true);
   FreeOnTerminate := false; // Manager will free it
   FClientHandle := AHandle;
   FTargetPort := ATargetPort;
   FTargetEmbeddingPort := ATargetEmbeddingPort;
+  FTargetTTSport := ATargetTTSport;
   FTargetEndpoint := AEndpoint;
   FTargetEmbeddingEndpoint := AEmbeddingEndpoint;
+  FTargetTTSendpoint := ATTSendpoint;
   FProxyTimeout := ATimeout;
   FMaxPackageSize := AmaxPackageSize;
   FStartTime := Now;
@@ -468,18 +517,21 @@ var
   LlamaStream: TInetSocket;
   Buffer: array[0..8191] of Byte;
   RequestHeader, ReceivedEndpoint, RequestBody, Line, FullContent: AnsiString;
-  BytesRead, ContentLength, i: Integer;
+  BytesRead, ContentLength, i, TotalTimeoutWithTreshold: Integer;
+  DataNode, ContentNode, streamNode: TJSONData;
   LastObject, TempObj: TJSONObject;
-  DataNode, ContentNode, ValidationNode: TJSONData;
   ChunkStartTime: TDateTime;
   ElapsedSeconds, CurrentChunkTimeout: Double;
-  TimeoutWarning, TimeoutReached: Boolean;
-  CleanReceived, FinalEndpoint: AnsiString;
-  FinalTargetPort: Integer;
+  TimeoutWarning, TimeoutReached, isStreaming, ResponseHeadersDone: Boolean;
+  CleanReceived, FinalEndpoint, HTTPerror: AnsiString;
+  FinalTargetPort, EndPointCount: Integer;
+  ServiceType: TServiceType;
 begin
   FLlamaSocket := -1;
-  TimeoutWarning := False;
-  TimeoutReached := False;
+  TimeoutWarning := false;
+  TimeoutReached := false;
+  isStreaming := false;
+  ResponseHeadersDone := false;
   if FClientHandle = -1 then Exit; //If handle is dead, exit
   FillChar(Buffer, SizeOf(Buffer), 0);
   RequestBody := '';
@@ -557,17 +609,48 @@ begin
         if BytesRead <= 0 then break;
         Inc(i, BytesRead);
       end;
+      // Handle termination
+      if Terminated then Exit;
+      // Do not process incomplete request
+      if i <= ContentLength then
+      begin
+        SendHttpError(ClientConn, 400, 'Incomplete request body');
+        fpshutdown(FClientHandle, 2);
+        Exit;
+      end;
       // JSON Payload Validation
+      DataNode := nil;
       try
-        ValidationNode := GetJSON(RequestBody);
-        ValidationNode.Free;
-      except
-        on E: Exception do
-        begin
-          SendHttpError(ClientConn, 400, 'Invalid JSON payload');
-          fpshutdown(FClientHandle, 2);
-          Exit;
+        try
+          DataNode := GetJSON(RequestBody);
+          if not(DataNode is TJSONObject) then
+          begin
+            SendHttpError(ClientConn, 400, 'Invalid JSON payload');
+            fpshutdown(FClientHandle, 2);
+            Exit;
+          end;
+          // Check streaming mode
+          TempObj := TJSONObject(DataNode);
+          streamNode := TempObj.Find('stream');
+          if Assigned(streamNode) then
+          begin
+            case streamNode.JSONType of
+              jtBoolean: isStreaming := streamNode.AsBoolean;
+              jtNumber: isStreaming := not(streamNode.AsInteger = 0);
+              jtNull: isStreaming := false;
+              else isStreaming := (IndexStr(LowerCase(trim(streamNode.AsString)), ['0', 'false', 'no']) = -1);
+            end;
+          end;
+        except
+          on E: Exception do
+          begin
+            SendHttpError(ClientConn, 400, 'Invalid JSON payload');
+            fpshutdown(FClientHandle, 2);
+            Exit;
+          end;
         end;
+      finally
+        if Assigned(DataNode) then FreeAndNil(DataNode);
       end;
       if Terminated then Exit;
       // 3. Extract and validate endpoint
@@ -583,40 +666,76 @@ begin
       // Validate ReceivedEndpoint and Select Port
       CleanReceived := StringReplace(ReceivedEndpoint, '/', '', [rfReplaceAll]);
       while (Length(CleanReceived) > 0) and (CleanReceived[1] = '/') do
+      begin
         Delete(CleanReceived, 1, 1);
-      // Determine if it's Embedding or Conversational
+      end;
+      // Determine if it's Embedding, Conversational or TTS
       FinalTargetPort := -1;
       FinalEndpoint := '';
-      if not(FTargetEmbeddingEndpoint = '') then
+      if length(FTargetTTSendpoint) >= 1 then
+      begin
+        if CleanReceived = StringReplace(FTargetTTSendpoint, '/', '', [rfReplaceAll]) then
+        begin
+          ServiceType := TTS;
+          FinalTargetPort := FTargetTTSport;
+          FinalEndpoint := FTargetTTSendpoint;
+        end;
+      end;
+      if length(FTargetEmbeddingEndpoint) >= 1 then
       begin
         if CleanReceived = StringReplace(FTargetEmbeddingEndpoint, '/', '', [rfReplaceAll]) then
         begin
+          ServiceType := EMBEDDING;
           FinalTargetPort := FTargetEmbeddingPort;
           FinalEndpoint := FTargetEmbeddingEndpoint;
         end;
       end;
-      if not(FTargetEndpoint = '') then
+      if length(FTargetEndpoint) >= 1 then
       begin
         if CleanReceived = StringReplace(FTargetEndpoint, '/', '', [rfReplaceAll]) then
         begin
+          ServiceType := CONVERSATIONAL;
           FinalTargetPort := FTargetPort;
           FinalEndpoint := FTargetEndpoint;
         end;
       end;
-      if (FinalTargetPort = -1) or (FinalEndpoint = '') then
+      if (FinalTargetPort = -1) or not(length(FinalEndpoint) >= 1) then
       begin
+        EndPointCount := 0;
         WriteLn('[WORKER] Invalid endpoint: ', ReceivedEndpoint);
-        SendHttpError(ClientConn, 404, 'Invalid endpoint. Expected: ' + FTargetEndpoint + ' or ' + FTargetEmbeddingEndpoint);
+        HTTPerror := 'Invalid endpoint. Expected: ';
+        if length(FTargetEndpoint) >= 1 then
+        begin
+          Inc(EndPointCount);
+          HTTPerror := HTTPerror + FTargetEndpoint;
+        end;
+        if length(FTargetEmbeddingEndpoint) >= 1 then
+        begin
+          Inc(EndPointCount);
+          if EndPointCount > 1 then HTTPerror := HTTPerror + ', ';
+          HTTPerror := HTTPerror + FTargetEmbeddingEndpoint;
+        end;
+        if length(FTargetTTSendpoint) >= 1 then
+        begin
+          Inc(EndPointCount);
+          if EndPointCount > 1 then HTTPerror := HTTPerror + ', ';
+          HTTPerror := HTTPerror + FTargetTTSendpoint;
+        end;
+        if EndPointCount = 0 then HTTPerror := 'No valid endpoint found!';
+        SendHttpError(ClientConn, 404, HTTPerror);
         fpshutdown(FClientHandle, 2);
         Exit;
       end;
       // 4. Forward to Llama
-      WriteLn('[WORKER] Request redirected to port ', FinalTargetPort);
+      if isStreaming then
+        WriteLn('[WORKER] Streaming request redirected to port ', FinalTargetPort)
+      else
+        WriteLn('[WORKER] Request redirected to port ', FinalTargetPort);
       LlamaStream := TInetSocket.Create('127.0.0.1', FinalTargetPort);
       FLlamaSocket := LlamaStream.Handle;
       try
         i := Pos(ReceivedEndpoint, RequestHeader);
-        if (i > 0) and not(ReceivedEndpoint = '') then
+        if (i > 0) and (length(ReceivedEndpoint) >= 1) then
         begin
           Delete(RequestHeader, i, Length(ReceivedEndpoint));
           while (Length(FinalEndpoint) > 0) and (FinalEndpoint[1] = '/') do
@@ -630,23 +749,54 @@ begin
         FullContent := '';
         LastObject := nil;
         CurrentChunkTimeout := 10.0; // Start with 10s for first chunk
+        TotalTimeoutWithTreshold := max(FProxyTimeout - LLM_TIMEOUT_THRESHOLD, MIN_LLM_TIMEOUT_FOR_THRESHOLD);
         while not(Terminated) do
         begin
-          if (FProxyTimeout >= MIN_LLM_TIMEOUT_FOR_THRESHOLD) and ((Now - FStartTime) * 86400 >= (FProxyTimeout - LLM_TIMEOUT_THRESHOLD)) then
+          // Check service timeout
+          if (Now - FStartTime) * 86400 >= TotalTimeoutWithTreshold then
           begin
-            WriteLn('[WORKER] LLM timeout reached, sending partial response.');
+            WriteLn('[WORKER] Timeout reached, sending partial response.');
             TimeoutWarning := True;
             TimeoutReached := True;
             Break;
           end;
+          // Safeguard: handle global timeout
           if (Now - FStartTime) * 86400 > FProxyTimeout then
           begin
             WriteLn('[WORKER] Global timeout reached.');
             TimeoutReached := True;
             Break;
           end;
-          ChunkStartTime := Now;
-          LlamaStream.IOTimeout := Round(CurrentChunkTimeout * 1000);
+          ChunkStartTime := Now; // Store chunk start time
+          if (ServiceType = CONVERSATIONAL) and isStreaming then
+          begin
+            // Chunk timeout for conversational LLM streaming
+            LlamaStream.IOTimeout := Round(CurrentChunkTimeout * 1000);
+          end
+          else
+          begin
+            // Global timeout for Embedding/TTS (single response, no streaming)
+            LlamaStream.IOTimeout := TotalTimeoutWithTreshold * 1000;
+          end;
+          // Handle embedding, TTS and non-streaming LLM responses
+          if (ServiceType = EMBEDDING) or (ServiceType = TTS) or not(isStreaming) then
+          begin
+            try
+              SetLength(Line, 8192);
+              BytesRead := LlamaStream.Read(Line[1], Length(Line));
+              if not(BytesRead > 0) then break;
+              SetLength(Line, BytesRead);
+              FullContent := FullContent + Line;
+            except
+              on E: Exception do
+              begin
+                WriteLn('[WORKER] Read error: ', E.Message);
+                Break;
+              end;
+            end;
+            continue;
+          end;
+          // Handle conversational streaming responses
           try
             Line := trim(InternalReadLine(LlamaStream));
           except
@@ -654,64 +804,88 @@ begin
           end;
           if Line = '' then
           begin
-            ElapsedSeconds := (Now - ChunkStartTime) * 86400;
-            if ElapsedSeconds >= (CurrentChunkTimeout - 0.1) then
+            // Handle response headers
+            if not(ResponseHeadersDone) then
             begin
-              WriteLn('[WORKER] Llama server stalled.');
-              TimeoutWarning := True;
-              TimeoutReached := True;
-              Break;
+              ResponseHeadersDone := true;
+              Continue;
+            end;
+            // Chunk timeout for LLM service
+            ElapsedSeconds := (Now - ChunkStartTime) * 86400;
+            if ElapsedSeconds > 0.1 then
+            begin
+              if ElapsedSeconds >= (CurrentChunkTimeout - 0.1) then
+              begin
+                WriteLn('[WORKER] LLM server stalled.');
+                TimeoutWarning := True;
+                TimeoutReached := True;
+                Break;
+              end;
+              // Calculate next chunk timeout for LLM streaming only
+              CurrentChunkTimeout := ElapsedSeconds * 2;
+              if CurrentChunkTimeout > TotalTimeoutWithTreshold then CurrentChunkTimeout := TotalTimeoutWithTreshold;
+              if CurrentChunkTimeout < 3.0 then CurrentChunkTimeout := 3.0;
             end;
             Sleep(10);
             Continue;
           end;
-          ElapsedSeconds := (Now - ChunkStartTime) * 86400;
-          if ElapsedSeconds > 0.1 then
-          begin
-            CurrentChunkTimeout := ElapsedSeconds * 2;
-            if CurrentChunkTimeout > FProxyTimeout then CurrentChunkTimeout := FProxyTimeout;
-            if CurrentChunkTimeout < 3.0 then CurrentChunkTimeout := 3.0;
-          end;
-          // If it's a direct JSON response (Embeddings), it won't start with "data: "
-          if (Line[1] = '{') and not(StartsStr('data: ', Line)) then
-          begin
-            FullContent := Line; // Store the whole JSON for embedding
-            Break;
-          end;
-          // Conversational Streaming Logic
-          if lowercase(Line) = 'data: [done]' then Break;
-          if not(StartsStr('data: ', Line)) then Continue;
+          // Do not process markers
+          if TryStrToInt('$' + Line, i) then continue;
+          // Ignore invalid responses
+          if not(StartsStr('data: ', lowercase(Line))) then continue;
+          // Handle Conversational Streaming Logic
+          if lowercase(Line) = 'data: [done]' then break;
           Delete(Line, 1, 6);
           try
-            DataNode := GetJSON(Line);
-            if DataNode is TJSONObject then
-            begin
-              TempObj := TJSONObject(DataNode);
-              ContentNode := TempObj.FindPath('choices[0].delta.content');
-              if Assigned(ContentNode) and not(ContentNode.JSONType = jtNull) then
-                FullContent := FullContent + ContentNode.AsString;
-              if Assigned(LastObject) then LastObject.Free;
-              LastObject := TJSONObject(TempObj.Clone);
-              if
-                Assigned(TempObj.FindPath('choices[0].finish_reason')) and
-                not(TempObj.FindPath('choices[0].finish_reason').JSONType = jtNull)
-              then Break;
+            DataNode := nil;
+            try
+              DataNode := GetJSON(Line);
+              if DataNode is TJSONObject then
+              begin
+                TempObj := TJSONObject(DataNode);
+                ContentNode := TempObj.FindPath('choices[0].delta.content');
+                if Assigned(ContentNode) and not(ContentNode.JSONType = jtNull) then
+                  FullContent := FullContent + ContentNode.AsString;
+                if Assigned(LastObject) then LastObject.Free;
+                LastObject := TJSONObject(TempObj.Clone);
+                if
+                  Assigned(TempObj.FindPath('choices[0].finish_reason')) and
+                  not(TempObj.FindPath('choices[0].finish_reason').JSONType = jtNull)
+                then Break;
+              end;
+            finally
+              if Assigned(DataNode) then FreeAndNil(DataNode);
             end;
-            DataNode.Free;
           except
             // Ignore malformed chunks
           end;
         end;
         // 4. Final Response Construction
         WriteLn('[WORKER] Response received from ', FinalTargetPort);
-        if TimeoutReached and (FullContent = '') then FullContent := '{"error": "Llama server stalled"}';
-        if FullContent = '' then
-          Line := '{"error": "Empty response from LLM engine"}'
-        else if (FullContent[1] = '{') or (FinalEndpoint = FTargetEmbeddingEndpoint) then //It's already a JSON (Embedding)
-          Line := FullContent
+        if TimeoutReached and not(length(FullContent) >= 1) then FullContent := '{"error": "server stalled"}';
+        if not(length(FullContent) >= 1) then
+          Line := '{"error": "Empty response from engine"}'
+        else if (ServiceType = EMBEDDING) or (ServiceType = TTS) or not(isStreaming) then
+        begin
+          // Find the end of HTTP headers in the response
+          i := Pos(#13#10#13#10, FullContent);
+          if i > 0 then
+          begin
+            // Headers present, use as-is
+            Line := FullContent;
+          end
+          else
+          begin
+            if ServiceType = TTS then
+              Line := 'HTTP/1.1 200 OK' + #13#10 + 'Content-Type: audio/wav' + #13#10
+            else
+              Line := 'HTTP/1.1 200 OK' + #13#10 + 'Content-Type: application/json' + #13#10;
+            Line := (Line + 'Content-Length: ' + IntToStr(Length(FullContent)) + #13#10 + 'Connection: close' + #13#10#13#10 + FullContent);
+          end;
+        end
         else
         begin
-          // Add warning message tou output
+          // Add warning message to output
           if TimeoutWarning then FullContent := FullContent + ' - ' + LLM_TIMEOUT_WARNING;
           // Wrap conversational content back into JSON
           if not(Assigned(LastObject)) then
@@ -719,10 +893,13 @@ begin
           if Assigned(LastObject.FindPath('choices[0].delta')) then
             TJSONObject(LastObject.FindPath('choices[0]')).Delete('delta');
           TJSONObject(LastObject.FindPath('choices[0]')).Add('message', TJSONObject.Create(['role', 'assistant', 'content', FullContent]));
-          Line := LastObject.AsJSON;
+          FullContent := LastObject.AsJSON;
+          Line := 'HTTP/1.1 200 OK' + #13#10 +
+            'Content-Type: application/json' + #13#10 +
+            'Content-Length: ' + IntToStr(Length(FullContent)) + #13#10 +
+            'Connection: close' + #13#10#13#10 +
+            FullContent;
         end;
-        Line := 'HTTP/1.1 200 OK' + #13#10 + 'Content-Type: application/json' + #13#10 +
-          'Content-Length: ' + IntToStr(Length(Line)) + #13#10 + 'Connection: close' + #13#10#13#10 + Line;
         ClientConn.Write(Line[1], Length(Line));
       finally
         if Assigned(LastObject) then FreeAndNil(LastObject);
@@ -765,15 +942,21 @@ end;
 { TProxyThread implementation. }
 
 { TProxyThread.Create: Initializes the proxy thread with routing and connection parameters. }
-constructor TProxyThread.Create(AProxyHost: String; APort, ATargetPort, ATargetEmbeddingPort: Integer; AEndpoint, AEmbeddingEndpoint: String; ATimeout, AMax, Apmax: Integer);
+constructor TProxyThread.Create(
+  AProxyHost: String;
+  APort, ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer;
+  AEndpoint, AEmbeddingEndpoint, ATTSendpoint: String;
+  ATimeout, AMax, Apmax: Integer);
 begin
   inherited Create(false);
   FProxyHost := AProxyHost;
   FProxyPort := APort;
   FTargetPort := ATargetPort;
   FTargetEmbeddingPort := ATargetEmbeddingPort;
+  FTargetTTSport := ATargetTTSport;
   FTargetEndpoint := AEndpoint;
   FTargetEmbeddingEndpoint := AEmbeddingEndpoint;
+  FTargetTTSendpoint := ATTSendpoint;
   FProxyTimeout := ATimeout;
   FProxyMaxConnections := AMax;
   FMaxPackageSize := Apmax;
@@ -898,7 +1081,11 @@ begin
             end
             else
             begin
-              Worker := TWorkerThread.Create(Listener.NewSocket, FTargetPort, FTargetEmbeddingPort, FTargetEndpoint, FTargetEmbeddingEndpoint, FProxyTimeout, FMaxPackageSize);
+              Worker := TWorkerThread.Create(
+                Listener.NewSocket,
+                FTargetPort, FTargetEmbeddingPort, FTargetTTSport,
+                FTargetEndpoint, FTargetEmbeddingEndpoint, FTargetTTSendpoint,
+                FProxyTimeout, FMaxPackageSize);
               try
                 FWorkers.Add(Worker);
                 WriteLn('[PROXY] Worker started: ', FWorkers.Count, '/', FProxyMaxConnections);
@@ -934,29 +1121,37 @@ end;
 { TServiceWrapper implementation (Boilerplate and Glue). }
 
 { TServiceWrapper.StartProxy: Creates and starts the API proxy service thread. }
-procedure TServiceWrapper.StartProxy(AProxyPort, ATargetPort, ATargetEmbeddingPort: Integer);
+procedure TServiceWrapper.StartProxy(AProxyPort, ATargetPort, ATargetEmbeddingPort, ATargetTTSport: Integer);
 var
-  StatusMsg, FinalFEndpoint, FinalFEmbeddingEndpoint: String;
-  FinalATargetPort, FinalATargetEmbeddingPort: Integer;
+  StatusMsg, FinalFEndpoint, FinalFEmbeddingEndpoint, FinalFTTSendpoint: String;
+  FinalATargetPort, FinalATargetEmbeddingPort, FinalATargetTTSport: Integer;
 begin
   FinalATargetPort := -1;
   FinalATargetEmbeddingPort := -1;
+  FinalATargetTTSport := -1;
   FinalFEndpoint := '';
   FinalFEmbeddingEndpoint := '';
+  FinalFTTSendpoint := '';
   StopProxy;
   if not(AProxyPort >= 1) then Exit;
   StatusMsg := Format('[INFO] Starting API Proxy on port %d -> ', [AProxyPort]);
-  if not(FinalFModelFile = '') then
+  if length(FinalFModelFile) >= 1 then
   begin
     FinalATargetPort := ATargetPort;
     FinalFEndpoint := FEndpoint;
     StatusMsg := StatusMsg + Format('Conversational active (%d), ', [ATargetPort]);
   end;
-  if not(FinalFEmbeddingModelFile = '') then
+  if length(FinalFEmbeddingModelFile) >= 1 then
   begin
     FinalATargetEmbeddingPort := ATargetEmbeddingPort;
     FinalFEmbeddingEndpoint := FEmbeddingEndpoint;
     StatusMsg := StatusMsg + Format('Embedding active (%d)', [ATargetEmbeddingPort]);
+  end;
+  if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) then
+  begin
+    FinalATargetTTSport := ATargetTTSport;
+    FinalFTTSendpoint := FTTSendpoint;
+    StatusMsg := StatusMsg + Format('TTS active (%d)', [ATargetTTSport]);
   end;
   WriteLn(StatusMsg);
   FProxyThread := TProxyThread.Create(
@@ -964,8 +1159,10 @@ begin
     AProxyPort,
     FinalATargetPort,
     FinalATargetEmbeddingPort,
+    FinalATargetTTSport,
     FinalFEndpoint,
     FinalFEmbeddingEndpoint,
+    FinalFTTSendpoint,
     FProxyTimeout,
     FProxyMaxConnections,
     FMaxPackageSize);
@@ -1106,12 +1303,15 @@ begin
   FConfigDir := FAppDir + 'config' + PathDelim;
   FModelDir := FAppDir + 'model' + PathDelim;
   FEmbeddingModelDir := FModelDir + 'embedding' + PathDelim;
+  FTTSmodelDir := FModelDir + 'tts' + PathDelim;
   FLlamaDir := FAppDir + 'llama' + PathDelim;
+  FcrispasrDir := FAppDir + 'crispasr' + PathDelim;
   DBPath := FAppDir + 'database' + PathDelim + 'wrapper.db';
   DBPathWAL := ChangeFileExt(DBPath, '.db-wal');
   DBPathSHM := ChangeFileExt(DBPath, '.db-shm');
   FParams := TStringList.Create;
   FEmbeddingParams := TStringList.Create;
+  FTTSparams := TStringList.Create;
   FProxyHost := '127.0.0.1';
   FWebserverHttpPort := 80;
   FWebserverHttpsPort := 443;
@@ -1154,40 +1354,69 @@ end;
 procedure TServiceWrapper.LoadConfiguration;
 var
   SL: TStringList;
-  FModelFile, FEmbeddingModelFile, JsonFile: AnsiString;
-  JsonData, EngineNode, DeviceNode, ModelNode, EmbeddingModelNode, LLMnode, EmbeddingNode, LogNode: TJSONData;
+  FModelFile, FEmbeddingModelFile, FTTSmainModelFile, FTTSvoiceModelFile, JsonFile: AnsiString;
+  JsonData, EngineNode, DeviceNode, ModelNode, EmbeddingModelNode, TTSmainModelNode, TTSvoiceModelNode, LLMnode, EmbeddingNode, TTSnode, TTSfallbackNode, LogNode: TJSONData;
   WebServerData, ProxyPortNode, ProxyTimeoutNode, ProxyMaxConnectionsNode, MaxPackageSizeNode: TJSONData;
   httpPortNode, httpsPortNode, sslCertNode, sslKeyNode, phpPortNode: TJSONData;
   Root, ParamsObj, WebServerObj: TJSONObject;
   EngineID: String;
   ProxyPort: String;
-  i: Integer;
-  ParamName, ParamValue: AnsiString;
+  paramConfigID, FTTSusesGPU, i: Integer;
+  ParamName, ParamValue, FullParamName: AnsiString;
   enableServer: Boolean;
   //enableCLI: Boolean;
-  FLLMenabled, FEmbeddingEnabled: Boolean;
+  FTTSfallbackNeeded: Boolean;
+  FLLMenabled, FEmbeddingEnabled, FTTSenabled: Boolean;
   ServerFileName: String;
-  AllowedParams, AllowedEmbeddingParams: TStringList;
+  AllowedParams, AllowedEmbeddingParams, AllowedTTSparams: TStringList;
   ConfigTypeName: String;
-  FHost, FEmbeddingHost: String;
+  FHost, FEmbeddingHost, FTTShost: String;
+  //Check if parameter can be processed (helper)
+  function CanProcessParameter(const isProcessed: boolean): boolean;
+  begin
+    Result := false;
+    if ConfigTypeName = 'TTS' then
+    begin
+      if FTTSfallbackNeeded then
+      begin
+        if not(FTTSusesGPU = 0) then Exit;
+        if isProcessed then Exit;
+        Result := true;
+        Exit;
+      end;
+    end;
+    if not(paramConfigID = StrToIntDef(EngineID, -1)) then Exit;
+    Result := true;
+  end;
 begin
   JsonFile := FConfigDir + 'wrapper.json';
   EngineID := '';
   FDeviceID := '';
+  FTTSdeviceID := '';
   FEndpoint := '';
   FEmbeddingEndpoint := '';
+  FTTSendpoint := '';
   FModelFile := '';
   FinalFModelFile := '';
   FEmbeddingModelFile := '';
   FinalFEmbeddingModelFile := '';
+  FTTSmainModelFile := '';
+  FinalFTTSmainModelFile := '';
+  FTTSvoiceModelFile := '';
+  FinalFTTSvoiceModelFile := '';
   FLLMenabled := true;
   FEmbeddingEnabled := true;
+  FTTSenabled := false;
+  FTTSfallbackNeeded := false;
   FUseLogFile := true; // Default
   FProxyPort := -1; // Default
   FProxyTimeout := 60; // Default
   FProxyMaxConnections := 200; // Default
   FMaxPackageSize := 2097152; // Default
-  { --- STEP 1: Preliminary JSON Scan (To get EngineID only) --- }
+  FTTSuserHomeDir := '';
+  FTTScacheDir := '';
+  FTTSvoiceDir := '';
+  { --- STEP 1: Preliminary JSON Scan (To get EngineID and TTS fallback only) --- }
   if FileExists(JsonFile) then
   begin
     SL := TStringList.Create;
@@ -1198,6 +1427,14 @@ begin
       begin
         EngineNode := TJSONObject(JsonData).Find('llama_engine');
         if Assigned(EngineNode) then EngineID := trim(EngineNode.AsString);
+        TTSfallbackNode := TJSONObject(JsonData).Find('tts_fallback_needed');
+        if Assigned(TTSfallbackNode) then
+        begin
+          if TTSfallbackNode.JSONType = jtNumber then
+            FTTSfallbackNeeded := not(TTSfallbackNode.AsInteger = 0)
+          else
+            FTTSfallbackNeeded := (IndexStr(LowerCase(trim(TTSfallbackNode.AsString)), ['0', 'false', 'no']) = -1);
+        end;
       end;
       JsonData.Free;
     finally
@@ -1206,22 +1443,27 @@ begin
   end;
   { --- STEP 2: Resolve Server Data from DB --- }
   FQuery.SQL.Clear;
-  FQuery.SQL.Add('SELECT id, server, endpoint, embedding_endpoint, proxy_port, proxy_timeout, max_proxy_connections, max_package_size FROM config');
-  if EngineID = '' then
-    FQuery.SQL.Add(' ORDER BY priority DESC, id ASC LIMIT 1')
-  else
+  FQuery.SQL.Add('SELECT id, server, tts_binary, tts_uses_gpu, endpoint, embedding_endpoint, tts_endpoint, proxy_port, proxy_timeout, max_proxy_connections, max_package_size FROM config');
+  if length(EngineID) >= 1 then
   begin
     FQuery.SQL.Add(' WHERE id = :id LIMIT 1');
     FQuery.ParamByName('id').AsString := EngineID;
-  end;
+  end
+  else
+    FQuery.SQL.Add(' ORDER BY priority DESC, id ASC LIMIT 1');
   FQuery.Open;
-  if FQuery.EOF then raise Exception.Create('No LLM server specified!');
+  if FQuery.EOF then raise Exception.Create('No AI server specified!');
   EngineID := trim(FQuery.FieldByName('id').AsString);
   ServerFileName := trim(FQuery.FieldByName('server').AsString);
   ServerFileName := StringReplace(ServerFileName, '/', PathDelim, [rfReplaceAll]);
   FServerBinary := FLlamaDir + ServerFileName;
+  ServerFileName := trim(FQuery.FieldByName('tts_binary').AsString);
+  ServerFileName := StringReplace(ServerFileName, '/', PathDelim, [rfReplaceAll]);
+  FTTSbinary := FcrispasrDir + ServerFileName;
   FEndpoint := trim(FQuery.FieldByName('endpoint').AsString);
   FEmbeddingEndpoint := trim(FQuery.FieldByName('embedding_endpoint').AsString);
+  FTTSendpoint := trim(FQuery.FieldByName('tts_endpoint').AsString);
+  FTTSusesGPU := StrToIntDef(trim(FQuery.FieldByName('tts_uses_gpu').AsString), -1);
   //Proxy settings from DB are only used if JSON doesn't override later
   ProxyPort := trim(FQuery.FieldByName('proxy_port').AsString);
   if length(ProxyPort) >= 1 then
@@ -1235,63 +1477,142 @@ begin
     end;
   end;
   FQuery.Close;
-  { --- STEP 3: Load config_data from DB (Mandatory Filter) --- }
+  // TTS Fallback: if GPU binary not found but GPU was requested, fall back to CPU binary from database
+  if (not(FTTSusesGPU = 0) and not(FileExists(FTTSbinary))) or FTTSfallbackNeeded then
+  begin
+    FTTSfallbackNeeded := true;
+    // Query database for CPU TTS binary (tts_uses_gpu = 0) for the same engine
+    FQuery.SQL.Clear;
+    FQuery.SQL.Add('SELECT tts_binary, tts_endpoint FROM config WHERE tts_uses_gpu = 0 ORDER BY priority DESC, id ASC LIMIT 1');
+    FQuery.Open;
+    if not(FQuery.EOF) then
+    begin
+      ServerFileName := trim(FQuery.FieldByName('tts_binary').AsString);
+      ServerFileName := StringReplace(ServerFileName, '/', PathDelim, [rfReplaceAll]);
+      FTTSbinary := FcrispasrDir + ServerFileName;
+      FTTSendpoint := trim(FQuery.FieldByName('tts_endpoint').AsString);
+    end;
+    FQuery.Close;
+  end;
+  { --- STEP 3: Load config_data from DB (Mandatory Filter with TTS Fallback) --- }
   AllowedParams := TStringList.Create;
-  AllowedParams.Sorted := true;
   AllowedEmbeddingParams := TStringList.Create;
-  AllowedEmbeddingParams.Sorted := true;
+  AllowedTTSparams := TStringList.Create;
   try
-    //FQuery.SQL.Text := 'SELECT config_data.name AS name, config_data.value AS value, config_data_type.name AS type_name, config_data.enable_server AS enable_server, config_data.enable_cli AS enable_cli FROM config_data LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id WHERE config_data.config_id = :cid';
-    FQuery.SQL.Text := 'SELECT config_data.name AS name, config_data.value AS value, config_data_type.name AS type_name, config_data.enable_server AS enable_server FROM config_data LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id WHERE config_data.config_id = :cid';
+    // Query joins config to get tts_uses_gpu for fallback handling.
+    // Loads: all params for selected config_id + TTS params from CPU configs (tts_uses_gpu = 0) for fallback
+    FQuery.SQL.Clear;
+    FQuery.SQL.Add('SELECT config_data.name AS name, config_data.value AS value, config_data_type.name AS type_name, config_data.enable_server AS enable_server, config.tts_uses_gpu AS tts_uses_gpu, config_data.config_id AS config_id FROM config_data LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id LEFT JOIN config ON config.id = config_data.config_id WHERE config_data.config_id = :cid OR (config.tts_uses_gpu = 0 AND UPPER(TRIM(config_data_type.name)) LIKE ''TTS'') ORDER BY config_data.id ASC');
     FQuery.ParamByName('cid').AsString := EngineID;
     FQuery.Open;
     while not(FQuery.EOF) do
     begin
+      paramConfigID := StrToIntDef(trim(FQuery.FieldByName('config_id').AsString), -1);
+      FTTSusesGPU := StrToIntDef(trim(FQuery.FieldByName('tts_uses_gpu').AsString), -1);
       ParamName := trim(FQuery.FieldByName('name').AsString);
       ParamValue := trim(FQuery.FieldByName('value').AsString);
       ConfigTypeName := uppercase(trim(FQuery.FieldByName('type_name').AsString));
       enableServer := not(StrToIntDef(trim(FQuery.FieldByName('enable_server').AsString), 0) = 0);
-      //enableCLI := not(StrToIntDef(trim(FQuery.FieldByName('enable_cli').AsString), 0) = 0); //Will be used later
-      if ConfigTypeName = 'EMBEDDING' then
+      if ConfigTypeName = 'TTS' then
       begin
-        //Allowed parameters for server
-        AllowedEmbeddingParams.Values[ParamName] := BoolToStr(enableServer, '1', '0');
+        // Allowed parameters for server
+        AllowedTTSparams.Values[ParamName] := BoolToStr(enableServer, '1', '0');
         // Default load: only if not using JSON parameters later
-        if not(ParamName = 'device') then
+        if not(MatchStr(ParamName, ['device', 'max_tokens', 'punctuation_restoration_model'])) then
         begin
+          FullParamName := '--' + ParamName;
           if ParamName = 'model' then
           begin
-            if enableServer then FEmbeddingModelFile := ParamValue;
-          end
-          else if enableServer then
-          begin
-            FEmbeddingParams.Add('--' + ParamName);
-            if not(ParamValue = '') then
+            if CanProcessParameter(length(FTTSmainModelFile) >= 1) then
             begin
-              FEmbeddingParams.Add(ParamValue);
-              if ParamName = 'host' then FEmbeddingHost := ParamValue;
+              if enableServer then FTTSmainModelFile := ParamValue;
+            end;
+          end
+          else if ParamName = 'voice' then
+          begin
+            if CanProcessParameter(length(FTTSvoiceModelFile) >= 1) then
+            begin
+              if enableServer then FTTSvoiceModelFile := ParamValue;
+            end;
+          end
+          else if ParamName = 'user_home_dir' then
+          begin
+            if CanProcessParameter(length(FTTSuserHomeDir) >= 1) then
+            begin
+              if enableServer then FTTSuserHomeDir := StringReplace(FAppDir + ParamValue, '/', PathDelim, [rfReplaceAll]);
+            end;
+          end
+          else if ParamName = 'cache-dir' then
+          begin
+            if CanProcessParameter(length(FTTScacheDir) >= 1) then
+            begin
+              if enableServer then FTTScacheDir := StringReplace(FAppDir + ParamValue, '/', PathDelim, [rfReplaceAll]);
+            end;
+          end
+          else if ParamName = 'voice-dir' then
+          begin
+            if CanProcessParameter(length(FTTSvoiceDir) >= 1) then
+            begin
+              if enableServer then FTTSvoiceDir := StringReplace(FAppDir + ParamValue, '/', PathDelim, [rfReplaceAll]);
+            end;
+          end
+          else if CanProcessParameter(not(FTTSparams.IndexOf(FullParamName) = -1)) then
+          begin
+            if enableServer then
+            begin
+              FTTSparams.Add('--' + ParamName);
+              if length(ParamValue) >= 1 then
+              begin
+                FTTSparams.Add(ParamValue);
+                if ParamName = 'host' then FTTShost := ParamValue;
+              end;
             end;
           end;
         end;
       end
-      else if ConfigTypeName = 'CONVERSATIONAL' then
+      else if paramConfigID = StrToIntDef(EngineID, -1) then
       begin
-        //Allowed parameters for server
-        AllowedParams.Values[ParamName] := BoolToStr(enableServer, '1', '0');
-        // Default load: only if not using JSON parameters later
-        if not(ParamName = 'device') then
+        if ConfigTypeName = 'EMBEDDING' then
         begin
-          if ParamName = 'model' then
+          //Allowed parameters for server
+          AllowedEmbeddingParams.Values[ParamName] := BoolToStr(enableServer, '1', '0');
+          // Default load: only if not using JSON parameters later
+          if not(ParamName = 'device') then
           begin
-            if enableServer then FModelFile := ParamValue;
-          end
-          else if enableServer then
-          begin
-            FParams.Add('--' + ParamName);
-            if not(ParamValue = '') then
+            if ParamName = 'model' then
             begin
-              FParams.Add(ParamValue);
-              if ParamName = 'host' then FHost := ParamValue;
+              if enableServer then FEmbeddingModelFile := ParamValue;
+            end
+            else if enableServer then
+            begin
+              FEmbeddingParams.Add('--' + ParamName);
+              if length(ParamValue) >= 1 then
+              begin
+                FEmbeddingParams.Add(ParamValue);
+                if ParamName = 'host' then FEmbeddingHost := ParamValue;
+              end;
+            end;
+          end;
+        end
+        else if ConfigTypeName = 'CONVERSATIONAL' then
+        begin
+          //Allowed parameters for server
+          AllowedParams.Values[ParamName] := BoolToStr(enableServer, '1', '0');
+          // Default load: only if not using JSON parameters later
+          if not(ParamName = 'device') then
+          begin
+            if ParamName = 'model' then
+            begin
+              if enableServer then FModelFile := ParamValue;
+            end
+            else if enableServer then
+            begin
+              FParams.Add('--' + ParamName);
+              if length(ParamValue) >= 1 then
+              begin
+                FParams.Add(ParamValue);
+                if ParamName = 'host' then FHost := ParamValue;
+              end;
             end;
           end;
         end;
@@ -1343,7 +1664,8 @@ begin
           Root := TJSONObject(JsonData);
           FParams.Clear; //Clear the DB-loaded params because we are overriding
           FEmbeddingParams.Clear; //Clear the DB-loaded embedding params because we are overriding
-          //Get device
+          FTTSparams.Clear; //Clear the DB-loaded TTS params because we are overriding
+          //Get LLM/embedding device
           DeviceNode := Root.Find('llama_device');
           if Assigned(DeviceNode) then
           begin
@@ -1399,7 +1721,7 @@ begin
             end;
           end;
           // Parameter Loop with DB validation
-          if not(FModelFile = '') then
+          if length(FModelFile) >= 1 then
           begin
             ParamsObj := Root.Get('parameters', TJSONObject(nil));
             if Assigned(ParamsObj) then
@@ -1409,7 +1731,7 @@ begin
                 for i := 0 to ParamsObj.Count - 1 do
                 begin
                   ParamName := trim(ParamsObj.Names[i]);
-                  if ParamName = '' then continue;
+                  if not(length(ParamName) >= 1) then continue;
                   if ParamName = 'device' then continue;
                   if ParamName = 'model' then continue;
                   if AllowedParams.Values[ParamName] = '0' then continue;
@@ -1418,7 +1740,7 @@ begin
                   begin
                     ParamValue := trim(ParamsObj.Items[i].AsString);
                     FParams.Add(ParamValue); // Value
-                    if (ParamName = 'host') and not(ParamValue = '') then FHost := ParamValue;
+                    if (ParamName = 'host') and (length(ParamValue) >= 1) then FHost := ParamValue;
                   end;
                 end;
               end;
@@ -1440,7 +1762,7 @@ begin
             if Assigned(EmbeddingModelNode) then
             begin
               FEmbeddingModelFile := trim(EmbeddingModelNode.AsString);
-              if not(FEmbeddingModelFile = '') then
+              if length(FEmbeddingModelFile) >= 1 then
               begin
                 // Embedding Parameter Loop with DB validation
                 ParamsObj := Root.Get('embedding_parameters', TJSONObject(nil));
@@ -1451,7 +1773,7 @@ begin
                     for i := 0 to ParamsObj.Count - 1 do
                     begin
                       ParamName := trim(ParamsObj.Names[i]);
-                      if ParamName = '' then continue;
+                      if not(length(ParamName) >= 1) then continue;
                       if ParamName = 'device' then continue;
                       if ParamName = 'model' then continue;
                       if AllowedEmbeddingParams.Values[ParamName] = '0' then continue;
@@ -1460,7 +1782,7 @@ begin
                       begin
                         ParamValue := trim(ParamsObj.Items[i].AsString);
                         FEmbeddingParams.Add(ParamValue); // Value
-                        if (ParamName = 'host') and not(ParamValue = '') then FEmbeddingHost := ParamValue;
+                        if (ParamName = 'host') and (length(ParamValue) >= 1) then FEmbeddingHost := ParamValue;
                       end;
                     end;
                   end;
@@ -1472,6 +1794,69 @@ begin
           begin
             // Clear Embedding Model File as embedding is disabled
             FEmbeddingModelFile := '';
+          end;
+          // Enable or Disable TTS
+          TTSnode := Root.Find('tts');
+          if Assigned(TTSnode) then
+          begin
+            if TTSnode.JSONType = jtNumber then
+              FTTSenabled := not(TTSnode.AsInteger = 0)
+            else
+              FTTSenabled := (IndexStr(LowerCase(trim(TTSnode.AsString)), ['0', 'false', 'no']) = -1);
+          end;
+          if FTTSenabled then
+          begin
+            // Load TTS models
+            TTSmainModelNode := Root.Find('tts_model_main');
+            if Assigned(TTSmainModelNode) then
+              FTTSmainModelFile := trim(TTSmainModelNode.AsString)
+            else
+              FTTSmainModelFile := '';
+            TTSvoiceModelNode := Root.Find('tts_model_voice');
+            if Assigned(TTSvoiceModelNode) then
+              FTTSvoiceModelFile := trim(TTSvoiceModelNode.AsString)
+            else
+              FTTSvoiceModelFile := '';
+            // Load TTS device from JSON if GPU is used
+            DeviceNode := Root.Find('tts_device');
+            if Assigned(DeviceNode) then
+            begin
+              if not(AllowedTTSparams.Values['device'] = '0') then
+                FTTSdeviceID := trim(DeviceNode.AsString);
+            end;
+            // TTS Parameter Loop with DB validation
+            if (length(FTTSmainModelFile) >= 1) and (length(FTTSvoiceModelFile) >= 1) then
+            begin
+              ParamsObj := Root.Get('tts_parameters', TJSONObject(nil));
+              if Assigned(ParamsObj) then
+              begin
+                if ParamsObj.Count > 0 then
+                begin
+                  for i := 0 to ParamsObj.Count - 1 do
+                  begin
+                    ParamName := trim(ParamsObj.Names[i]);
+                    if not(length(ParamName) >= 1) then continue;
+                    if ParamName = 'device' then continue;
+                    if ParamName = 'model' then continue;
+                    if ParamName = 'voice' then continue;
+                    if ParamName = 'max_tokens' then continue;
+                    if AllowedTTSparams.Values[ParamName] = '0' then continue;
+                    FTTSparams.Add('--' + ParamName); //Flag
+                    if not(ParamsObj.Items[i].JSONType in [jtBoolean, jtNull]) then
+                    begin
+                      ParamValue := trim(ParamsObj.Items[i].AsString);
+                      FTTSparams.Add(ParamValue); //Value
+                      if (ParamName = 'host') and (length(ParamValue) >= 1) then FTTShost := ParamValue;
+                    end;
+                  end;
+                end;
+              end;
+            end;
+          end
+          else
+          begin
+            FTTSmainModelFile := '';
+            FTTSvoiceModelFile := '';
           end;
           // Load web server configuration
           WebServerData := Root.Find('webserver');
@@ -1521,37 +1906,63 @@ begin
   finally
     FreeAndNil(AllowedParams);
     FreeAndNil(AllowedEmbeddingParams);
+    FreeAndNil(AllowedTTSparams);
   end;
   { --- FINAL VALIDATION --- }
   if not(FileExists(FServerBinary)) then raise Exception.Create('Server binary missing: ' + FServerBinary);
-  if (FEndpoint = '') and (FEmbeddingEndpoint = '') then raise Exception.Create('FATAL: no endpoint specified!');
-  if not(FModelFile = '') then
+  if not(length(FEndpoint) >= 1) and not(length(FEmbeddingEndpoint) >= 1) then raise Exception.Create('FATAL: no endpoint specified!');
+  if length(FModelFile) >= 1 then
   begin
     if (Pos(' ', FModelFile) > 0) or (Pos(PathDelim, FModelFile) > 0) then
       raise Exception.Create('FATAL: model filename contains forbidden characters (spaces, slashes, or backslashes): ' + FModelFile);
     FinalFModelFile := FModelDir + FModelFile;
     if not(FileExists(FinalFModelFile)) then raise Exception.Create('Model file not found: ' + FinalFModelFile);
   end;
-  if not(FEmbeddingModelFile = '') then
+  if length(FEmbeddingModelFile) >= 1 then
   begin
     if (Pos(' ', FEmbeddingModelFile) > 0) or (Pos(PathDelim, FEmbeddingModelFile) > 0) then
       raise Exception.Create('FATAL: model filename contains forbidden characters (spaces, slashes, or backslashes): ' + FEmbeddingModelFile);
     FinalFEmbeddingModelFile := FEmbeddingModelDir + FEmbeddingModelFile;
     if not(FileExists(FinalFEmbeddingModelFile)) then raise Exception.Create('Model file not found: ' + FinalFEmbeddingModelFile);
   end;
+  if FTTSenabled and FileExists(FTTSbinary) and DirectoryExists(FTTSmodelDir) then
+  begin
+    if length(FTTSmainModelFile) >= 1 then
+    begin
+      if (Pos(' ', FTTSmainModelFile) > 0) or (Pos(PathDelim, FTTSmainModelFile) > 0) then
+        raise Exception.Create('FATAL: model filename contains forbidden characters (spaces, slashes, or backslashes): ' + FTTSmainModelFile);
+      FinalFTTSmainModelFile := FTTSmodelDir + FTTSmainModelFile;
+      if not(FileExists(FinalFTTSmainModelFile)) then raise Exception.Create('Model file not found: ' + FinalFTTSmainModelFile);
+    end;
+    if length(FTTSvoiceModelFile) >= 1 then
+    begin
+      if (Pos(' ', FTTSvoiceModelFile) > 0) or (Pos(PathDelim, FTTSvoiceModelFile) > 0) then
+        raise Exception.Create('FATAL: model filename contains forbidden characters (spaces, slashes, or backslashes): ' + FTTSvoiceModelFile);
+      FinalFTTSvoiceModelFile := FTTSmodelDir + FTTSvoiceModelFile;
+      if not(FileExists(FinalFTTSvoiceModelFile)) then raise Exception.Create('Model file not found: ' + FinalFTTSvoiceModelFile);
+    end;
+  end
+  else
+  begin
+    FTTSbinary := '';
+    FTTSmainModelFile := '';
+    FTTSvoiceModelFile := '';
+  end;
   // Warn if both AI services are disabled but continue anyway
-  if (FinalFModelFile = '') and (FinalFEmbeddingModelFile = '') then
-    WriteLn('[WARNING] Both LLM and embedding services are disabled. Only web server will be available.');
-  // Set proxy host based on LLM/Embedding server host configuration
-  // Priority: LLM host > Embedding host > default 127.0.0.1
-  if not(FinalFModelFile = '') and not(FHost = '') then
+  if not(length(FinalFModelFile) >= 1) and not(length(FinalFEmbeddingModelFile) >= 1) then
+    WriteLn('[WARNING] Both LLM and embedding services are disabled. Only web server and TTS server (if present) will be available.');
+  // Set proxy host based on LLM/Embedding/TTS server host configuration
+  // Priority: LLM host > Embedding host > TTS host > default 127.0.0.1
+  if (length(FinalFModelFile) >= 1) and (length(FHost) >= 1) then
     FProxyHost := FHost
-  else if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingHost = '') then
+  else if (length(FinalFEmbeddingModelFile) >= 1) and (length(FEmbeddingHost) >= 1) then
     FProxyHost := FEmbeddingHost
+  else if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) and (length(FTTShost) >= 1) then
+    FProxyHost := FTTShost
   else
     FProxyHost := '127.0.0.1';
   // Only validate proxy settings if at least one AI service is enabled
-  if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then
+  if (FProxyPort >= 1) and ((length(FinalFModelFile) >= 1) or (length(FinalFEmbeddingModelFile) >= 1) or ((length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1))) then
   begin
     if (FProxyTimeout < 1) then raise Exception.Create('Invalid Proxy Service Timeout: ' + IntToStr(FProxyTimeout));
     if (FProxyMaxConnections < 1) then raise Exception.Create('Invalid Proxy Service Connection Limit: ' + IntToStr(FProxyMaxConnections));
@@ -1576,9 +1987,9 @@ var
   Parameters: TStringList;
 begin
   CertFileFixed := trim(CertFile);
-  if CertFileFixed = '' then raise Exception.Create('ERROR: no SSL certificate filename provided!');
+  if not(length(CertFileFixed) >= 1) then raise Exception.Create('ERROR: no SSL certificate filename provided!');
   KeyFileFixed := trim(KeyFile);
-  if KeyFileFixed = '' then raise Exception.Create('ERROR: no SSL key filename provided!');
+  if not(length(KeyFileFixed) >= 1) then raise Exception.Create('ERROR: no SSL key filename provided!');
   SslDir := IncludeTrailingPathDelimiter(ExtractFilePath(CertFileFixed));
   KeyAlg := FSSLencryption;
   WriteLn('[INFO] Generating self-signed SSL certificate...');
@@ -1714,7 +2125,7 @@ begin
   Result := true; // Default to needing cert renewal on any error
   try
     CertFileFixed := trim(CertFile);
-    if CertFileFixed = '' then Exit;
+    if not(length(CertFileFixed) >= 1) then Exit;
     if ExpirationDays <= 0 then Exit;
     Seconds := Int64(ExpirationDays) * 24 * 60 * 60;
     // Use OpenSSL -checkend option to verify certificate validity
@@ -1765,11 +2176,16 @@ procedure TServiceWrapper.RunWatchdog;
 var
   LogFile, Buffer: AnsiString;
   BytesRead: LongInt;
-  i, ChatPort, EmbeddingPort, pIdx: Integer;
-  RelativeModelPath, RelativeEmbeddingModelPath, PHPfullPath: AnsiString;
+  i, ChatPort, EmbeddingPort, TTSport, pIdx: Integer;
+  RelativeModelPath, RelativeEmbeddingModelPath: AnsiString;
+  RelativeTTSmainModelPath, RelativeTTSvoiceModelPath: AnsiString;
+  RelativeTTScacheDir, RelativeTTSvoiceDir: AnsiString;
+  PHPfullPath: AnsiString;
   PortsReserved: TStringList;
   {$IFDEF MSWINDOWS}
   Info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION;
+  EnvBlock: PChar;
+  EnvPtr: PChar;
   {$ENDIF}
   procedure LogAtomic(const LogStr: AnsiString);
   var
@@ -1777,8 +2193,8 @@ var
     Err: Integer;
   begin
     try
-      if trim(LogStr) = '' then Exit;
-      if trim(LogFile) = '' then Exit;
+      if not(length(trim(LogStr)) >= 1) then Exit;
+      if not(length(trim(LogFile)) >= 1) then Exit;
       AssignFile(F, LogFile);
       {$I-} // Disable IO errors
       try
@@ -1820,15 +2236,20 @@ begin
   pIdx := FEmbeddingParams.IndexOf('--port');
   if not(pIdx = -1) and (pIdx < FEmbeddingParams.Count - 1) then
     EmbeddingPort := StrToIntDef(trim(FEmbeddingParams[pIdx+1]), 8081);
+  TTSport := 8082; // Default
+  pIdx := FTTSparams.IndexOf('--port');
+  if not(pIdx = -1) and (pIdx < FTTSparams.Count - 1) then
+    TTSport := StrToIntDef(trim(FTTSparams[pIdx+1]), 8082);
   FProcess := TProcess.Create(nil);
   FEmbeddingProcess := TProcess.Create(nil);
+  FTTSprocess := TProcess.Create(nil);
   FPhpProcess := TProcess.Create(nil);
   FWebserverProcess := TProcess.Create(nil);
   PortsReserved := TStringList.Create;
   PortsReserved.Sorted := true;
   try
     // Check if all ports are actually unique and free
-    if not(FinalFModelFile = '') then
+    if length(FinalFModelFile) >= 1 then
     begin
       if not(IsPortFree(ChatPort)) then
       begin
@@ -1837,7 +2258,7 @@ begin
       end;
       PortsReserved.Add(IntToStr(ChatPort));
     end;
-    if not(FinalFEmbeddingModelFile = '') then
+    if length(FinalFEmbeddingModelFile) >= 1 then
     begin
       if not(IsPortFree(EmbeddingPort)) then
       begin
@@ -1851,8 +2272,22 @@ begin
       end;
       PortsReserved.Add(IntToStr(EmbeddingPort));
     end;
+    if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) then
+    begin
+      if not(IsPortFree(TTSport)) then
+      begin
+        ExitCode := 8;
+        raise EWatchdogFatal.Create('[ERROR] TTS port is not free: ' + IntToStr(TTSport));
+      end;
+      if not(PortsReserved.IndexOf(IntToStr(TTSport)) = -1) then
+      begin
+        ExitCode := 18;
+        raise EWatchdogFatal.Create('[ERROR] TTS port already reserved: ' + IntToStr(TTSport));
+      end;
+      PortsReserved.Add(IntToStr(TTSport));
+    end;
     // Only validate proxy port if at least one AI service is enabled
-    if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then
+    if (FProxyPort >= 1) and ((length(FinalFModelFile) >= 1) or (length(FinalFEmbeddingModelFile) >= 1) or ((length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1))) then
     begin
       if not(IsPortFree(FProxyPort)) then
       begin
@@ -1903,15 +2338,17 @@ begin
     // Cross-platform setup: We want the binary name + params
     FProcess.Executable := FServerBinary;
     FEmbeddingProcess.Executable := FServerBinary;
+    FTTSprocess.Executable := FTTSbinary;
     FProcess.CurrentDirectory := FLlamaDir;
     FEmbeddingProcess.CurrentDirectory := FLlamaDir;
+    FTTSprocess.CurrentDirectory := FcrispasrDir;
     // Common Llama-server args: --model <path>
-    if not(FinalFModelFile = '') then
+    if length(FinalFModelFile) >= 1 then
     begin
       RelativeModelPath := ExtractRelativePath(FLlamaDir, FinalFModelFile);
       FProcess.Parameters.Add('--model');
       FProcess.Parameters.Add(RelativeModelPath);
-      if not(FDeviceID = '') then
+      if length(FDeviceID) >= 1 then
       begin
         FProcess.Parameters.Add('--device');
         FProcess.Parameters.Add(FDeviceID);
@@ -1922,13 +2359,13 @@ begin
         FProcess.Parameters.Add(UpperCase(Trim(ChangeFileExt(ExtractFileName(FinalFModelFile), ''))));
       end;
     end;
-    if not(FinalFEmbeddingModelFile = '') then
+    if length(FinalFEmbeddingModelFile) >= 1 then
     begin
       RelativeEmbeddingModelPath := ExtractRelativePath(FLlamaDir, FinalFEmbeddingModelFile);
       FEmbeddingProcess.Parameters.Add('--model');
       FEmbeddingProcess.Parameters.Add(RelativeEmbeddingModelPath);
       FEmbeddingProcess.Parameters.Add('--embedding');
-      if not(FDeviceID = '') then
+      if length(FDeviceID) >= 1 then
       begin
         FEmbeddingProcess.Parameters.Add('--device');
         FEmbeddingProcess.Parameters.Add(FDeviceID);
@@ -1939,12 +2376,60 @@ begin
         FEmbeddingProcess.Parameters.Add(UpperCase(Trim(ChangeFileExt(ExtractFileName(FinalFEmbeddingModelFile), ''))));
       end;
     end;
+    if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) then
+    begin
+      {$IFDEF MSWINDOWS}
+      FTTSprocess.Environment.Clear;
+      EnvBlock := GetEnvironmentStrings;
+      try
+        if Assigned(EnvBlock) then
+        begin
+          EnvPtr := EnvBlock;
+          while not(EnvPtr^ = #0) do
+          begin
+            FTTSprocess.Environment.Add(AnsiString(EnvPtr));
+            EnvPtr := EnvPtr + (StrLen(EnvPtr) + 1);
+          end;
+        end;
+      finally
+        if Assigned(EnvBlock) then FreeEnvironmentStrings(EnvBlock);
+      end;
+      {$ENDIF}
+      RelativeTTSmainModelPath := ExtractRelativePath(FcrispasrDir, FinalFTTSmainModelFile);
+      RelativeTTSvoiceModelPath := ExtractRelativePath(FcrispasrDir, FinalFTTSvoiceModelFile);
+      FTTSprocess.Parameters.Add('--model');
+      FTTSprocess.Parameters.Add(RelativeTTSmainModelPath);
+      FTTSprocess.Parameters.Add('--voice');
+      FTTSprocess.Parameters.Add(RelativeTTSvoiceModelPath);
+      if length(FTTSdeviceID) >= 1 then
+      begin
+        FTTSprocess.Parameters.Add('--device');
+        FTTSprocess.Parameters.Add(FTTSdeviceID);
+      end;
+      // set cache directory
+      if length(FTTScacheDir) >= 1 then
+      begin
+        RelativeTTScacheDir := ExtractRelativePath(FcrispasrDir, FTTScacheDir);
+        FTTSprocess.Parameters.Add('--cache-dir');
+        FTTSprocess.Parameters.Add(RelativeTTScacheDir);
+        FTTSprocess.Environment.Add('CRISPASR_CACHE_DIR=' + FTTScacheDir);
+      end;
+      // set voice directory
+      if length(FTTSvoiceDir) >= 1 then
+      begin
+        RelativeTTSvoiceDir := ExtractRelativePath(FcrispasrDir, FTTSvoiceDir);
+        FTTSprocess.Parameters.Add('--voice-dir');
+        FTTSprocess.Parameters.Add(RelativeTTSvoiceDir);
+      end;
+      // Set home directory
+      if length(FTTSuserHomeDir) >= 1 then FTTSprocess.Environment.Add('HOME=' + FTTSuserHomeDir);
+    end;
     // Add all other params one-by-one
     if FParams.Count >= 1 then
     begin
       for i := 0 to FParams.Count - 1 do
       begin
-        if trim(FParams[i]) = '' then continue;
+        if not(length(trim(FParams[i])) >= 1) then continue;
         FProcess.Parameters.Add(FParams[i]);
       end;
     end;
@@ -1952,8 +2437,16 @@ begin
     begin
       for i := 0 to FEmbeddingParams.Count - 1 do
       begin
-        if trim(FEmbeddingParams[i]) = '' then continue;
+        if not(length(trim(FEmbeddingParams[i])) >= 1) then continue;
         FEmbeddingProcess.Parameters.Add(FEmbeddingParams[i]);
+      end;
+    end;
+    if FTTSparams.Count >= 1 then
+    begin
+      for i := 0 to FTTSparams.Count - 1 do
+      begin
+        if not(length(trim(FTTSparams[i])) >= 1) then continue;
+        FTTSprocess.Parameters.Add(FTTSparams[i]);
       end;
     end;
     // PHP process
@@ -1992,10 +2485,11 @@ begin
       try
         try
           // BULLETPROOF STEP: Wait here until the port is actually available
-          if not(FinalFModelFile = '') and not(FProcess.Running) then WaitUntilPortFree(ChatPort);
-          if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then WaitUntilPortFree(EmbeddingPort);
+          if (length(FinalFModelFile) >= 1) and not(FProcess.Running) then WaitUntilPortFree(ChatPort);
+          if (length(FinalFEmbeddingModelFile) >= 1) and not(FEmbeddingProcess.Running) then WaitUntilPortFree(EmbeddingPort);
+          if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) and not(FTTSprocess.Running) then WaitUntilPortFree(TTSport);
           // Only wait for proxy port if at least one AI service is enabled
-          if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then WaitUntilPortFree(FProxyPort);
+          if (FProxyPort >= 1) and ((length(FinalFModelFile) >= 1) or (length(FinalFEmbeddingModelFile) >= 1) or ((length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1))) then WaitUntilPortFree(FProxyPort);
           if not(FPhpProcess.Running) then WaitUntilPortFree(FPhpPort);
           if not(FWebserverProcess.Running) then
           begin
@@ -2004,16 +2498,16 @@ begin
           end;
           if Terminated then break;
           // PRINT THE ACTUAL COMMAND FOR VERIFICATION
-          if not(FinalFModelFile = '') then
-            WriteLn('[INFO] Launching conversational server: ', FProcess.Executable, ' ', FProcess.Parameters.Text);
-          if not(FinalFEmbeddingModelFile = '') then
-            WriteLn('[INFO] Launching embedding server: ', FEmbeddingProcess.Executable, ' ', FEmbeddingProcess.Parameters.Text);
+          if length(FinalFModelFile) >= 1 then WriteLn('[INFO] Launching conversational server: ', FProcess.Executable, ' ', FProcess.Parameters.Text);
+          if length(FinalFEmbeddingModelFile) >= 1 then WriteLn('[INFO] Launching embedding server: ', FEmbeddingProcess.Executable, ' ', FEmbeddingProcess.Parameters.Text);
+          if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) then WriteLn('[INFO] Launching TTS server: ', FTTSprocess.Executable, ' ', FTTSprocess.Parameters.Text);
           WriteLn('[INFO] PHP FastCGI started on ', FPhpHost, ':', FPhpPort);
           WriteLn('[INFO] Web server started on ports ', FWebserverHttpPort, ' (HTTP) and ', FWebserverHttpsPort, ' (HTTPS)');
           if FUseLogFile then
           begin
             FProcess.Options := [poUsePipes, poStderrToOutput];
             FEmbeddingProcess.Options := [poUsePipes, poStderrToOutput];
+            FTTSprocess.Options := [poUsePipes, poStderrToOutput];
             FPhpProcess.Options := [poUsePipes, poStderrToOutput];
             FWebserverProcess.Options := [poUsePipes, poStderrToOutput];
           end
@@ -2021,19 +2515,22 @@ begin
           begin
             FProcess.Options := [];
             FEmbeddingProcess.Options := [];
+            FTTSprocess.Options := [];
             FPhpProcess.Options := [];
             FWebserverProcess.Options := [];
           end;
           FProcess.Options := FProcess.Options + [poNewProcessGroup];
           FEmbeddingProcess.Options := FEmbeddingProcess.Options + [poNewProcessGroup];
+          FTTSprocess.Options := FTTSprocess.Options + [poNewProcessGroup];
           FPhpProcess.Options := FPhpProcess.Options + [poNewProcessGroup];
           FWebserverProcess.Options := FWebserverProcess.Options + [poNewProcessGroup];
-          if not(FinalFModelFile = '') and not(FProcess.Running) then FProcess.Execute;
-          if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then FEmbeddingProcess.Execute;
+          if (length(FinalFModelFile) >= 1) and not(FProcess.Running) then FProcess.Execute;
+          if (length(FinalFEmbeddingModelFile) >= 1) and not(FEmbeddingProcess.Running) then FEmbeddingProcess.Execute;
+          if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) and not(FTTSprocess.Running) then FTTSprocess.Execute;
           if not(FPhpProcess.Running) then FPhpProcess.Execute;
           if not(FWebserverProcess.Running) then FWebserverProcess.Execute;
           // Start Proxy Service if defined AND at least one AI service is enabled
-          if (FProxyPort >= 1) and (not(FinalFModelFile = '') or not(FinalFEmbeddingModelFile = '')) then StartProxy(FProxyPort, ChatPort, EmbeddingPort);
+          if (FProxyPort >= 1) and ((length(FinalFModelFile) >= 1) or (length(FinalFEmbeddingModelFile) >= 1) or ((length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1))) then StartProxy(FProxyPort, ChatPort, EmbeddingPort, TTSport);
           {$IFDEF MSWINDOWS}
           if FJob = 0 then
           begin
@@ -2051,16 +2548,18 @@ begin
           end;
           if not(FJob = 0) then
           begin
-            if not(FinalFModelFile = '') then AssignProcessToJobObject(FJob, FProcess.Handle);
-            if not(FinalFEmbeddingModelFile = '') then AssignProcessToJobObject(FJob, FEmbeddingProcess.Handle);
+            if length(FinalFModelFile) >= 1 then AssignProcessToJobObject(FJob, FProcess.Handle);
+            if length(FinalFEmbeddingModelFile) >= 1 then AssignProcessToJobObject(FJob, FEmbeddingProcess.Handle);
+            if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) then AssignProcessToJobObject(FJob, FTTSprocess.Handle);
             AssignProcessToJobObject(FJob, FPhpProcess.Handle);
             AssignProcessToJobObject(FJob, FWebserverProcess.Handle);
           end;
           {$ENDIF}
           // While the process is running, we pump the output to the log file
           while not(Terminated) and (
-            (not(FinalFModelFile = '') and FProcess.Running) or
-            (not(FinalFEmbeddingModelFile = '') and FEmbeddingProcess.Running) or
+            ((length(FinalFModelFile) >= 1) and FProcess.Running) or
+            ((length(FinalFEmbeddingModelFile) >= 1) and FEmbeddingProcess.Running) or
+            ((length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) and FTTSprocess.Running) or
             FPhpProcess.Running or FWebserverProcess.Running)
           do
           begin
@@ -2097,6 +2596,26 @@ begin
                     begin
                       SetLength(Buffer, FEmbeddingProcess.Output.NumBytesAvailable);
                       BytesRead := FEmbeddingProcess.Output.Read(Buffer[1], length(Buffer));
+                      if (BytesRead > 0) then
+                      begin
+                        SetLength(Buffer, BytesRead);
+                        LogAtomic(Buffer);
+                      end;
+                    end;
+                  end;
+                end;
+              end;
+              // Check FTTSprocess Output
+              if Assigned(FTTSprocess) then
+              begin
+                if poUsePipes in FTTSprocess.Options then
+                begin
+                  if Assigned(FTTSprocess.Output) then
+                  begin
+                    while FTTSprocess.Output.NumBytesAvailable > 0 do
+                    begin
+                      SetLength(Buffer, FTTSprocess.Output.NumBytesAvailable);
+                      BytesRead := FTTSprocess.Output.Read(Buffer[1], length(Buffer));
                       if (BytesRead > 0) then
                       begin
                         SetLength(Buffer, BytesRead);
@@ -2148,21 +2667,19 @@ begin
               end;
             end;
             // BREAK the loop if ANY required process has died so the watchdog can restart it
-            if not(FinalFModelFile = '') and not(FProcess.Running) then break;
-            if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then break;
+            if (length(FinalFModelFile) >= 1) and not(FProcess.Running) then break;
+            if (length(FinalFEmbeddingModelFile) >= 1) and not(FEmbeddingProcess.Running) then break;
+            if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) and not(FTTSprocess.Running) then break;
             if not(FPhpProcess.Running) then break;
             if not(FWebserverProcess.Running) then break;
             Sleep(100);
           end;
           StopProxy; // Stop proxy when any of the services stop
-          if not(FinalFModelFile = '') and not(FProcess.Running) then
-            WriteLn('LLM server stopped (ExitCode: ' + IntToStr(FProcess.ExitCode) + '). Restarting in 3s...');
-          if not(FinalFEmbeddingModelFile = '') and not(FEmbeddingProcess.Running) then
-            WriteLn('Embedding server stopped (ExitCode: ' + IntToStr(FEmbeddingProcess.ExitCode) + '). Restarting in 3s...');
-          if not(FPhpProcess.Running) then
-            WriteLn('PHP FastCGI stopped (ExitCode: ' + IntToStr(FPhpProcess.ExitCode) + '). Restarting in 3s...');
-          if not(FWebserverProcess.Running) then
-            WriteLn('Web server stopped (ExitCode: ' + IntToStr(FWebserverProcess.ExitCode) + '). Restarting in 3s...');
+          if (length(FinalFModelFile) >= 1) and not(FProcess.Running) then WriteLn('LLM server stopped (ExitCode: ' + IntToStr(FProcess.ExitCode) + '). Restarting in 3s...');
+          if (length(FinalFEmbeddingModelFile) >= 1) and not(FEmbeddingProcess.Running) then WriteLn('Embedding server stopped (ExitCode: ' + IntToStr(FEmbeddingProcess.ExitCode) + '). Restarting in 3s...');
+          if (length(FinalFTTSmainModelFile) >= 1) and (length(FinalFTTSvoiceModelFile) >= 1) and not(FTTSprocess.Running) then WriteLn('TTS server stopped (ExitCode: ' + IntToStr(FTTSprocess.ExitCode) + '). Restarting in 3s...');
+          if not(FPhpProcess.Running) then WriteLn('PHP FastCGI stopped (ExitCode: ' + IntToStr(FPhpProcess.ExitCode) + '). Restarting in 3s...');
+          if not(FWebserverProcess.Running) then WriteLn('Web server stopped (ExitCode: ' + IntToStr(FWebserverProcess.ExitCode) + '). Restarting in 3s...');
           if not(Terminated) then Sleep(3000);
         except
           on x: Exception do
@@ -2178,6 +2695,7 @@ begin
   finally
     if Assigned(FProcess) then FreeAndNil(FProcess);
     if Assigned(FEmbeddingProcess) then FreeAndNil(FEmbeddingProcess);
+    if Assigned(FTTSprocess) then FreeAndNil(FTTSprocess);
     if Assigned(FPhpProcess) then FreeAndNil(FPhpProcess);
     if Assigned(FWebserverProcess) then FreeAndNil(FWebserverProcess);
     if Assigned(PortsReserved) then FreeAndNil(PortsReserved);
@@ -2287,6 +2805,18 @@ begin
       fpKill(-FEmbeddingProcess.ProcessID, SIGKILL);
       {$ENDIF}
     end;
+    if Assigned(FTTSprocess) and not(FTTSprocess.ProcessHandle = 0) then
+    begin
+      {$IFDEF MSWINDOWS}
+      // Direct API call is more reliable than calling taskkill
+      TerminateProcess(FTTSprocess.ProcessHandle, 0);
+      WaitForSingleObject(FTTSprocess.ProcessHandle, 1000);
+      {$ENDIF}
+      {$IFDEF UNIX}
+      // The minus sign kills the entire process group
+      fpKill(-FTTSprocess.ProcessID, SIGKILL);
+      {$ENDIF}
+    end;
     if Assigned(FPhpProcess) and not(FPhpProcess.ProcessHandle = 0) then
     begin
       {$IFDEF MSWINDOWS}
@@ -2311,11 +2841,13 @@ begin
     // Free the process object last
     if assigned(FProcess) then FreeAndNil(FProcess);
     if assigned(FEmbeddingProcess) then FreeAndNil(FEmbeddingProcess);
+    if assigned(FTTSprocess) then FreeAndNil(FTTSprocess);
     if assigned(FPhpProcess) then FreeAndNil(FPhpProcess);
     if assigned(FWebserverProcess) then FreeAndNil(FWebserverProcess);
     // Be careful: if Cleanup is called twice, don't free these again
     if Assigned(FParams) then FreeAndNil(FParams);
     if Assigned(FEmbeddingParams) then FreeAndNil(FEmbeddingParams);
+    if Assigned(FTTSparams) then FreeAndNil(FTTSparams);
     // Close query properly
     if Assigned(FQuery) then
     begin
@@ -2453,7 +2985,7 @@ begin
     begin
       IsCertOnlyMode := True;
       // Check if next arg exists and is not another option
-      if (i < ParamCount) and not(ParamStr(i + 1) = '') and not(ParamStr(i + 1)[1] = '-') then
+      if (i < ParamCount) and (length(ParamStr(i + 1)) >= 1) and not(ParamStr(i + 1)[1] = '-') then
         CertName := trim(ParamStr(i + 1));
       Break;
     end;
@@ -2507,8 +3039,8 @@ begin
   if IsCertOnlyMode then
   begin
     // Determine certificate and key file paths
-    if not(CertName = '') then CertName := trim(ExtractFileName(CertName));
-    if not(CertName = '') then
+    if length(CertName) >= 1 then CertName := trim(ExtractFileName(CertName));
+    if length(CertName) >= 1 then
     begin
       CertFile := FSSLcertDir + CertName + '.crt';
       KeyFile  := FSSLcertDir + CertName + '.key';

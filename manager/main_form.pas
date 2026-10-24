@@ -508,6 +508,7 @@ begin
       15: MainStatusBar.SimpleText := 'Error: PHP port already reserved!';
       16: MainStatusBar.SimpleText := 'Error: HTTP port already reserved!';
       17: MainStatusBar.SimpleText := 'Error: HTTPS port already reserved!';
+      18: MainStatusBar.SimpleText := 'Error: TTS port already reserved!';
       else MainStatusBar.SimpleText := 'Internal Server Error (Code: ' + IntToStr(ErrorCode) + ')!';
     end;
     MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);

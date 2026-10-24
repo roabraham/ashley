@@ -458,7 +458,7 @@ object SettingsForm: TSettingsForm
   OnDestroy = FormDestroy
   OnShow = FormShow
   object SettingsPageControl: TPageControl
-    Left = 8
+    Left = 6
     Height = 474
     Top = 8
     Width = 786
@@ -478,8 +478,8 @@ object SettingsForm: TSettingsForm
         Height = 436
         Top = 0
         Width = 778
-        HorzScrollBar.Increment = 20
-        HorzScrollBar.Page = 202
+        HorzScrollBar.Increment = 23
+        HorzScrollBar.Page = 236
         HorzScrollBar.Smooth = True
         HorzScrollBar.Tracking = True
         VertScrollBar.Increment = 43
@@ -506,8 +506,8 @@ object SettingsForm: TSettingsForm
             Left = 8
             Height = 25
             Top = 8
-            Width = 189
-            Caption = 'LLM/Embedding engine'
+            Width = 224
+            Caption = 'LLM/Embedding/TTS engine'
             Enabled = False
           end
           object ModelLabel: TLabel
@@ -554,14 +554,14 @@ object SettingsForm: TSettingsForm
             Left = 8
             Height = 25
             Top = 88
-            Width = 52
-            Caption = 'Device'
+            Width = 186
+            Caption = 'LLM/embedding device'
             Enabled = False
           end
           object DeviceCombobox: TComboBox
             Left = 8
             Height = 33
-            Hint = 'Select device for engine to use. This choice highly affects performance.'
+            Hint = 'Select device for LLM/embedding engine to use. This choice highly affects performance.'
             Top = 120
             Width = 566
             Anchors = [akTop, akLeft, akRight]
@@ -783,6 +783,227 @@ object SettingsForm: TSettingsForm
         State = cbChecked
         TabOrder = 0
         OnChange = EnableEmbeddingCheckBoxChange
+      end
+    end
+    object TTStabSheet: TTabSheet
+      Hint = 'Change text-to-speech (TTS) settings'
+      Caption = 'TTS'
+      ClientHeight = 436
+      ClientWidth = 778
+      ParentShowHint = False
+      ShowHint = True
+      object TTStabSheetScrollBox: TScrollBox
+        Left = 0
+        Height = 436
+        Top = 0
+        Width = 778
+        HorzScrollBar.Increment = 24
+        HorzScrollBar.Page = 248
+        HorzScrollBar.Smooth = True
+        HorzScrollBar.Tracking = True
+        VertScrollBar.Increment = 43
+        VertScrollBar.Page = 436
+        VertScrollBar.Smooth = True
+        VertScrollBar.Tracking = True
+        Align = alClient
+        AutoSize = True
+        BorderStyle = bsNone
+        ClientHeight = 436
+        ClientWidth = 757
+        TabOrder = 0
+        object TTSmodelsGroupBox: TGroupBox
+          Left = 8
+          Height = 192
+          Top = 168
+          Width = 739
+          Anchors = [akTop, akLeft, akRight]
+          Caption = 'Models'
+          ClientHeight = 162
+          ClientWidth = 735
+          Enabled = False
+          TabOrder = 1
+          object MainTTSmodelComboBox: TComboBox
+            Left = 8
+            Height = 33
+            Hint = 'Select main text-to-speech (TTS) model to load'
+            Top = 40
+            Width = 563
+            Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
+            Enabled = False
+            ItemHeight = 25
+            ReadOnly = True
+            Style = csDropDownList
+            TabOrder = 0
+          end
+          object AddMainTTSmodelButton: TButton
+            Left = 579
+            Height = 33
+            Hint = 'Add new main text-to-speech (TTS) model file'
+            Top = 40
+            Width = 150
+            Anchors = [akTop, akRight]
+            Caption = 'Add Model...'
+            TabOrder = 1
+            OnClick = AddMainTTSmodelButtonClick
+          end
+          object MainTTSmodelLabel: TLabel
+            Left = 8
+            Height = 25
+            Top = 8
+            Width = 39
+            Caption = 'Main'
+          end
+          object VoiceTTSmodelLabel: TLabel
+            Left = 8
+            Height = 25
+            Top = 88
+            Width = 42
+            Caption = 'Voice'
+          end
+          object VoiceTTSmodelComboBox: TComboBox
+            Left = 8
+            Height = 33
+            Hint = 'Select voice model for text-to-speech (TTS)'
+            Top = 120
+            Width = 563
+            Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
+            Enabled = False
+            ItemHeight = 25
+            ReadOnly = True
+            Style = csDropDownList
+            TabOrder = 2
+          end
+          object AddVoiceTTSmodelButton: TButton
+            Left = 579
+            Height = 33
+            Hint = 'Add new voice model for text-to-speech (TTS)'
+            Top = 120
+            Width = 150
+            Anchors = [akTop, akRight]
+            Caption = 'Add Model...'
+            TabOrder = 3
+            OnClick = AddVoiceTTSmodelButtonClick
+          end
+        end
+        object TTSparameterGroupBox: TGroupBox
+          Left = 8
+          Height = 400
+          Top = 368
+          Width = 739
+          Anchors = [akTop, akLeft, akRight]
+          Caption = 'Parameters'
+          ClientHeight = 370
+          ClientWidth = 735
+          Enabled = False
+          TabOrder = 2
+          object TTSparameterListEditor: TValueListEditor
+            Left = 8
+            Height = 312
+            Hint = 'Edit settings for fine-tuning'
+            Top = 8
+            Width = 721
+            Anchors = [akTop, akLeft, akRight, akBottom]
+            DefaultColWidth = 250
+            ParentShowHint = False
+            RowCount = 2
+            ShowHint = True
+            TabOrder = 0
+            OnMouseMove = TTSparameterListEditorMouseMove
+            KeyOptions = [keyEdit, keyAdd, keyDelete, keyUnique]
+            Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goColSizing, goEditing, goAutoAddRows, goAlwaysShowEditor, goThumbTracking, goDblClickAutoSize]
+            TitleCaptions.Strings = (
+              'Name'
+              'Value'
+            )
+            ColWidths = (
+              250
+              471
+            )
+          end
+          object AddTTSparameterButton: TButton
+            Left = 8
+            Height = 31
+            Hint = 'Add parameter'
+            Top = 330
+            Width = 94
+            Anchors = [akLeft, akBottom]
+            Caption = 'Add'
+            TabOrder = 1
+            OnClick = AddTTSparameterButtonClick
+          end
+          object RemoveTTSparameterButton: TButton
+            Left = 104
+            Height = 31
+            Hint = 'Remove selected parameter'
+            Top = 330
+            Width = 94
+            Anchors = [akLeft, akBottom]
+            Caption = 'Remove'
+            TabOrder = 2
+            OnClick = RemoveTTSparameterButtonClick
+          end
+        end
+        object GeneralTTSsettingsGroupBox: TGroupBox
+          Left = 8
+          Height = 160
+          Top = 0
+          Width = 739
+          Anchors = [akTop, akLeft, akRight]
+          Caption = 'General'
+          ClientHeight = 130
+          ClientWidth = 735
+          Enabled = False
+          TabOrder = 0
+          object EnableTTScheckBox: TCheckBox
+            Left = 8
+            Height = 29
+            Hint = 'Enable or disable text-to-speech (TTS) server'
+            Top = 8
+            Width = 236
+            Caption = 'Enable text-to-speech (TTS)'
+            TabOrder = 0
+            OnChange = EnableTTScheckBoxChange
+          end
+          object TTSdeviceLabel: TLabel
+            Left = 8
+            Height = 25
+            Top = 48
+            Width = 52
+            Caption = 'Device'
+            Enabled = False
+          end
+          object TTSdeviceCombobox: TComboBox
+            Left = 8
+            Height = 33
+            Hint = 'Select device for engine to use. This choice highly affects performance.'
+            Top = 80
+            Width = 563
+            Anchors = [akTop, akLeft, akRight]
+            AutoSize = False
+            Enabled = False
+            ItemHeight = 25
+            ItemIndex = 0
+            Items.Strings = (
+              'N/A'
+            )
+            Style = csDropDownList
+            TabOrder = 1
+            Text = 'N/A'
+          end
+          object TTSreloadDevicesButton: TButton
+            Left = 579
+            Height = 33
+            Hint = 'Reload the list of available devices'
+            Top = 80
+            Width = 150
+            Anchors = [akTop, akRight]
+            Caption = 'Reload Devices'
+            TabOrder = 2
+            OnClick = TTSreloadDevicesButtonClick
+          end
+        end
       end
     end
     object LoggingAndProxyTabSheet: TTabSheet
@@ -2055,7 +2276,23 @@ object SettingsForm: TSettingsForm
     Transaction = LlamaTransaction
     ReadOnly = True
     SQL.Strings = (
-      'SELECT id AS id, CONCAT(name, '': '', description) AS name, server AS server, uses_gpu AS uses_gpu, proxy_port AS proxy_port, proxy_timeout AS proxy_timeout, max_proxy_connections AS max_proxy_connections, max_package_size AS max_package_size, cli AS cli FROM config ORDER BY priority DESC, name ASC, id ASC'
+      'SELECT'
+      '      id AS id,'
+      '      CONCAT(name, '': '', description) AS name,'
+      '      server AS server,'
+      '      uses_gpu AS uses_gpu,'
+      '      proxy_port AS proxy_port,'
+      '      proxy_timeout AS proxy_timeout,'
+      '      max_proxy_connections AS max_proxy_connections,'
+      '      max_package_size AS max_package_size,'
+      '      cli AS cli,'
+      '      tts_binary AS tts_binary,'
+      '      tts_uses_gpu AS tts_uses_gpu'
+      'FROM config'
+      'ORDER BY'
+      '      priority DESC,'
+      '      name ASC,'
+      '      id ASC'
     )
     Params = <>
     Macros = <>
@@ -2068,14 +2305,20 @@ object SettingsForm: TSettingsForm
     Transaction = LlamaTransaction
     SQL.Strings = (
       'SELECT'
+      '  config_data.config_id AS config_id,'
       '  config_data.name AS name,'
       '  config_data.title AS title,'
       '  config_data.description AS description,'
       '  config_data_type.name AS type_name,'
-      '  config_data.value AS value'
+      '  config_data.value AS value,'
+      '  config.uses_gpu AS uses_gpu,'
+      '  config.tts_uses_gpu AS tts_uses_gpu'
       'FROM config_data'
+      'LEFT JOIN config ON config.id = config_data.config_id'
       'LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id'
-      'WHERE config_data.config_id = :cid'
+      'WHERE'
+      '  config_data.config_id = :cid OR'
+      '  (config.uses_gpu = 0 AND UPPER(TRIM(config_data_type.name)) LIKE ''TTS'')'
       'ORDER BY config_data.id ASC'
     )
     Params = <    
@@ -2202,5 +2445,48 @@ object SettingsForm: TSettingsForm
     Macros = <>
     Left = 432
     Top = 400
+  end
+  object TTSserverProcess: TProcess
+    Active = False
+    Parameters.Strings = (
+      '--diagnostics'
+    )
+    ConsoleTitle = 'TTS Server'
+    Options = [poUsePipes, poStderrToOutPut]
+    Priority = ppNormal
+    StartupOptions = []
+    ShowWindow = swoHIDE
+    WindowColumns = 0
+    WindowHeight = 0
+    WindowLeft = 0
+    WindowRows = 0
+    WindowTop = 0
+    WindowWidth = 0
+    FillAttribute = 0
+    Left = 432
+    Top = 440
+  end
+  object TTSmodelQuery: TSQLQuery
+    FieldDefs = <>
+    Database = LlamaDBconnection
+    Transaction = LlamaTransaction
+    SQL.Strings = (
+      'SELECT DISTINCT'
+      '  config_data.name AS name,'
+      '  config_data.title AS title,'
+      '  config_data.description AS description,'
+      '  config_data.value AS value,'
+      '  config_data.comments AS comments'
+      'FROM config_data'
+      'LEFT JOIN config_data_type ON config_data_type.id = config_data.type_id'
+      'WHERE'
+      '  UPPER(TRIM(config_data_type.name)) LIKE ''TTS'' AND'
+      '  LOWER(TRIM(config_data.name)) IN (''model'', ''voice'', ''punctuation_restoration_model'')'
+      'ORDER BY config_data.id ASC'
+    )
+    Params = <>
+    Macros = <>
+    Left = 392
+    Top = 440
   end
 end

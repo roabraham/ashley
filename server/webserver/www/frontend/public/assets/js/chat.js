@@ -117,6 +117,9 @@
     /** Allowed message role values. Anything else is rejected on import/load. */
     const VALID_ROLES = { user: true, assistant: true, system: true };
 
+    /** Characters-per-token ratio used for the token estimate (UTF-8). */
+    const CHARS_PER_TOKEN = 2.5;
+
     /**
      * Application state — single source of truth.
      */
@@ -145,7 +148,8 @@
         chatbotName: DEFAULT_CONFIG.CHATBOT_NAME,
         apiEndpoint: DEFAULT_CONFIG.API_ENDPOINT,
         requestTimeout: DEFAULT_CONFIG.REQUEST_TIMEOUT,
-        defaultTheme: DEFAULT_CONFIG.DEFAULT_THEME
+        defaultTheme: DEFAULT_CONFIG.DEFAULT_THEME,
+        ttsEnabled: false
     };
 
     /**
@@ -402,8 +406,16 @@
                 continue;
             }
             let segment = segments[i];
+            // Escape ALL regular text first so no raw HTML/JavaScript from the
+            // LLM or server can reach the DOM via innerHTML (XSS protection).
+            // Backticks are not touched by escapeHtml, so inline-code spans
+            // survive for the next replacement step.
+            segment = escapeHtml(segment);
+            // Inline code (`...`) -> <code>...</code>. Content is already
+            // escaped by escapeHtml() above; do not escape again to avoid
+            // double-encoding entities like &amp; -> &amp;amp;.
             segment = segment.replace(/`([^`]+)`/g, function(_, code) {
-                return '<code>' + escapeHtml(code) + '</code>';
+                return '<code>' + code + '</code>';
             });
             segment = segment.replace(/\n/g, '<br/>');
             result.push(segment);
@@ -684,7 +696,7 @@
      */
     function estimateTokens(text) {
         if (typeof text !== 'string' || text.length === 0) { return 0; }
-        return Math.ceil(text.length / 2.5);
+        return Math.ceil(text.length / CHARS_PER_TOKEN);
     }
 
     /**
@@ -1502,6 +1514,8 @@
                     AppState.chatHistory.push({ role: 'user', content: userMessage });
                     AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
                     saveHistoryToStorage();
+                    // Speak the completed streaming reply through TTS (only when enabled).
+                    maybeSpeak(assistantMessage);
                 }
                 if (AppState.userStoppedStream) { AppState.userStoppedStream = false; }
                 AppState.streamingMessageDiv = null;
@@ -1671,6 +1685,11 @@
      * message, and route to the appropriate send path.
      */
     function handleFormSubmit() {
+        // Interrupt any ongoing chat speech: a new user message takes priority
+        // over TTS playback (conversation interruption semantics).
+        if (typeof window.TTS === 'object' && typeof window.TTS.stop === 'function') {
+            window.TTS.stop();
+        }
         if (AppState.isProcessing) { return; }
         AppState.userStoppedStream = false;
         if (!DOM.input) { return; }
@@ -1806,7 +1825,7 @@
      * Handle API response data (shared logic for legacy mode and streaming mode fallback)
      */
     function handleApiResponse(data, message) {
-        // Optional TTS audio
+        // Optional TTS audio (legacy base64 path — separate from the TTS service).
         if (typeof data.audio_data === 'string' && data.audio_data.length > 0) {
             playAudioFromBase64(data.audio_data);
         }
@@ -1826,6 +1845,7 @@
                         AppState.chatHistory.push({ role: 'assistant', content: '*#LOOP_VIDEO* ' + videoReply });
                         saveHistoryToStorage();
                     }
+                    maybeSpeak(videoReply);
                 }
                 finishProcessing();
                 return;
@@ -1838,6 +1858,7 @@
                 AppState.chatHistory.push({ role: 'assistant', content: '*' + action + '* ' + actionReply });
                 saveHistoryToStorage();
             }
+            maybeSpeak(actionReply);
             finishProcessing();
             return;
         }
@@ -1851,9 +1872,26 @@
                     AppState.chatHistory.push({ role: 'assistant', content: plainReply });
                     saveHistoryToStorage();
                 }
+                maybeSpeak(plainReply);
             }
         }
         finishProcessing();
+    }
+
+    /**
+     * Speak an assistant reply through the TTS service when it is enabled.
+     * Centralised so every text reply path (plain reply, behaviour-match action
+     * reply, loop-video reply, streaming reply) uses the same gating.
+     *
+     * @param {string} text - Assistant reply text to speak.
+     */
+    function maybeSpeak(text) {
+        if (typeof text !== 'string' || text.trim().length === 0) { return; }
+        if (AppState.ttsEnabled === true &&
+            typeof window.TTS === 'object' &&
+            typeof window.TTS.speak === 'function') {
+            window.TTS.speak(text);
+        }
     }
 
     /** Stop the ongoing llama.cpp stream in streaming mode and reset the UI. */
@@ -2601,6 +2639,13 @@
         const calculated = AppState.llmCtxSize -
                          (AppState.llmMaxResponseTokens + AppState.safetyMargin);
         AppState.warningThreshold = Math.max(calculated, 0);
+        // TTS configuration (injected on the chat page so chat.js can gate TTS on
+        // the service being enabled and reach the correct endpoint).
+        AppState.ttsEnabled = getConfigValue(
+            'TTS_ENABLED',
+            false,
+            (v) => v === true || v === 'true' || v === 1 || v === '1'
+        );
     }
 
     /** Attach all event listeners. */

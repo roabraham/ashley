@@ -2,7 +2,7 @@
 
 namespace App\Command;
 
-use App\Service\ChatConfigService;
+use App\Service\ConfigService;
 use App\Service\DatabaseConnection;
 use Doctrine\DBAL\ParameterType;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -37,8 +37,8 @@ class GenerateEmbeddingsCommand extends Command
     /** @var int $embedding_limit final database record limit for embeddings */
     protected int $embedding_limit;
 
-    /** @var ChatConfigService Shared configuration provider for chat and LLM settings */
-    protected ChatConfigService $configService;
+    /** @var ConfigService Shared configuration provider for embedding settings */
+    protected ConfigService $configService;
 
     /** @var DatabaseConnection Shared database connection provider */
     protected DatabaseConnection $databaseConnection;
@@ -46,12 +46,12 @@ class GenerateEmbeddingsCommand extends Command
     /**
      * Constructor for the GenerateEmbeddingsCommand.
      *
-     * Initializes the command with the required ChatConfigService dependency which is used to retrieve configuration values needed for database path and embedding service endpoint resolution.
+     * Initializes the command with the required ConfigService dependency which is used to retrieve configuration values needed for database path and embedding service endpoint resolution.
      *
-     * @param ChatConfigService $configService: shared configuration provider for retrieving server root, LLM config, and embedding settings
+     * @param ConfigService $configService: shared configuration provider for retrieving server root and embedding settings
      * @param DatabaseConnection $databaseConnection: shared database connection provider
      */
-    public function __construct(ChatConfigService $configService, DatabaseConnection $databaseConnection) {
+    public function __construct(ConfigService $configService, DatabaseConnection $databaseConnection) {
         parent::__construct();
         $this->configService = $configService;
         $this->databaseConnection = $databaseConnection;
@@ -122,7 +122,7 @@ EXAMPLES
                 Display this manual page.
 
 CONFIGURATION
-        The command reads configuration from ChatConfigService:
+        The command reads configuration from ConfigService:
         * proxy_port (default: 5123) - Embedding service proxy port
         * embedding_endpoint (default: /v1/embeddings) - API endpoint path
         * memory_limit (default: 1G) - PHP memory limit

@@ -88,7 +88,7 @@ frontend/
 │  ├─ Entity/ (.gitignore placeholder)
 │  ├─ Repository/ (.gitignore placeholder)
 │  └─ Service/
-│     └─ ChatConfigService.php
+│     └─ ConfigService.php
 ├─ symfony.lock
 ├─ templates/
 │  ├─ base.html.twig         ← Default Symfony template (unused)
@@ -113,7 +113,7 @@ frontend/
 
 Services are auto-discovered from `src/` via `config/services.yaml`.
 
-* **`App\Service\ChatConfigService`**: Loads LLM and persona configuration from `wrapper.json`, `wrapper.db`, `personality.json`, `personality.db`. Instantiated directly (no Symfony DI container).
+* **`App\Service\ConfigService`**: Loads LLM, embedding, TTS and persona configuration from `wrapper.json`, `wrapper.db`, `personality.json`, `personality.db`. Instantiated directly (no Symfony DI container).
 
 ---
 

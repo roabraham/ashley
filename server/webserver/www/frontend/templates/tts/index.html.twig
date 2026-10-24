@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>Text-to-Speech</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{{ asset('assets/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/bootstrap-utilities.min.css') }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/main.css') }}" rel="stylesheet">
+</head>
+{% set ttsEnabled = tts_enabled ?? false %}
+{% set ttsDisabledAlert = not ttsEnabled %}
+<body{% if ttsDisabledAlert %} class="tts-error-page"{% endif %}>
+<div class="chat-layout">
+    <aside class="sidebar card shadow-lg">
+        <div class="card-header bg-primary text-white text-center">
+            <h4 class="mb-0">Text-to-Speech</h4>
+        </div>
+        <div class="sidebar-content">
+            <div class="description-text tts-description">
+                Convert short text into spoken audio using your configured TTS server. Ideal for narrating messages without opening the chatbot.
+            </div>
+            <div class="sidebar-menu d-flex flex-column">
+                <button id="theme-toggle-btn" type="button" class="btn btn-secondary btn-sm shadow-sm w-100 theme-toggle-btn" style="border-radius: 15px; font-size: 0.8rem;" title="Toggle light / dark theme">
+                    <span class="theme-icon-sun">
+                        <img src="{{ asset('media/bootstrap_icons/sun.svg') }}" alt="" width="16" height="16" style="vertical-align: -2px; margin-right: 4px;"> Light
+                    </span>
+                    <span class="theme-icon-moon" style="display:none;">
+                        <img src="{{ asset('media/bootstrap_icons/moon.svg') }}" alt="" width="16" height="16" style="vertical-align: -3px; margin-right: 4px;"> Dark
+                    </span>
+                </button>
+            </div>
+        </div>
+    </aside>
+    <main class="chat-panel card shadow-lg">
+        {% if not ttsEnabled %}
+        <div class="card-body text-center py-5">
+            <div class="alert alert-warning mx-auto" style="max-width: 560px;">
+                <h5 class="alert-heading"><small>TTS Service Disabled</small></h5>
+                <p class="mb-3"><small>The text-to-speech service is currently disabled. Enable it in the wrapper configuration before using this page.</small></p>
+            </div>
+        </div>
+        {% else %}
+        <div class="card-body">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="alert alert-info mb-3">
+                            <small><strong>Text-to-Speech</strong> — Type short text below, then <strong>Play</strong> to hear it spoken through your configured TTS server. Use <strong>Download</strong> to save the audio file to your computer.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <div class="mb-3">
+                            <label for="tts-input" class="form-label fw-bold tts-label">Text to narrate</label>
+                            <textarea id="tts-input" class="form-control" rows="4" maxlength="{{ tts_max_chars }}" placeholder="Type short text to narrate..." aria-label="Text to narrate" data-max-chars="{{ tts_max_chars }}"></textarea>
+                            <div class="form-text mt-1 tts-hint">
+                                <span id="tts-char-count">0</span> / <span id="tts-max-chars">{{ tts_max_chars }}</span> characters (approx. {{ tts_max_tokens }} tokens max)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12 d-flex justify-content-center flex-wrap gap-2">
+                        <button id="tts-play-btn" class="btn btn-success" type="button" title="Generate speech from your text and play it">Play</button>
+                        <button id="tts-download-btn" class="btn btn-outline-secondary" type="button" disabled title="Save the generated audio to your computer">Download</button>
+                        <button id="tts-stop-btn" class="btn btn-danger" type="button" style="display: none;" disabled title="Stop audio playback">Stop</button>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <div id="tts-status" class="small text-muted"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </main>
+</div>
+{% if not ttsDisabledAlert %}
+<script>
+    // TTS configuration from PHP
+    var TTS_API_ENDPOINT = '/api/tts';
+    var TTS_MAX_CHARS = {{ tts_max_chars }};
+    var TTS_MAX_TOKENS = {{ tts_max_tokens }};
+    var TTS_REQUEST_TIMEOUT = {{ request_timeout }};
+</script>
+{% endif %}
+<script src="{{ asset('assets/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ asset('assets/js/tts.js') }}"></script>
+<div id="error-modal" class="modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Error</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="error-message">An error occurred.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
