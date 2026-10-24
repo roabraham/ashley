@@ -40,6 +40,7 @@ This repository contains only source files to minimize size. After cloning, the 
 ```
 ashley/                             # Project root (this directory)
 ├─ bruno/                           # Bruno API test collections
+│  ├─ CrispASR Service/
 │  └─ Llama Service Wrapper/
 ├─ doc/                             # Source files of documentation
 │  ├─ frontend_doxygen.cfg          # DoxyGen config for frontend documentation
