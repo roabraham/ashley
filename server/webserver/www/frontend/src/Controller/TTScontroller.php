@@ -53,7 +53,7 @@ class TTScontroller extends AbstractController
     protected const CHARS_PER_TOKEN = 2.5;
 
     /** When true, oversized TTS inputs are truncated to tts_max_tokens instead of being rejected with a 400 error. Turn this on to send partial requests to the TTS server; turn it off to fail fast with a standard error response. */
-    protected const process_partial_requests = false;
+    protected const process_partial_requests = true;
 
     /** Default request timeout in seconds */
     protected const DEFAULT_REQUEST_TIMEOUT = 60;
