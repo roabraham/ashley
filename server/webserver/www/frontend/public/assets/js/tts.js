@@ -730,24 +730,20 @@
         if (!Number.isFinite(maxTokens) || maxTokens < 1) { maxTokens = DEFAULT_CONFIG.MAX_TOKENS; }
         const maxChars = Math.floor(maxTokens * CHARS_PER_TOKEN);
         if (maxChars < 1) { return chunks; }
-
         let remaining = text;
         while (remaining.length > 0) {
             // Trim leading whitespace so chunks never start with a pause.
             remaining = remaining.replace(/^\s+/, '');
-            if (remaining.length === 0) { break; }
-
+            if (remaining.length <= 0) { break; }
             // The whole remainder fits in one chunk.
             if (remaining.length <= maxChars) {
                 chunks.push(remaining);
                 break;
             }
-
             const searchLimit = Math.min(maxChars, remaining.length);
             let lastSentenceEnd = -1;
             let lastSubsentence = -1;
-            let lastSpace = -1;
-
+            let lastWhitespace = -1;
             // Scan the prefix that fits the token budget for the best boundary.
             for (let i = 0; i < searchLimit; i++) {
                 const ch = remaining[i];
@@ -755,20 +751,18 @@
                     lastSentenceEnd = i;
                 } else if (SUBSENTENCE_PUNCTUATION.indexOf(ch) !== -1) {
                     lastSubsentence = i;
-                } else if (ch === ' ') {
-                    lastSpace = i;
+                } else if (/\s/.test(ch)) {
+                    lastWhitespace = i;
                 }
             }
-
             let splitIndex = -1;
             if (lastSentenceEnd !== -1) {
                 splitIndex = lastSentenceEnd;          // include the punctuation
             } else if (lastSubsentence !== -1) {
                 splitIndex = lastSubsentence;          // include the subsentence mark
-            } else if (lastSpace !== -1) {
-                splitIndex = lastSpace - 1;            // cut before the trailing space
+            } else if (lastWhitespace !== -1) {
+                splitIndex = lastWhitespace - 1;        // cut before the trailing whitespace
             }
-
             if (splitIndex !== -1 && splitIndex >= 0) {
                 chunks.push(remaining.slice(0, splitIndex + 1));
                 remaining = remaining.slice(splitIndex + 1);
