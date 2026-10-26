@@ -232,14 +232,16 @@ class TTScontroller extends AbstractController
      * @return string First header value, or empty string when the header is absent
      */
     protected function extractContentType(array $headers): string {
-        $keys = ['content-type', 'Content-type', 'Content-Type', 'CONTENT-TYPE'];
-        foreach ($keys as $key) {
-            if (!isset($headers[$key])) { continue; }
-            $values = $headers[$key];
-            if (is_array($values)) { $values = $values[0] ?? ''; }
-            $val = trim((string) $values);
-            if ($val == '') { continue; }
-            return $val;
+        if (empty($headers)) { return ''; }
+        foreach ($headers as $key => $value) {
+            $keyValidated = strtolower(trim($key ?? ''));
+            if (empty($keyValidated)) { continue; }
+            if ($keyValidated != 'content-type') { continue; }
+            $valueFinal = $value;
+            if (is_array($valueFinal)) { $valueFinal = ($valueFinal[0] ?? ''); }
+            $valueFinal = trim((string) $valueFinal);
+            if (empty($valueFinal)) { return ''; }
+            return $valueFinal;
         }
         return '';
     }

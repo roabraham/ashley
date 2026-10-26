@@ -855,8 +855,18 @@
      */
     function playSpeechChunk() {
         const s = AppState.speech;
+        if (s.playIndex >= s.chunks.length) {
+            s.isSpeaking = false;
+            return;
+        }
         const idx = s.playIndex;
         const info = s.blobs[idx];
+        // Handle failed playback
+        if (info && info.failed) {
+            s.playIndex++;
+            playSpeechChunk();
+            return;
+        }
         if (!info || typeof info.blobUrl !== 'string' || info.blobUrl.length === 0) {
             return; // not yet fetched — will be started once its fetch completes
         }
@@ -875,10 +885,13 @@
 
         audio.onended = () => {
             finishCurrent();
-            if (s.aborted) { s.isSpeaking = false; return; }
+            if (s.aborted) {
+                s.isSpeaking = false;
+                return;
+            }
             if (s.playIndex < s.chunks.length) {
                 const next = s.blobs[s.playIndex];
-                if (next && typeof next.blobUrl === 'string') {
+                if (next) {
                     playSpeechChunk(); // next chunk already fetched
                 }
                 // else: next chunk will be played automatically once its fetch
@@ -889,14 +902,18 @@
         };
 
         audio.onerror = () => {
-            if (s.currentAudio === audio) { s.currentAudio = null; }
+            if (s.currentAudio !== audio) { return; }
+            s.currentAudio = null;
             try { URL.revokeObjectURL(info.blobUrl); } catch (e) { /* ignore */ }
             s.blobs[idx] = null;
             s.playIndex = idx + 1;
-            if (s.aborted) { s.isSpeaking = false; return; }
+            if (s.aborted) {
+                s.isSpeaking = false;
+                return;
+            }
             if (s.playIndex < s.chunks.length) {
                 const next = s.blobs[s.playIndex];
-                if (next && typeof next.blobUrl === 'string') {
+                if (next) {
                     playSpeechChunk();
                 }
             } else {
@@ -906,14 +923,18 @@
 
         audio.play().catch((err) => {
             // Autoplay policy or similar: treat as an error and move on.
-            if (s.currentAudio === audio) { s.currentAudio = null; }
+            if (s.currentAudio !== audio) { return; }
+            s.currentAudio = null;
             try { URL.revokeObjectURL(info.blobUrl); } catch (e) { /* ignore */ }
             s.blobs[idx] = null;
             s.playIndex = idx + 1;
-            if (s.aborted) { s.isSpeaking = false; return; }
+            if (s.aborted) {
+                s.isSpeaking = false;
+                return;
+            }
             if (s.playIndex < s.chunks.length) {
                 const next = s.blobs[s.playIndex];
-                if (next && typeof next.blobUrl === 'string') {
+                if (next) {
                     playSpeechChunk();
                 }
             } else {
@@ -937,9 +958,10 @@
 
         const idx = s.fetchIndex;
         s.fetchIndex += 1;
+        const chunks = s.chunks;
 
         fetchSpeechChunk(s.chunks[idx]).then((result) => {
-            if (s.aborted) {
+            if (s.aborted || s.chunks !== chunks) {
                 // No blob URL was created yet, so there is nothing to revoke.
                 return;
             }
@@ -955,8 +977,13 @@
             fetchNextSpeechChunk();
         }).catch((err) => {
             // A single chunk failure must not abort the whole response: skip it.
-            if (s.aborted) { return; }
+            if (s.aborted || s.chunks !== chunks) { return; }
             console.warn('[TTS] Chunk fetch failed, skipping:', (err && err.message) || err);
+            s.blobs[idx] = { failed: true };
+            if (idx === s.playIndex) {
+                s.playIndex++;
+                playSpeechChunk();
+            }
             fetchNextSpeechChunk();
         });
     }
