@@ -149,7 +149,9 @@
         apiEndpoint: DEFAULT_CONFIG.API_ENDPOINT,
         requestTimeout: DEFAULT_CONFIG.REQUEST_TIMEOUT,
         defaultTheme: DEFAULT_CONFIG.DEFAULT_THEME,
-        ttsEnabled: false
+        ttsEnabled: false,
+        sessionEpoch: 0, // bumped whenever the conversation is cleared/replaced
+        requestEpoch: 0 // sessionEpoch captured when the current message was sent
     };
 
     /**
@@ -893,6 +895,11 @@
      */
     function importConversation(file) {
         if (!file) { return; }
+        AppState.sessionEpoch += 1;
+        // Stop any ongoing TTS: the imported conversation replaces the current one.
+        if (typeof window.TTS === 'object' && typeof window.TTS.stop === 'function') {
+            window.TTS.stop();
+        }
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -979,6 +986,12 @@
     function startNewSession() {
         // Abort any in-flight stream.
         abortActiveStream();
+        AppState.sessionEpoch += 1;
+        // Stop any ongoing TTS: a restarted conversation must not keep speaking
+        // over a cleared / new conversation.
+        if (typeof window.TTS === 'object' && typeof window.TTS.stop === 'function') {
+            window.TTS.stop();
+        }
         if (AppState.responseMode === 1) {
             fetch(getApiUrl(), {
                 method: 'POST',
@@ -1685,22 +1698,23 @@
      * message, and route to the appropriate send path.
      */
     function handleFormSubmit() {
-        // Interrupt any ongoing chat speech: a new user message takes priority
-        // over TTS playback (conversation interruption semantics).
-        if (typeof window.TTS === 'object' && typeof window.TTS.stop === 'function') {
-            window.TTS.stop();
-        }
         if (AppState.isProcessing) { return; }
         AppState.userStoppedStream = false;
         if (!DOM.input) { return; }
         const rawValue = DOM.input.value;
         const message  = typeof rawValue === 'string' ? rawValue.trim() : '';
-        if (message.length === 0) {
+        if (message.length <= 0) {
             DOM.input.classList.add('is-invalid');
             DOM.input.focus();
             return;
         }
         DOM.input.classList.remove('is-invalid');
+        // Interrupt any ongoing chat speech: a new user message takes priority
+        // over TTS playback (conversation interruption semantics).
+        AppState.requestEpoch = AppState.sessionEpoch;
+        if (typeof window.TTS === 'object' && typeof window.TTS.stop === 'function') {
+            window.TTS.stop();
+        }
         AppState.isProcessing = true;
         DOM.input.disabled = true;
         if (DOM.submitBtn) {
@@ -1887,6 +1901,7 @@
      */
     function maybeSpeak(text) {
         if (typeof text !== 'string' || text.trim().length === 0) { return; }
+        if (AppState.requestEpoch !== AppState.sessionEpoch) { return; }
         if (AppState.ttsEnabled === true &&
             typeof window.TTS === 'object' &&
             typeof window.TTS.speak === 'function') {
@@ -2793,6 +2808,7 @@
      */
     function init() {
         try {
+            if (!document.getElementById('main-chat-container')) { return; }
             initDOM();
             if (!DOM.input || !DOM.chatBox) {
                 console.error('[Init] Required DOM elements not found. Aborting.');
@@ -2838,12 +2854,14 @@
     // =============================================================================
 
     if (typeof window !== 'undefined') {
-        window.addEventListener('unhandledrejection', (e) => {
-            if (e && e.reason) {
-                const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
-                console.warn('[Global] Unhandled promise rejection:', msg);
-            }
-        });
+        if (document.getElementById('main-chat-container')) {
+            window.addEventListener('unhandledrejection', (e) => {
+                if (e && e.reason) {
+                    const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+                    console.warn('[Global] Unhandled promise rejection:', msg);
+                }
+            });
+        }
     }
 
     // =============================================================================

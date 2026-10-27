@@ -16,7 +16,7 @@
 {% set embeddingEnabled = llm_config.embedding_enabled ?? true %}
 {% set bothDisabled = (not llmEnabled) and (not embeddingEnabled) %}
 <body{% if persona.background_img %} style="background-image:url('{{ persona.background_img|raw }}');"{% endif %}>
-<div class="chat-layout">
+<div class="chat-layout" id="main-chat-container">
     <aside class="sidebar card shadow-lg">
         <div class="card-header bg-primary text-white text-center">
             <h4 class="mb-0">{{ persona.chatbot_name }} Chatbot</h4>
@@ -92,6 +92,7 @@
     var TTS_API_ENDPOINT = {{ tts_api_endpoint|json_encode|raw }};
     var TTS_MAX_CHARS = {{ tts_max_chars }};
     var TTS_MAX_TOKENS = {{ tts_max_tokens }};
+    var TTS_REQUEST_TIMEOUT = {{ request_timeout }};
     var SYSTEM_PROMPT = {{ persona.active_prompt|json_encode|raw }};
     var DEFAULT_THEME = {{ persona.default_theme|json_encode|raw }};
     var WARNING_THRESHOLD = {{ warning_threshold }};

@@ -11,7 +11,7 @@
 {% set ttsEnabled = tts_enabled ?? false %}
 {% set ttsDisabledAlert = not ttsEnabled %}
 <body{% if ttsDisabledAlert %} class="tts-error-page"{% endif %}>
-<div class="chat-layout">
+<div class="chat-layout" id="main-tts-container">
     <aside class="sidebar card shadow-lg">
         <div class="card-header bg-primary text-white text-center">
             <h4 class="mb-0">Text-to-Speech</h4>

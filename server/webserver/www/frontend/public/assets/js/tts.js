@@ -1165,6 +1165,7 @@
         try {
             initDOM();
             initConfig();
+            if (!document.getElementById('main-tts-container')) { return; }
             // Theme initializes independently of TTS service state so light/dark mode always works, even when the TTS service is disabled.
             initTheme();
             bindThemeToggle();
@@ -1192,12 +1193,14 @@
     // =============================================================================
 
     if (typeof window !== 'undefined') {
-        window.addEventListener('unhandledrejection', (e) => {
-            if (e && e.reason) {
-                const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
-                console.warn('[Global] Unhandled promise rejection:', msg);
-            }
-        });
+        if (document.getElementById('main-tts-container')) {
+            window.addEventListener('unhandledrejection', (e) => {
+                if (e && e.reason) {
+                    const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+                    console.warn('[Global] Unhandled promise rejection:', msg);
+                }
+            });
+        }
     }
 
     // =============================================================================
