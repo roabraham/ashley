@@ -4,7 +4,6 @@ namespace App\Controller;
 
 use App\Service\ConfigService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpClient\HttpClient;
@@ -100,12 +99,9 @@ class TTScontroller extends AbstractController
         // Normal TTS UI
         return $this->render('tts/index.html.twig', [
             'tts_enabled'  => true,
-            'tts_host'     => trim($ttsConfig['tts_host'] ?? '127.0.0.1'),
-            'tts_port'     => intval(trim($ttsConfig['proxy_port'] ?? 5123)),
-            'tts_endpoint' => trim($ttsConfig['tts_endpoint'] ?? '/v1/audio/speech'),
             'tts_max_tokens'=> $ttsMaxTokens,
             'tts_max_chars' => $maxChars,
-            'request_timeout'=> intval(trim($ttsConfig['request_timeout'] ?? 60))
+            'request_timeout'=> max(intval(trim($ttsConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1)
         ]);
     }
 
@@ -126,7 +122,7 @@ class TTScontroller extends AbstractController
      * 5. Return the TTS server's audio response as-is to the caller.
      *
      * @param Request $request Incoming Symfony request (expects JSON body)
-     * @return Response Binary audio response on success, JsonResponse on error
+     * @return Response Binary audio response on success, Json error on error
      */
     #[Route('/api/tts', name: 'app_tts_api', methods: ['POST'])]
     public function tts(Request $request): Response {
@@ -149,7 +145,14 @@ class TTScontroller extends AbstractController
             ], Response::HTTP_BAD_REQUEST);
         }
         // Validate the `input` field
-        $input = trim((string) ($data['input'] ?? ''));
+        $rawInput = $data['input'] ?? '';
+        if (!is_string($rawInput)) {
+            return $this->json([
+                'error'   => 'INVALID_INPUT',
+                'message' => 'The "input" field must be a string!'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+        $input = trim($rawInput);
         if ($input === '') {
             return $this->json([
                 'error'   => 'EMPTY_INPUT',
@@ -157,7 +160,7 @@ class TTScontroller extends AbstractController
             ], Response::HTTP_BAD_REQUEST);
         }
         // Token limit: estimate tokens and reject or truncate oversized requests
-        $ttsMaxTokens = max(intval($ttsConfig['tts_max_tokens'] ?? 0), 1);
+        $ttsMaxTokens = max(intval($ttsConfig['tts_max_tokens'] ?? 64), 1);
         $estimatedTokens = intval(ceil(mb_strlen($input, 'UTF-8') / self::CHARS_PER_TOKEN));
         if ($estimatedTokens > $ttsMaxTokens) {
             if (!self::process_partial_requests) {
@@ -167,7 +170,6 @@ class TTScontroller extends AbstractController
                 ], Response::HTTP_BAD_REQUEST);
             }
             $input = $this->truncateToTokenLimit($input, $ttsMaxTokens);
-            $estimatedTokens = intval(ceil(mb_strlen($input, 'UTF-8') / self::CHARS_PER_TOKEN));
         }
         // Build the TTS server URL from the configuration
         $ttsHost = trim($ttsConfig['tts_host'] ?? '127.0.0.1');
@@ -178,14 +180,20 @@ class TTScontroller extends AbstractController
         if ($ttsEndpoint == '') { $ttsEndpoint = '/v1/audio/speech'; }
         if (!str_starts_with($ttsEndpoint, '/')) { $ttsEndpoint = '/' . $ttsEndpoint; }
         $url = sprintf('http://%s:%d%s', $ttsHost, $proxyPort, $ttsEndpoint);
-        $requestTimeout = max(intval($ttsConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT), 60);
-        $client = HttpClient::create(['timeout' => $requestTimeout]);
+        $requestTimeout = max(intval(trim($ttsConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
+        $client = HttpClient::create(['timeout' => $requestTimeout, 'max_duration' => $requestTimeout]);
         try {
             $response = $client->request('POST', $url, [
                 'json' => ['input' => $input]
             ]);
             $statusCode = $response->getStatusCode();
             $body = $response->getContent();
+            if (empty($body)) {
+                return $this->json([
+                    'error'   => 'TTS_EMPTY_RESPONSE',
+                    'message' => 'The TTS server returned no audio!'
+                ], Response::HTTP_BAD_GATEWAY);
+            }
             // Forward the TTS server's Content-Type so the caller knows the audio format
             $contentType = $this->extractContentType($response->getHeaders());
             if ($contentType == '') { $contentType = 'audio/mpeg'; }

@@ -141,7 +141,7 @@ class ChatController extends AbstractController
                 $persona['active_prompt'] = $activePrompt;
             }
         }
-        $requestTimeout = intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT);
+        $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
         $tts_enabled = ($llmConfig['tts_enabled'] ?? false);
         $ttsMaxTokens = max(intval(trim($llmConfig['tts_max_tokens'] ?? self::MAX_TTS_TOKENS)), 1);
         $ttsMaxChars = max(intval(floor($ttsMaxTokens * self::CHARS_PER_TOKEN)), 1);
@@ -185,7 +185,7 @@ class ChatController extends AbstractController
         // Set limits
         $memory_limit = trim($llmConfig['memory_limit'] ?? '1G');
         @ini_set('memory_limit', $memory_limit);
-        $requestTimeout = max(intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT), 60);
+        $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
         set_time_limit($requestTimeout);
         //@ini_set('max_execution_time', $requestTimeout);
         // Accept action as JSON body field (preferred) or plain POST field.
@@ -598,8 +598,8 @@ class ChatController extends AbstractController
             self::DEFAULT_MAX_SUMMARY_TOKENS,
             intval(floor(floatval($llmConfig['llm_ctx_size'] ?? self::DEFAULT_LLM_CTX_SIZE) * 0.25))
         );
-        $requestTimeout = max(intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT), 60);
-        $client = HttpClient::create(['timeout' => $requestTimeout]);
+        $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
+        $client = HttpClient::create(['timeout' => $requestTimeout, 'max_duration' => $requestTimeout]);
         try {
             $response = $client->request('POST', $llmUrl, [
                 'json' => [
@@ -647,7 +647,7 @@ class ChatController extends AbstractController
     protected function sendMessage(array $data, Request $request, SessionInterface $session, array $llmConfig, array $persona): JsonResponse {
         $llmEnabled = $llmConfig['llm_enabled'] ?? true;
         $embeddingEnabled = $llmConfig['embedding_enabled'] ?? true;
-        $requestTimeout = max(intval($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT), 60);
+        $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
         $responseMode = intval($persona['response_mode'] ?? 1);
         // Empty message guard
         $userMessage = trim((string) ($data['message'] ?? ''));
@@ -740,7 +740,7 @@ class ChatController extends AbstractController
         // This releases the session lock safely via Symfony.
         $session->save();
         try {
-            $client = HttpClient::create(['timeout' => $requestTimeout]);
+            $client = HttpClient::create(['timeout' => $requestTimeout, 'max_duration' => $requestTimeout]);
             $response = $client->request('POST', $url, [
                 'json' => [
                     'messages'   => $messages,
@@ -997,7 +997,8 @@ class ChatController extends AbstractController
                 $embeddingPort,
                 $embeddingEndpoint
             );
-            $client = HttpClient::create(['timeout' => 60]);
+            $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
+            $client = HttpClient::create(['timeout' => $requestTimeout, 'max_duration' => $requestTimeout]);
             $response = $client->request('POST', $embeddingUrl, ['json' => ['input' => $userMessage]]);
             if ($response->getStatusCode() !== 200) { return null; }
             $decoded = $response->toArray();
