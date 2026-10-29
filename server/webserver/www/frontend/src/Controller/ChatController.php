@@ -143,7 +143,7 @@ class ChatController extends AbstractController
         }
         $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
         $tts_enabled = ($llmConfig['tts_enabled'] ?? false);
-        $ttsMaxTokens = max(intval(trim($llmConfig['tts_max_tokens'] ?? self::MAX_TTS_TOKENS)), 1);
+        $ttsMaxTokens = max(intval(trim($llmConfig['tts_max_tokens'] ?? 64)), 1);
         $ttsMaxChars = max(intval(floor($ttsMaxTokens * self::CHARS_PER_TOKEN)), 1);
         $tts_api_endpoint = '/api/tts';
         return $this->render('chat/index.html.twig', [
@@ -191,9 +191,11 @@ class ChatController extends AbstractController
         // Accept action as JSON body field (preferred) or plain POST field.
         // For multipart/form-data (import) the body cannot be JSON-decoded, so
         // fall back to Symfony's parsed-POST parameters collection.
-        $content  = $request->getContent();
-        $data     = json_decode($content, true) ?? $request->request->all();
-        $action   = strtolower(trim($data['action'] ?? ''));
+        $content = $request->getContent();
+        $data = json_decode($content, true) ?? $request->request->all();
+        if (!is_array($data)) { $data = []; }
+        $rawAction = $data['action'] ?? '';
+        $action = is_string($rawAction) ? strtolower(trim($rawAction)) : '';
         switch($action) {
             case 'clear_session': return $this->clearSession($session, $llmConfig, $persona);
             case 'get_conversation_history': return $this->getConversationHistory($session, $llmConfig, $persona);
@@ -401,11 +403,15 @@ class ChatController extends AbstractController
         }
         $newHistory = [];
         foreach ($importData as $msg) {
+            if (!is_array($msg)) { continue; }
+            if (!is_string($msg['role'] ?? null)) { continue; }
+            if (!is_string($msg['content'] ?? null)) { continue; }
             $role = trim((string) ($msg['role'] ?? ''));
             if (empty($role)) { continue; }
             if (!in_array($role, self::VALID_ROLES)) { continue; }
             if (!isset($msg['content'])) { continue; }
             $content = trim((string) $msg['content']);
+            if ($content == '') { continue; }
             $newHistory[] = [
                 'role'    => $role,
                 'content' => $content
@@ -600,6 +606,7 @@ class ChatController extends AbstractController
         );
         $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
         $client = HttpClient::create(['timeout' => $requestTimeout, 'max_duration' => $requestTimeout]);
+        $summary = '';
         try {
             $response = $client->request('POST', $llmUrl, [
                 'json' => [
@@ -611,10 +618,11 @@ class ChatController extends AbstractController
             ]);
             if ($response->getStatusCode() === 200) {
                 $decoded = $response->toArray();
-                $summary = trim(($decoded['choices'][0]['message']['content'] ?? $decoded['content']) ?? '');
+                $summaryRaw = $decoded['choices'][0]['message']['content'] ?? $decoded['content'] ?? '';
+                $summary = is_string($summaryRaw) ? trim($summaryRaw) : '';
             }
         } catch (\Exception) { $summary = ''; }
-        if ($summary == '') { $summary = '[Previous conversation summary - key topics and user requests discussed]'; }
+        if (empty($summary)) { $summary = '[Previous conversation summary - key topics and user requests discussed]'; }
         return [['role' => 'system', 'content' => "{$summaryPrefixText}: {$summary}"]];
     }
 
@@ -650,7 +658,8 @@ class ChatController extends AbstractController
         $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
         $responseMode = intval($persona['response_mode'] ?? 1);
         // Empty message guard
-        $userMessage = trim((string) ($data['message'] ?? ''));
+        $rawUserMessage = $data['message'] ?? '';
+        $userMessage = is_string($rawUserMessage) ? trim($rawUserMessage) : '';
         if ($userMessage == '') {
             return $this->json(['reply' => 'Please type a message!']);
         }
@@ -752,7 +761,9 @@ class ChatController extends AbstractController
             $this->clearBlock($session);
             if ($response->getStatusCode() === 200) {
                 $result = $response->toArray();
-                $reply = trim(($result['choices'][0]['message']['content'] ?? $result['content']) ?? '[Empty response]');
+                $replyRaw = $result['choices'][0]['message']['content'] ?? $result['content'] ?? '';
+                $reply = is_string($replyRaw) ? trim($replyRaw) : '';
+                if ($reply == '') { $reply = '[Empty response]'; }
                 $history[] = ['role' => 'user', 'content' => $userMessage];
                 $history[] = ['role' => 'assistant', 'content' => $reply];
                 $session->set('conversation_history', $history);
@@ -822,7 +833,8 @@ class ChatController extends AbstractController
             $maxPopupItems = max(intval(trim($autocompleteConfig['max_popup_items'] ?? 3)), 1);
             $minAutocompleteLength = max(intval(trim($autocompleteConfig['min_autocomplete_length'] ?? 3)), 1);
             // A missing or non-string text field is treated as "nothing typed yet" instead of an error: the popup simply stays hidden.
-            $text = trim((string) ($data['text'] ?? ''));
+            $rawInputText = $data['text'] ?? '';
+            $text = is_string($rawInputText) ? trim($rawInputText) : '';
             if ($text == '') { return $this->json(['success' => true, 'items' => []]); }
             if (mb_strlen($text, 'UTF-8') > self::MAX_AUTOCOMPLETE_INPUT_LENGTH) {
                 return $this->json([

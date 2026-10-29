@@ -158,7 +158,7 @@ class ConfigService {
             $ttsMaxTokens      = null;
             //Get main engine data
             $queryBuilder = $db->createQueryBuilder()
-                ->select('id', 'endpoint', 'embedding_endpoint', 'tts_endpoint', 'proxy_port')
+                ->select('id', 'endpoint', 'embedding_endpoint', 'tts_endpoint', 'proxy_port', 'proxy_timeout')
                 ->from('config');
             if ($engineId >= 1) {
                 $queryBuilder
@@ -182,6 +182,8 @@ class ConfigService {
                 if (!empty($ttsEp)) { $config['tts_endpoint'] = '/' . trim(ltrim($ttsEp, '/')); }
                 $proxyPortRaw = intval(trim($row['proxy_port'] ?? ''));
                 if ($proxyPortRaw > 0) { $config['proxy_port'] = $proxyPortRaw; }
+                $proxyTimeoutRaw = intval(trim($row['proxy_timeout'] ?? ''));
+                if ($proxyTimeoutRaw > 0) { $config['request_timeout'] = $proxyTimeoutRaw; }
             }
             $queryBuilder = null;
             $row = null;
