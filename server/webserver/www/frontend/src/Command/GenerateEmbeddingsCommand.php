@@ -171,6 +171,10 @@ HELP);
         }
         // Get LLM config for correct embedding
         $llmConfig = $this->configService->getLlmConfig();
+        if (empty($llmConfig['embedding_enabled'])) {
+            $output->writeln('<error>ERROR: the embedding service is disabled!</error>');
+            return Command::FAILURE;
+        }
         $memory_limit = trim($llmConfig['memory_limit'] ?? '1G');
         //$embeddingHost = $llmConfig['embedding_host'] ?? '127.0.0.1';
         $embeddingHost = '127.0.0.1';
@@ -207,6 +211,7 @@ HELP);
         $isLocal = in_array($embeddingHost, ['127.0.0.1', 'localhost'], true);
         $client = HttpClient::create([
             'timeout' => 60,
+            'max_duration' => 60,
             'verify_peer' => !$isLocal,
             'verify_host' => !$isLocal
         ]);
@@ -220,13 +225,19 @@ HELP);
                     $response = $client->request('POST', $embeddingUrl, ['json' => ['input' => $text]]);
                     if ($response->getStatusCode() === 200) {
                         $decoded = $response->toArray();
-                        $embedding = ($decoded['data'][0]['embedding'] ?? $decoded['embedding']) ?? null;
+                        $embedding = $decoded['data'][0]['embedding'] ?? $decoded['embedding'] ?? null;
+                        $embeddingJson = false;
                         if (is_array($embedding)) {
+                            if (count($embedding) >= 8 && count(array_filter($embedding, 'is_numeric')) === count($embedding)) {
+                                $embeddingJson = json_encode($embedding);
+                            }
+                        }
+                        if ($embeddingJson !== false) {
                             $db->createQueryBuilder()
                                 ->update('behavior')
                                 ->set('embedding', ':embed')
                                 ->where('id = :id')
-                                ->setParameter('embed', json_encode($embedding))
+                                ->setParameter('embed', $embeddingJson)
                                 ->setParameter('id', $id, ParameterType::INTEGER)
                                 ->executeStatement();
                             ++$done;
@@ -236,7 +247,7 @@ HELP);
                     } else {
                         ++$failed;
                     }
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     // Skip any single parsing failure safely
                     ++$failed;
                 }
@@ -247,6 +258,6 @@ HELP);
         $progressBar->finish();
         $output->writeln('');
         $output->writeln(sprintf('<info>Embeddings generated: %d, skipped: %d</info>', $done, $failed));
-        return Command::SUCCESS;
+        return ($done <= 0 && $failed > 0) ? Command::FAILURE : Command::SUCCESS;
     }
 }

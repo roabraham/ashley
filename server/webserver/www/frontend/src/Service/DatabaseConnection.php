@@ -32,6 +32,12 @@ class DatabaseConnection
     /** @var string personality database filepath */
     protected string $personalityDbPath;
 
+    /** @var ?Connection wrapper database connector */
+    protected ?Connection $wrapperConnection = null;
+
+    /** @var ?Connection personality database connector */
+    protected ?Connection $personalityConnection = null;
+
     /**
      * Build the service, resolving the server root at construction time.
      *
@@ -61,6 +67,7 @@ class DatabaseConnection
      */
     public function getWrapperConnection(): Connection
     {
+        if (isset($this->wrapperConnection)) { return $this->wrapperConnection; }
         if (!file_exists($this->wrapperDbPath)) {
             throw new \RuntimeException("Wrapper database not found: {$this->wrapperDbPath}!");
         }
@@ -72,8 +79,17 @@ class DatabaseConnection
                 \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
             ],
         ]);
-        $connection->executeStatement("PRAGMA journal_mode = WAL;");
-        $connection->executeStatement("PRAGMA busy_timeout = " . self::WRAPPER_BUSY_TIMEOUT_MS . ";");
+        try {
+            $connection->executeStatement("PRAGMA journal_mode = WAL;");
+        } catch (\Throwable $e) {
+            //Silent skip
+        }
+        try {
+            $connection->executeStatement("PRAGMA busy_timeout = " . self::WRAPPER_BUSY_TIMEOUT_MS . ";");
+        } catch (\Throwable $e) {
+            //Silent skip
+        }
+        $this->wrapperConnection = $connection;
         return $connection;
     }
 
@@ -88,6 +104,7 @@ class DatabaseConnection
      */
     public function getPersonalityConnection(): Connection
     {
+        if (isset($this->personalityConnection)) { return $this->personalityConnection; }
         if (!file_exists($this->personalityDbPath)) {
             throw new \RuntimeException("Personality database not found: {$this->personalityDbPath}!");
         }
@@ -99,21 +116,33 @@ class DatabaseConnection
                 \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
             ],
         ]);
-        $connection->executeStatement("PRAGMA journal_mode = WAL;");
-        $connection->executeStatement("PRAGMA busy_timeout = " . (self::PERSONALITY_BUSY_TIMEOUT_SECONDS * 1000) . ";");
-
-        // Register Unicode-aware LOWER() function
-        $nativeConnection = $connection->getNativeConnection();
-        if ($nativeConnection instanceof \PDO) {
-            $nativeConnection->sqliteCreateFunction(
-                'lower',
-                static function (?string $value): ?string {
-                    return ($value === null) ? null : mb_strtolower($value, 'UTF-8');
-                },
-                1,
-                self::SQLITE_DETERMINISTIC_FLAG
-            );
+        try {
+            $connection->executeStatement("PRAGMA journal_mode = WAL;");
+        } catch (\Throwable $e) {
+            //Silent skip
         }
+        try {
+            $connection->executeStatement("PRAGMA busy_timeout = " . (self::PERSONALITY_BUSY_TIMEOUT_SECONDS * 1000) . ";");
+        } catch (\Throwable $e) {
+            //Silent skip
+        }
+        // Register Unicode-aware LOWER() function
+        try {
+            $nativeConnection = $connection->getNativeConnection();
+            $lowerFunction = static function (?string $value): ?string {
+                return ($value === null) ? null : mb_strtolower($value, 'UTF-8');
+            };
+            if ($nativeConnection instanceof \Pdo\Sqlite) {
+                // PHP 8.4+ driver-specific subclass
+                $nativeConnection->createFunction('lower', $lowerFunction, 1, self::SQLITE_DETERMINISTIC_FLAG);
+            } elseif ($nativeConnection instanceof \PDO) {
+                // PHP < 8.4, and plain PDO objects on newer versions
+                $nativeConnection->sqliteCreateFunction('lower', $lowerFunction, 1, self::SQLITE_DETERMINISTIC_FLAG);
+            }
+        } catch (\Throwable $e) {
+            error_log('[DatabaseConnection] Could not register Unicode lower(): ' . $e->getMessage());
+        }
+        $this->personalityConnection = $connection;
         return $connection;
     }
 

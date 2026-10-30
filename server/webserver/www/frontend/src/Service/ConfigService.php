@@ -140,7 +140,9 @@ class ConfigService {
                         $engineId = intval(trim($wjson['llama_engine'] ?? 0));
                         $ttsFallbackNeeded = (intval(trim($wjson['tts_fallback_needed'] ?? 0)) != 0);
                     }
-                } catch (\Exception) {}
+                } catch (\Throwable $e) {
+                    // Fails silently - defaults remain
+                }
             }
             //Helpers
             $hasLlmModel       = false;
@@ -230,6 +232,10 @@ class ConfigService {
                             $typeName = strtoupper(trim($r['type_name'] ?? ''));
                             //Load default TTS configuration with fallback logic
                             if ($typeName == 'TTS') {
+                                // Fallback needed: only CPU-TTS rows count. Otherwise only the selected engine's own TTS rows count.
+                                if ($ttsFallbackNeeded) {
+                                    if ($ttsUsesGpu) { continue; }
+                                } elseif ($configId != $engineId) { continue; }
                                 //Get default main model
                                 if ($name == 'model') {
                                     $hasTTSMainmodel = true;
@@ -309,11 +315,11 @@ class ConfigService {
                     $config['llm_enabled'] = (!empty($config['llm_endpoint']) && $hasLlmModel);
                     $config['embedding_enabled'] = (!empty($config['embedding_endpoint']) && $hasEmbeddingModel);
                     $config['tts_enabled'] = (!empty($config['tts_endpoint']) && $hasTTSMainmodel && $hasTTSVoicemodel);
-                } catch (\Exception) {
+                } catch (\Throwable $e) {
                     // Fails silently - defaults remain
                 }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Fails silently - defaults remain
         }
         // Priority 2: wrapper.json overrides (highest priority, applied last)
@@ -419,14 +425,14 @@ class ConfigService {
                                     }
                                     if (in_array($nl, ['max_tokens', 'max-tokens'])) {
                                         $ttsMaxTokens = intval(trim($value));
-                                        if ($ttsMaxTokens > 0) { $config['max_tokens'] = $ttsMaxTokens; }
+                                        if ($ttsMaxTokens > 0) { $config['tts_max_tokens'] = $ttsMaxTokens; }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            } catch (\Exception) {
+            } catch (\Throwable $e) {
                 // Fails silently if invalid JSON - defaults from SQLite remain
             }
         }
@@ -445,7 +451,7 @@ class ConfigService {
                 $location = trim($locRow['value'] ?? '');
                 if ($location) { $config['proxy_location'] = $location; }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Ignore - default proxy_location stays
         }
         if (empty($config['llm_endpoint'])) { $config['llm_enabled'] = false; }
@@ -494,7 +500,7 @@ class ConfigService {
                 if ($jsonData && is_array($jsonData)) {
                     $personalityName = trim($jsonData['personality'] ?? '');
                 }
-            } catch (\Exception) {
+            } catch (\Throwable $e) {
                 // Fails silently
             }
         }
@@ -510,7 +516,7 @@ class ConfigService {
                 ->setMaxResults(1);
             if ($personalityName) {
                 $queryBuilder
-                    ->andWhere('name LIKE :name')
+                    ->andWhere('name = :name COLLATE NOCASE')
                     ->setParameter('name', $personalityName, ParameterType::STRING);
             }
             $data = $queryBuilder->executeQuery()->fetchAssociative();
@@ -523,7 +529,8 @@ class ConfigService {
                 $persona['initial_message'] = trim($data['initial_message'] ?? '');
                 $persona['active_prompt'] = trim($data['system_prompt'] ?? '');
                 $persona['summary_prompt'] = trim($data['summary_prompt'] ?? '');
-                $persona['default_theme'] = strtoupper(trim($data['default_theme'] ?? ''));
+                $default_theme = strtoupper(trim($data['default_theme'] ?? ''));
+                if ($default_theme) { $persona['default_theme'] = $default_theme; }
                 $persona['css_override'] = trim($data['css_override'] ?? '');
                 $similarity_threshold = intval(trim($data['behavior_similarity_threshold'] ?? 0));
                 if ($similarity_threshold >= 1) { $persona['behavior_similarity_threshold']  = $similarity_threshold; }
@@ -536,7 +543,7 @@ class ConfigService {
                     $persona[$cfgKey] = $this->formatBase64Image($imgJson['content'], $imgJson['filename'] ?? '');
                 }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Fails silently
         }
         $persona['personality_name'] = $personalityName;
@@ -603,8 +610,9 @@ class ConfigService {
         $content = trim($base64Content ?? '');
         // Strip any existing prefix if it got stuck in the raw data
         if (str_starts_with($content, 'data:image')) {
-            $content = preg_replace('/^data:image\/(.+);base64,/', '', $content);
+            $content = trim(preg_replace('/^data:image\/(.+);base64,/', '', $content));
         }
+        $content = trim(preg_replace('/[^A-Za-z0-9+\/=]/', '', $content));
         $mime = 'image/jpeg';
         $ext = strtolower(pathinfo(trim($filename ?? ''), PATHINFO_EXTENSION));
         switch ($ext) {

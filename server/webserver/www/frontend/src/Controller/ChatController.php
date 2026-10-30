@@ -13,7 +13,6 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpClient\HttpClient;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * ChatController
@@ -71,21 +70,6 @@ class ChatController extends AbstractController
 
     /** Maximum accepted length (in characters) of the raw autocomplete request text */
     protected const MAX_AUTOCOMPLETE_INPUT_LENGTH = 255;
-
-    /**
-     * Escape character of the autocomplete `LIKE` patterns, declared as a full SQL string literal because the generated predicate appends it as `ESCAPE <literal>`
-     */
-    protected const SQLITE_LIKE_ESCAPE_LITERAL = "'\\'";
-
-    /** SQLite busy timeout in seconds used for the short-lived autocomplete connection */
-    protected const SQLITE_BUSY_TIMEOUT_SECONDS = 3;
-
-    /**
-     * Flag passed to `PDO::sqliteCreateFunction()` to mark the registered `lower()` as deterministic (SQLite's `SQLITE_DETERMINISTIC` value, spelled out here because only ext/sqlite3 defines that constant and ext/pdo_sqlite does not).
-     *
-     * A deterministic function may be hoisted and reused by SQLite, so the repeated `LOWER(TRIM(behavior.user_prompt))` expression of an AND-ed `LIKE` chain is evaluated once per row instead of once per predicate.
-     */
-    protected const SQLITE_DETERMINISTIC_FLAG = 0x000000800;
 
     /** @var ConfigService $configService: shared configuration provider */
     protected ConfigService $configService;
@@ -477,7 +461,7 @@ class ChatController extends AbstractController
             }
             $summarized = $this->doSummarize($history, $llmConfig, $persona);
             return $this->json(['success' => true, 'summarized_history' => $summarized]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return $this->json(['success' => false, 'error' => 'SERVER_ERROR: ' . $e->getMessage()]);
         }
     }
@@ -491,6 +475,8 @@ class ChatController extends AbstractController
     protected function estimateTokenCount(array $messages): int {
         $total = 0;
         foreach ($messages as $msg) {
+            if (!is_array($msg)) { continue; }
+            if (!is_string($msg['content'] ?? null)) { continue; }
             if (!isset($msg['content'])) { continue; }
             $text = trim((string) $msg['content']);
             if ($text == '') { continue; }
@@ -621,7 +607,7 @@ class ChatController extends AbstractController
                 $summaryRaw = $decoded['choices'][0]['message']['content'] ?? $decoded['content'] ?? '';
                 $summary = is_string($summaryRaw) ? trim($summaryRaw) : '';
             }
-        } catch (\Exception) { $summary = ''; }
+        } catch (\Throwable $e) { $summary = ''; }
         if (empty($summary)) { $summary = '[Previous conversation summary - key topics and user requests discussed]'; }
         return [['role' => 'system', 'content' => "{$summaryPrefixText}: {$summary}"]];
     }
@@ -861,13 +847,14 @@ class ChatController extends AbstractController
                 ->setMaxResults($maxPopupItems);
             $expressionBuilder = $queryBuilder->expr();
             $normalizedPrompt = 'LOWER(TRIM(user_prompt))';
+            $likeEscapeLiteral = $this->databaseConnection->getLikeEscapeLiteral();
             foreach ($searchTerms as $termIndex => $searchTerm) {
                 $placeholder = $queryBuilder->createNamedParameter(
-                    '%' . $this->escapeLikeWildcards($searchTerm) . '%',
+                    '%' . $this->databaseConnection->escapeLikeWildcards($searchTerm) . '%',
                     ParameterType::STRING,
-                    ':autocomplete_term_' . $termIndex
+                    ":autocomplete_term_{$termIndex}"
                 );
-                $queryBuilder->andWhere($expressionBuilder->like($normalizedPrompt, $placeholder, self::SQLITE_LIKE_ESCAPE_LITERAL));
+                $queryBuilder->andWhere($expressionBuilder->like($normalizedPrompt, $placeholder, $likeEscapeLiteral));
             }
             $rows = $queryBuilder->executeQuery()->fetchAllAssociative();
             return $this->json([
@@ -922,24 +909,6 @@ class ChatController extends AbstractController
             $searchTerms = array_slice($searchTerms, -1 * self::MAX_AUTOCOMPLETE_SEARCH_TERMS);
         }
         return $searchTerms;
-    }
-
-    /**
-     * Escape the LIKE wildcards of a single user supplied search term.
-     *
-     * Without escaping, a word containing `%` or `_` would silently widen the pattern, and a word containing the escape character itself would produce an invalid pattern.
-     *
-     * @param string $searchTerm Lower-cased search term
-     * @return string The term with every LIKE special character escaped
-     */
-    protected function escapeLikeWildcards(string $searchTerm): string {
-        // Self::SQLITE_LIKE_ESCAPE_LITERAL is the quoted literal of this character.
-        $escapeCharacter = substr(self::SQLITE_LIKE_ESCAPE_LITERAL, 1, 1);
-        return str_replace(
-            [$escapeCharacter, '%', '_'],
-            ["{$escapeCharacter}{$escapeCharacter}", "{$escapeCharacter}%", "{$escapeCharacter}_"],
-            $searchTerm
-        );
     }
 
     /**
@@ -1014,7 +983,7 @@ class ChatController extends AbstractController
             $response = $client->request('POST', $embeddingUrl, ['json' => ['input' => $userMessage]]);
             if ($response->getStatusCode() !== 200) { return null; }
             $decoded = $response->toArray();
-            $userVector = ($decoded['data'][0]['embedding'] ?? $decoded['embedding']) ?? null;
+            $userVector = $decoded['data'][0]['embedding'] ?? $decoded['embedding'] ?? null;
             if (!is_array($userVector)) { return null; }
             if (count($userVector) < 8) { return null; }
             // Similarity search
@@ -1066,7 +1035,7 @@ class ChatController extends AbstractController
                 ->fetchAssociative();
             if (!$match) { return null; }
             return $this->buildBehaviorMatchResult($match, $persona, $session, $bestScore, $userMessage, $llmConfig, $db);
-        } catch (\Exception) {
+        } catch (\Throwable $e) {
             return null;
         }
     }
