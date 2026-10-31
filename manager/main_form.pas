@@ -454,7 +454,9 @@ end;
 
 //Config Data Save wrapper
 procedure TMainForm.SaveConfigData;
-var LLMserverProcessPreviousState: boolean;
+var
+  LLMserverProcessPreviousState: boolean;
+  SettingsModalRes: Integer;
 begin
   try
     if SettingsForm.IsVisible then Exit;
@@ -463,7 +465,9 @@ begin
     repeat
       SettingsForm.MainLLMserverProcessRunning := LLMserverProcess.Running;
       SettingsForm.WebUIprocessRunning := WebUIprocess.Running;
-      if SettingsForm.showModal = mrOk then SettingsForm.SaveConfigData;
+      SettingsModalRes := SettingsForm.showModal;
+      if not(SettingsModalRes = mrOk) then break;
+      SettingsForm.SaveConfigData;
     until not(SettingsForm.saveSettingsError);
     if not(SettingsForm.configDataSaved) then Exit;
     MainStatusBar.SimpleText := 'Config data saved.';
@@ -508,7 +512,8 @@ begin
       15: MainStatusBar.SimpleText := 'Error: PHP port already reserved!';
       16: MainStatusBar.SimpleText := 'Error: HTTP port already reserved!';
       17: MainStatusBar.SimpleText := 'Error: HTTPS port already reserved!';
-      18: MainStatusBar.SimpleText := 'Error: TTS port already reserved!';
+      18: MainStatusBar.SimpleText := 'Error: TTS port is not free!';
+      19: MainStatusBar.SimpleText := 'Error: TTS port already reserved!';
       else MainStatusBar.SimpleText := 'Internal Server Error (Code: ' + IntToStr(ErrorCode) + ')!';
     end;
     MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
@@ -541,7 +546,7 @@ begin
         Exit;
       end;
       //Check wrapper binary
-      {$IFDEF WINDOWS}
+      {$IFDEF MSWINDOWS}
       WrapperPath := appdir + 'wrapper.exe';
       {$ELSE}
       WrapperPath := appdir + 'wrapper';
@@ -1318,7 +1323,7 @@ begin
     SSLcertificateProcess.Active := false;
     SSLcertificateProcess.CommandLine := '';
     SSLcertificateProcess.ApplicationName := '';
-    {$IFDEF WINDOWS}
+    {$IFDEF MSWINDOWS}
     SSLcertificateProcess.Executable := appdir + 'wrapper.exe';
     {$ELSE}
     SSLcertificateProcess.Executable := appdir + 'wrapper';
@@ -1328,7 +1333,7 @@ begin
     EmbeddingGenerationProcess.Active := false;
     EmbeddingGenerationProcess.CommandLine := '';
     EmbeddingGenerationProcess.ApplicationName := '';
-    {$IFDEF WINDOWS}
+    {$IFDEF MSWINDOWS}
     EmbeddingGenerationProcess.Executable := webserverDir + 'php' + PathDelim + 'php.exe';
     {$ELSE}
     EmbeddingGenerationProcess.Executable := webserverDir + 'php' + PathDelim + 'php';

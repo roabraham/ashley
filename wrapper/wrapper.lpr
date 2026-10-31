@@ -425,10 +425,8 @@ var
   C: Char;
   Res: AnsiString;
   ReadRes: Integer;
-  {$IFDEF MSWINDOWS}
   FDSet: TFDSet;
   TimeVal: TTimeVal;
-  {$ENDIF}
 begin
   C := #0;
   Res := '';
@@ -454,7 +452,11 @@ begin
       end;
       {$ENDIF}
       {$IFDEF UNIX}
-      if fpSelect(Stream.Handle + 1, @Stream.Handle, nil, nil, 10) = 0 then
+      fpFD_ZERO(FDSet);
+      fpFD_SET(Stream.Handle, FDSet);
+      TimeVal.tv_sec := 10;
+      TimeVal.tv_usec := 0;
+      if fpSelect(Stream.Handle + 1, @FDSet, nil, nil, @TimeVal) = 0 then
       begin
         if Terminated then Break;
         Continue;
@@ -588,6 +590,12 @@ begin
       if ContentLength <= 0 then
       begin
         SendHttpError(ClientConn, 400, 'Missing Content-Length or empty content');
+        fpshutdown(FClientHandle, 2);
+        Exit;
+      end;
+      if ContentLength > FMaxPackageSize then
+      begin
+        SendHttpError(ClientConn, 400, 'Content-Length cannot exceed ' + IntToStr(FMaxPackageSize) + ' bytes!');
         fpshutdown(FClientHandle, 2);
         Exit;
       end;
@@ -926,11 +934,7 @@ begin
     end;
   finally
     FreeAndNil(ClientConn);
-    if not(FClientHandle = -1) then
-    begin
-      CloseSocket(FClientHandle);
-      FClientHandle := -1;
-    end;
+    FClientHandle := -1;
     if not(FLlamaSocket = -1) then
     begin
       CloseSocket(FLlamaSocket);
@@ -1110,7 +1114,7 @@ begin
     begin
       Listener.Terminate;
       // Forcing the server socket closed wakes up the fpAccept in the listener thread
-      CloseSocket(FServerSocket.Socket);
+      if not(FServerSocket.Socket = -1) then CloseSocket(FServerSocket.Socket);
       Listener.WaitFor;
       FreeAndNil(Listener);
     end;
@@ -1174,7 +1178,9 @@ begin
   if not(Assigned(FProxyThread)) then Exit;
   FProxyThread.Terminate;
   if Assigned(FProxyThread.FServerSocket) then
-    CloseSocket(FProxyThread.FServerSocket.Socket);
+  begin
+    if not(FProxyThread.FServerSocket.Socket = -1) then CloseSocket(FProxyThread.FServerSocket.Socket);
+  end;
   // Note: In a real-world scenario, you'd force-close the listening socket here
   FProxyThread.WaitFor;
   FreeAndNil(FProxyThread);
@@ -1226,6 +1232,7 @@ begin
   // If we reach here, locking failed
   Result := false;
   fpClose(FLockFileHandle);
+  FLockFileHandle := -1;
   {$ENDIF}
 end;
 
@@ -1274,7 +1281,11 @@ function TServiceWrapper.IsPortFree(APort: Integer): Boolean;
       Addr6.sin6_port := htons(Word(APort));
       Result := (fpBind(S, @Addr6, SizeOf(Addr6)) = 0);
     finally
-      CloseSocket(S);
+      if not(S = -1) then
+      begin
+        CloseSocket(S);
+        S := -1;
+      end;
     end;
   end;
 begin
@@ -2276,12 +2287,12 @@ begin
     begin
       if not(IsPortFree(TTSport)) then
       begin
-        ExitCode := 8;
+        ExitCode := 18;
         raise EWatchdogFatal.Create('[ERROR] TTS port is not free: ' + IntToStr(TTSport));
       end;
       if not(PortsReserved.IndexOf(IntToStr(TTSport)) = -1) then
       begin
-        ExitCode := 18;
+        ExitCode := 19;
         raise EWatchdogFatal.Create('[ERROR] TTS port already reserved: ' + IntToStr(TTSport));
       end;
       PortsReserved.Add(IntToStr(TTSport));
