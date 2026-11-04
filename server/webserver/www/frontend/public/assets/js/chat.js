@@ -2779,6 +2779,15 @@
      * Called once per session before history is rendered.
      */
     function displayInitialMessage() {
+        const bothDisabled = ((!AppState.llmEnabled) && (!AppState.embeddingEnabled));
+        if (bothDisabled) {
+            appendMessage(
+                'chatbot',
+                'AI Services Disabled: Both LLM and embedding services are disabled. The chatbot will only respond to exact behavior matches from the personality database. For full AI responses, enable at least one AI service.',
+                null,
+                'warning-message'
+            );
+        }
         const initialMessage = getConfigValue(
             'INITIAL_MESSAGE',
             null,

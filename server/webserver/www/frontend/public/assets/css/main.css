@@ -138,6 +138,15 @@ body {
     border: 1px solid #ffeaa7;
 }
 
+/** AI-services-disabled warning message: centered, yellow background, darker letters */
+.message.warning-message { justify-content: center; }
+.message.warning-message .bubble {
+    background-color: #fff3cd;
+    color: #856404;
+    font-weight: bold;
+    border: 1px solid #ffeaa7;
+}
+
 /**
  * Fenced code block styling inside chat bubbles.
  *
@@ -369,6 +378,13 @@ body.dark-mode .message.cancel-message .bubble {
     border-color: #5c4a1e;
 }
 
+/** AI-services-disabled warning message bubble: dark amber with golden text */
+body.dark-mode .message.warning-message .bubble {
+    background-color: #3d3320;
+    color: #fce4b0;
+    border-color: #5c4a1e;
+}
+
 /** Fenced code block inside chat bubbles: dark editor-like background */
 body.dark-mode .bubble pre {
     background-color: #1e1e1e;
@@ -415,6 +431,9 @@ body.dark-mode #user-input {
 
 /** Input placeholder text: muted gray */
 body.dark-mode #user-input::placeholder { color: #888; }
+
+/** TTS textarea placeholder: readable muted text on dark background */
+body.dark-mode #tts-input::placeholder { color: #aaa; }
 
 /** Invalid input border: keep red for accessibility */
 body.dark-mode #user-input.is-invalid { border-color: #dc3545; }

@@ -14,7 +14,6 @@
 {% set llmEnabled = llm_config.llm_enabled ?? true %}
 {% set ttsEnabled = llm_config.tts_enabled ?? false %}
 {% set embeddingEnabled = llm_config.embedding_enabled ?? true %}
-{% set bothDisabled = (not llmEnabled) and (not embeddingEnabled) %}
 <body{% if persona.background_img %} style="background-image:url('{{ persona.background_img|raw }}');"{% endif %}>
 <div class="chat-layout" id="main-chat-container">
     <aside class="sidebar card shadow-lg">
@@ -63,14 +62,6 @@
         </div>
     </main>
 </div>
-{% if bothDisabled %}
-<div class="container mt-3 mb-3">
-    <div class="alert alert-warning">
-        <h5 class="alert-heading"><small>AI Services Disabled</small></h5>
-        <p class="mb-0"><small>Both LLM and embedding services are disabled. The chatbot will only respond to exact behavior matches from the personality database. For full AI responses, enable at least one AI service.</small></p>
-    </div>
-</div>
-{% endif %}
 <script src="{{ asset('assets/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ asset('assets/js/chat.js') }}"></script>
 <script src="{{ asset('assets/js/tts.js') }}"></script>
