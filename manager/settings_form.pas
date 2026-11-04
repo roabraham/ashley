@@ -1211,15 +1211,21 @@ begin
     except
       on x: Exception do
       begin
-        if PForm.Visible then PForm.Hide;
+        if Assigned(PForm) then
+        begin
+          if PForm.Visible then PForm.Hide;
+        end;
         MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
       end;
     end;
   finally
-    if PForm.Visible then PForm.Hide;
     if Assigned(SrcStream) then FreeAndNil(SrcStream);
     if Assigned(DstStream) then FreeAndNil(DstStream);
-    if Assigned(PForm) then FreeAndNil(PForm);
+    if Assigned(PForm) then
+    begin
+      if PForm.Visible then PForm.Hide;
+      FreeAndNil(PForm);
+    end;
   end;
 end;
 
@@ -2496,6 +2502,7 @@ end;
 //Load images from JSON
 procedure TSettingsForm.LoadPersonaImages(RootObj: TJSONObject; const FieldName: string; ImageControl: TImage);
 var
+  FieldNameFixed: string;
   ImageJSONData: TJSONData;
   ImageJSONObj: TJSONObject;
   TempJSON: TJSONData;
@@ -2503,7 +2510,10 @@ var
   ImageStream: TMemoryStream;
   DecodedStr: AnsiString;
   StoredFileName: string;
+  IsTempJSONCreated: Boolean;
 begin
+  FieldNameFixed := trim(FieldName);
+  if not(length(FieldNameFixed) >= 1) then Exit;
   ImageControl.AutoSize := False;
   ImageControl.Proportional := True;
   ImageControl.Stretch := True;
@@ -2518,13 +2528,24 @@ begin
     BackgroundStoredFileName := '';
   ImageStream := TMemoryStream.Create;
   TempJSON := nil;
+  IsTempJSONCreated := false;
   try
-    ImageJSONData := RootObj.Find(FieldName);
+    ImageJSONData := RootObj.Find(FieldNameFixed);
     if not(Assigned(ImageJSONData)) then Exit;
-    TempJSON := GetJSON(ImageJSONData.AsJSON);
-    if not(Assigned(TempJSON)) then Exit;
-    if not(TempJSON is TJSONObject) then Exit;
-    ImageJSONObj := TJSONObject(TempJSON);
+    if ImageJSONData is TJSONObject then
+      ImageJSONObj := TJSONObject(ImageJSONData)
+    else if ImageJSONData is TJSONString then
+    begin
+      try
+        TempJSON := GetJSON(ImageJSONData.AsString);
+        IsTempJSONCreated := true;
+        if not(TempJSON is TJSONObject) then Exit;
+        ImageJSONObj := TJSONObject(TempJSON);
+      except
+        Exit;
+      end;
+    end
+    else Exit;
     StoredFileName := trim(ImageJSONObj.Get('filename', ''));
     if length(StoredFileName) >= 1 then
     begin
@@ -2545,34 +2566,33 @@ begin
         ImageControl.Picture.LoadFromStream(ImageStream);
         if ImageControl = PersonaAvatarImage then
         begin
-          try
-            if Assigned(AvatarImageData) then FreeAndNil(AvatarImageData);
-          except
-            on x: Exception do
-              MessageDlg('Error', 'Image processing error: ' + x.Message, mtError, [mbOK], 0);
-          end;
+          if Assigned(AvatarImageData) then FreeAndNil(AvatarImageData);
           AvatarImageData := TMemoryStream.Create;
+          ImageStream.Position := 0;
           AvatarImageData.LoadFromStream(ImageStream);
           AvatarImageData.Position := 0;
         end
         else if ImageControl = PersonaBackgroundImage then
         begin
-          try
-            if Assigned(BackgroundImageData) then FreeAndNil(BackgroundImageData);
-          except
-            on x: Exception do
-              MessageDlg('Error', 'Image processing error: ' + x.Message, mtError, [mbOK], 0);
-          end;
+          if Assigned(BackgroundImageData) then FreeAndNil(BackgroundImageData);
           BackgroundImageData := TMemoryStream.Create;
+          ImageStream.Position := 0;
           BackgroundImageData.LoadFromStream(ImageStream);
           BackgroundImageData.Position := 0;
         end;
       end;
     except
-      ImageControl.Picture.Clear;
+      on x: Exception do
+      begin
+        ImageControl.Picture.Clear;
+        MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+      end;
     end;
   finally
-    if Assigned(TempJSON) then FreeAndNil(TempJSON);
+    if IsTempJSONCreated then
+    begin
+      if Assigned(TempJSON) then FreeAndNil(TempJSON);
+    end;
     FreeAndNil(ImageStream);
   end;
 end;

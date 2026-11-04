@@ -9,8 +9,8 @@
         <Filename Value="wrapper.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="924"/>
-        <CursorPos Y="945"/>
+        <TopLine Value="412"/>
+        <CursorPos X="6" Y="428"/>
         <UsageCount Value="116"/>
         <Loaded Value="True"/>
       </Unit>
@@ -51,19 +51,7 @@
         <UsageCount Value="9"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="28">
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="537" Column="61" TopLine="518"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="540" Column="51" TopLine="520"/>
-      </Position>
-      <Position>
-        <Filename Value="wrapper.lpr"/>
-        <Caret Line="568" Column="33" TopLine="548"/>
-      </Position>
+    <JumpHistory HistoryIndex="29">
       <Position>
         <Filename Value="wrapper.lpr"/>
         <Caret Line="580" Column="33" TopLine="560"/>
@@ -165,6 +153,21 @@
       </Position>
       <Position>
         <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="935" Column="53" TopLine="925"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="125" Column="67" TopLine="107"/>
+      </Position>
+      <Position>
+        <Filename Value="wrapper.lpr"/>
+        <Caret Line="126" Column="23" TopLine="107"/>
       </Position>
     </JumpHistory>
     <RunParams>

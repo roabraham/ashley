@@ -400,7 +400,9 @@ end;
 
 { TWorkerThread.SendHttpError: Sends an HTTP error response to the client stream. }
 procedure TWorkerThread.SendHttpError(Stream: TSocketStream; Code: Integer; Msg: AnsiString);
-var Status, Response: AnsiString;
+var
+  Status, JsonStr, Response: AnsiString;
+  JsonObj: TJSONObject;
 begin
   case Code of
     400: Status := '400 Bad Request';
@@ -410,8 +412,19 @@ begin
     503: Status := '503 Service Unavailable';
     else Status := '500 Internal Server Error';
   end;
-  Response := 'HTTP/1.1 ' + Status + #13#10 + 'Content-Type: application/json' + #13#10 +
-    'Connection: close' + #13#10#13#10 + '{"error": "' + Msg + '"}';
+  JsonObj := nil;
+  JsonObj := TJSONObject.Create;
+  try
+    JsonObj.Add('error', Msg);
+    JsonStr := JsonObj.AsJSON;
+  finally
+    FreeAndNil(JsonObj);
+  end;
+  Response := 'HTTP/1.1 ' + Status + #13#10 +
+    'Content-Type: application/json' + #13#10 +
+    'Content-Length: ' + IntToStr(Length(JsonStr)) + #13#10 +
+    'Connection: close' + #13#10#13#10 +
+    JsonStr;
   try
     Stream.Write(Response[1], Length(Response));
   except
