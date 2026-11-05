@@ -969,42 +969,55 @@ end;
 procedure TMainForm.FormDestroy(Sender: TObject);
 begin
   try
+    ProcessTimer.Enabled := false;
     ReleaseInstanceLock;
     //Shutdown Services
-    if Assigned(LLMserverProcess) and LLMserverProcess.Running then
+    if Assigned(LLMserverProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      KillProcessTree(LLMserverProcess.ProcessID);
-      {$ELSE}
-      LLMserverProcess.Terminate(0);
-      {$ENDIF}
+      if LLMserverProcess.Running then
+      begin
+        {$IFDEF MSWINDOWS}
+        KillProcessTree(LLMserverProcess.ProcessID);
+        {$ELSE}
+        LLMserverProcess.Terminate(0);
+        {$ENDIF}
+      end;
     end;
     //Shutdown Web UI Process
-    if Assigned(WebUIprocess) and WebUIprocess.Running then
+    if Assigned(WebUIprocess) then
     begin
-      {$IFDEF MSWINDOWS}
-      KillProcessTree(WebUIprocess.ProcessID);
-      {$ELSE}
-      WebUIprocess.Terminate(0);
-      {$ENDIF}
+      if WebUIprocess.Running then
+      begin
+        {$IFDEF MSWINDOWS}
+        KillProcessTree(WebUIprocess.ProcessID);
+        {$ELSE}
+        WebUIprocess.Terminate(0);
+        {$ENDIF}
+      end;
     end;
     //Shutdown Certificate Generation Process
-    if Assigned(SSLcertificateProcess) and SSLcertificateProcess.Running then
+    if Assigned(SSLcertificateProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      KillProcessTree(SSLcertificateProcess.ProcessID);
-      {$ELSE}
-      SSLcertificateProcess.Terminate(0);
-      {$ENDIF}
+      if SSLcertificateProcess.Running then
+      begin
+        {$IFDEF MSWINDOWS}
+        KillProcessTree(SSLcertificateProcess.ProcessID);
+        {$ELSE}
+        SSLcertificateProcess.Terminate(0);
+        {$ENDIF}
+      end;
     end;
     //Shutdown Embedding Vector Generation Process
-    if Assigned(EmbeddingGenerationProcess) and EmbeddingGenerationProcess.Running then
+    if Assigned(EmbeddingGenerationProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      KillProcessTree(EmbeddingGenerationProcess.ProcessID);
-      {$ELSE}
-      EmbeddingGenerationProcess.Terminate(0);
-      {$ENDIF}
+      if EmbeddingGenerationProcess.Running then
+      begin
+        {$IFDEF MSWINDOWS}
+        KillProcessTree(EmbeddingGenerationProcess.ProcessID);
+        {$ELSE}
+        EmbeddingGenerationProcess.Terminate(0);
+        {$ENDIF}
+      end;
     end;
   except
     on x: Exception do
@@ -1362,7 +1375,7 @@ end;
 procedure TMainForm.FormWindowStateChange(Sender: TObject);
 begin
   try
-    if WindowState = wsMinimized then
+    if (WindowState = wsMinimized) and Visible then
     begin
       WindowState := wsNormal;
       Hide;

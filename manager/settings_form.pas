@@ -3466,10 +3466,11 @@ begin
           paramName := trim(ParamsObj.Names[i]);
           paramValue := trim(ParamsObj.Items[i].AsString);
           ParameterListEditor.InsertRow(paramName, paramValue, true);
-          if Assigned(TitleList) and (TitleList.Values[paramName] = '') then
-            TitleList.Values[paramName] := paramName;
-          if SameText(paramName, 'port') then
-            llmConversationalPort := StrToIntDef(paramValue, 8080);
+          if Assigned(TitleList) then
+          begin
+            if TitleList.Values[paramName] = '' then TitleList.Values[paramName] := paramName;
+          end;
+          if SameText(paramName, 'port') then llmConversationalPort := StrToIntDef(paramValue, 8080);
           paramFound := true;
         end;
         if paramFound then ParameterListEditor.Row := 1;
@@ -3485,10 +3486,11 @@ begin
           paramName := trim(ParamsObj.Names[i]);
           paramValue := trim(ParamsObj.Items[i].AsString);
           EmbeddingParameterListEditor.InsertRow(paramName, paramValue, true);
-          if Assigned(EmbeddingTitleList) and (EmbeddingTitleList.Values[paramName] = '') then
-            EmbeddingTitleList.Values[paramName] := paramName;
-          if SameText(paramName, 'port') then
-            llmEmbeddingPort := StrToIntDef(paramValue, 8081);
+          if Assigned(EmbeddingTitleList) then
+          begin
+            if EmbeddingTitleList.Values[paramName] = '' then EmbeddingTitleList.Values[paramName] := paramName;
+          end;
+          if SameText(paramName, 'port') then llmEmbeddingPort := StrToIntDef(paramValue, 8081);
           paramFound := true;
         end;
         if paramFound then EmbeddingParameterListEditor.Row := 1;
@@ -3504,10 +3506,11 @@ begin
           paramName := trim(ParamsObj.Names[i]);
           paramValue := trim(ParamsObj.Items[i].AsString);
           TTSparameterListEditor.InsertRow(paramName, paramValue, true);
-          if Assigned(TTStitleList) and (TTStitleList.Values[paramName] = '') then
-            TTStitleList.Values[paramName] := paramName;
-          if SameText(paramName, 'port') then
-            llmTTSport := StrToIntDef(paramValue, 8082);
+          if Assigned(TTStitleList) then
+          begin
+            if TTStitleList.Values[paramName] = '' then TTStitleList.Values[paramName] := paramName;
+          end;
+          if SameText(paramName, 'port') then llmTTSport := StrToIntDef(paramValue, 8082);
           paramFound := true;
         end;
         if paramFound then TTSparameterListEditor.Row := 1;

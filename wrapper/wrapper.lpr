@@ -533,7 +533,7 @@ var
   Buffer: array[0..8191] of Byte;
   RequestHeader, ReceivedEndpoint, RequestBody, Line, FullContent: AnsiString;
   BytesRead, ContentLength, i, TotalTimeoutWithTreshold: Integer;
-  DataNode, ContentNode, streamNode: TJSONData;
+  DataNode, ContentNode, streamNode, FinishReasonNode: TJSONData;
   LastObject, TempObj: TJSONObject;
   ChunkStartTime: TDateTime;
   ElapsedSeconds, CurrentChunkTimeout: Double;
@@ -865,14 +865,17 @@ begin
               begin
                 TempObj := TJSONObject(DataNode);
                 ContentNode := TempObj.FindPath('choices[0].delta.content');
-                if Assigned(ContentNode) and not(ContentNode.JSONType = jtNull) then
-                  FullContent := FullContent + ContentNode.AsString;
+                if Assigned(ContentNode) then
+                begin
+                  if not(ContentNode.JSONType = jtNull) then FullContent := FullContent + ContentNode.AsString;
+                end;
                 if Assigned(LastObject) then LastObject.Free;
                 LastObject := TJSONObject(TempObj.Clone);
-                if
-                  Assigned(TempObj.FindPath('choices[0].finish_reason')) and
-                  not(TempObj.FindPath('choices[0].finish_reason').JSONType = jtNull)
-                then Break;
+                FinishReasonNode := TempObj.FindPath('choices[0].finish_reason');
+                if Assigned(FinishReasonNode) then
+                begin
+                  if not(FinishReasonNode.JSONType = jtNull) then Break;
+                end;
               end;
             finally
               if Assigned(DataNode) then FreeAndNil(DataNode);
@@ -1076,8 +1079,7 @@ begin
       // Start a new listener only when having enough free slots
       if (FWorkers.Count < FProxyMaxConnections) then
       begin
-        if not(Assigned(Listener)) then
-          Listener := TListenerThread.Create(FServerSocket);
+        if not(Assigned(Listener)) then Listener := TListenerThread.Create(FServerSocket);
       end
       else if Assigned(Listener) then
       begin
@@ -1443,6 +1445,8 @@ begin
   { --- STEP 1: Preliminary JSON Scan (To get EngineID and TTS fallback only) --- }
   if FileExists(JsonFile) then
   begin
+    SL := nil;
+    JsonData := nil;
     SL := TStringList.Create;
     try
       SL.LoadFromFile(JsonFile);
@@ -1460,9 +1464,9 @@ begin
             FTTSfallbackNeeded := (IndexStr(LowerCase(trim(TTSfallbackNode.AsString)), ['0', 'false', 'no']) = -1);
         end;
       end;
-      JsonData.Free;
     finally
-      SL.Free;
+      if Assigned(JsonData) then FreeAndNil(JsonData);
+      if Assigned(SL) then FreeAndNil(SL);
     end;
   end;
   { --- STEP 2: Resolve Server Data from DB --- }
@@ -1679,6 +1683,8 @@ begin
     { --- STEP 4: Apply JSON Overrides and Permission Checks --- }
     if FileExists(JsonFile) then
     begin
+      SL := nil;
+      JsonData := nil;
       SL := TStringList.Create;
       try
         SL.LoadFromFile(JsonFile);
@@ -1693,8 +1699,7 @@ begin
           DeviceNode := Root.Find('llama_device');
           if Assigned(DeviceNode) then
           begin
-            if not(AllowedParams.Values['device'] = '0') then
-              FDeviceID := trim(DeviceNode.AsString);
+            if not(AllowedParams.Values['device'] = '0') then FDeviceID := trim(DeviceNode.AsString);
           end;
           // Enable or Disable LLM server
           LLMnode := Root.Find('llm_enabled');
@@ -1845,8 +1850,7 @@ begin
             DeviceNode := Root.Find('tts_device');
             if Assigned(DeviceNode) then
             begin
-              if not(AllowedTTSparams.Values['device'] = '0') then
-                FTTSdeviceID := trim(DeviceNode.AsString);
+              if not(AllowedTTSparams.Values['device'] = '0') then FTTSdeviceID := trim(DeviceNode.AsString);
             end;
             // TTS Parameter Loop with DB validation
             if (length(FTTSmainModelFile) >= 1) and (length(FTTSvoiceModelFile) >= 1) then
@@ -1922,9 +1926,9 @@ begin
             end;
           end;
         end;
-        JsonData.Free;
       finally
-        SL.Free;
+        if Assigned(JsonData) then FreeAndNil(JsonData);
+        if Assigned(SL) then FreeAndNil(SL);
       end;
     end;
   finally
@@ -2805,61 +2809,76 @@ begin
   {$ENDIF}
   try
     // Use ProcessHandle (Windows) or ProcessID (Unix) to check existence
-    if Assigned(FProcess) and not(FProcess.ProcessHandle = 0) then
+    if Assigned(FProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      // Direct API call is more reliable than calling taskkill
-      TerminateProcess(FProcess.ProcessHandle, 0);
-      WaitForSingleObject(FProcess.ProcessHandle, 1000);
-      {$ENDIF}
-      {$IFDEF UNIX}
-      // The minus sign kills the entire process group
-      fpKill(-FProcess.ProcessID, SIGKILL);
-      {$ENDIF}
+      if not(FProcess.ProcessHandle = 0) then
+      begin
+        {$IFDEF MSWINDOWS}
+        // Direct API call is more reliable than calling taskkill
+        TerminateProcess(FProcess.ProcessHandle, 0);
+        WaitForSingleObject(FProcess.ProcessHandle, 1000);
+        {$ENDIF}
+        {$IFDEF UNIX}
+        // The minus sign kills the entire process group
+        fpKill(-FProcess.ProcessID, SIGKILL);
+        {$ENDIF}
+      end;
     end;
-    if Assigned(FEmbeddingProcess) and not(FEmbeddingProcess.ProcessHandle = 0) then
+    if Assigned(FEmbeddingProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      // Direct API call is more reliable than calling taskkill
-      TerminateProcess(FEmbeddingProcess.ProcessHandle, 0);
-      WaitForSingleObject(FEmbeddingProcess.ProcessHandle, 1000);
-      {$ENDIF}
-      {$IFDEF UNIX}
-      // The minus sign kills the entire process group
-      fpKill(-FEmbeddingProcess.ProcessID, SIGKILL);
-      {$ENDIF}
+      if not(FEmbeddingProcess.ProcessHandle = 0) then
+      begin
+        {$IFDEF MSWINDOWS}
+        // Direct API call is more reliable than calling taskkill
+        TerminateProcess(FEmbeddingProcess.ProcessHandle, 0);
+        WaitForSingleObject(FEmbeddingProcess.ProcessHandle, 1000);
+        {$ENDIF}
+        {$IFDEF UNIX}
+        // The minus sign kills the entire process group
+        fpKill(-FEmbeddingProcess.ProcessID, SIGKILL);
+        {$ENDIF}
+      end;
     end;
-    if Assigned(FTTSprocess) and not(FTTSprocess.ProcessHandle = 0) then
+    if Assigned(FTTSprocess) then
     begin
-      {$IFDEF MSWINDOWS}
-      // Direct API call is more reliable than calling taskkill
-      TerminateProcess(FTTSprocess.ProcessHandle, 0);
-      WaitForSingleObject(FTTSprocess.ProcessHandle, 1000);
-      {$ENDIF}
-      {$IFDEF UNIX}
-      // The minus sign kills the entire process group
-      fpKill(-FTTSprocess.ProcessID, SIGKILL);
-      {$ENDIF}
+      if not(FTTSprocess.ProcessHandle = 0) then
+      begin
+        {$IFDEF MSWINDOWS}
+        // Direct API call is more reliable than calling taskkill
+        TerminateProcess(FTTSprocess.ProcessHandle, 0);
+        WaitForSingleObject(FTTSprocess.ProcessHandle, 1000);
+        {$ENDIF}
+        {$IFDEF UNIX}
+        // The minus sign kills the entire process group
+        fpKill(-FTTSprocess.ProcessID, SIGKILL);
+        {$ENDIF}
+      end;
     end;
-    if Assigned(FPhpProcess) and not(FPhpProcess.ProcessHandle = 0) then
+    if Assigned(FPhpProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      TerminateProcess(FPhpProcess.ProcessHandle, 0);
-      WaitForSingleObject(FPhpProcess.ProcessHandle, 1000);
-      {$ENDIF}
-      {$IFDEF UNIX}
-      fpKill(-FPhpProcess.ProcessID, SIGKILL);
-      {$ENDIF}
+      if not(FPhpProcess.ProcessHandle = 0) then
+      begin
+        {$IFDEF MSWINDOWS}
+        TerminateProcess(FPhpProcess.ProcessHandle, 0);
+        WaitForSingleObject(FPhpProcess.ProcessHandle, 1000);
+        {$ENDIF}
+        {$IFDEF UNIX}
+        fpKill(-FPhpProcess.ProcessID, SIGKILL);
+        {$ENDIF}
+      end;
     end;
-    if Assigned(FWebserverProcess) and not(FWebserverProcess.ProcessHandle = 0) then
+    if Assigned(FWebserverProcess) then
     begin
-      {$IFDEF MSWINDOWS}
-      TerminateProcess(FWebserverProcess.ProcessHandle, 0);
-      WaitForSingleObject(FWebserverProcess.ProcessHandle, 1000);
-      {$ENDIF}
-      {$IFDEF UNIX}
-      fpKill(-FWebserverProcess.ProcessID, SIGKILL);
-      {$ENDIF}
+      if not(FWebserverProcess.ProcessHandle = 0) then
+      begin
+        {$IFDEF MSWINDOWS}
+        TerminateProcess(FWebserverProcess.ProcessHandle, 0);
+        WaitForSingleObject(FWebserverProcess.ProcessHandle, 1000);
+        {$ENDIF}
+        {$IFDEF UNIX}
+        fpKill(-FWebserverProcess.ProcessID, SIGKILL);
+        {$ENDIF}
+      end;
     end;
   finally
     // Free the process object last
@@ -2956,8 +2975,7 @@ end;
 procedure DoSigInt(Sig: LongInt); cdecl;
 begin
   // This tells TCustomApplication to stop
-  if Assigned(Application) then
-    Application.Terminate;
+  if Assigned(Application) then Application.Terminate;
 end;
 {$ENDIF}
 
