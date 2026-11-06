@@ -50,77 +50,90 @@ implementation
 
 { TVersionInfo }
 
+//Get fixed information
 function TVersionInfo.GetFixedInfo: TVersionFixedInfo;
 begin
   Result := FVersResource.FixedInfo;
 end;
 
+//Get file string information
 function TVersionInfo.GetStringFileInfo: TVersionStringFileInfo;
 begin
   Result := FVersResource.StringFileInfo;
 end;
 
+//Get file variable information
 function TVersionInfo.GetVarFileInfo: TVersionVarFileInfo;
 begin
   Result := FVersResource.VarFileInfo;
 end;
 
+//Search for version information
 function TVersionInfo.SearchValue(const aString: string): string;
 var
   s : TVersionStringTable;
   i,j : integer;
 begin
   result := '';
+  if not(StringFileInfo.Count > 0) then Exit;
   for i:=0 to StringFileInfo.Count-1 do
   begin
     s := StringFileInfo.Items[i];
+    if not(s.Count > 0) then continue;
     for j:=0 to s.Count-1 do
     begin
-      if s.Keys[j] = aString then
-      begin
-         result := s.Values[j];
-         break;
-      end;
+      if not(s.Keys[j] = aString) then continue;
+      result := s.Values[j];
+      break;
     end;
   end;
 end;
 
+//Get company name
 function TVersionInfo.CompanyName: string;
 begin
    Result := SearchValue('CompanyName');
 end;
 
+//Get internal name
 function TVersionInfo.InternalName: string;
 begin
    Result := SearchValue('InternalName');
 end;
 
+//Get file version
 function TVersionInfo.FileVersion: string;
 begin
    Result := SearchValue('FileVersion');
 end;
 
+//Get product name
 function TVersionInfo.ProductName: string;
 begin
    Result := SearchValue('ProductName');
 end;
 
+//Constructor
 constructor TVersionInfo.Create;
 begin
   inherited Create;
+  FVersResource := nil;
   FVersResource := TVersionResource.Create;
   Load(HInstance);
 end;
 
+//Destructor
 destructor TVersionInfo.Destroy;
 begin
-  FVersResource.Free;
+  if Assigned(FVersResource) then FreeAndNil(FVersResource);
   inherited Destroy;
 end;
 
+//Load version information
 procedure TVersionInfo.Load(Instance: THandle);
 var Stream: TResourceStream;
 begin
+  Stream := nil;
   Stream := TResourceStream.CreateFromID(Instance, 1, PChar(RT_VERSION));
   try
     FVersResource.SetCustomRawDataStream(Stream);
@@ -129,7 +142,7 @@ begin
     // clear the stream
     FVersResource.SetCustomRawDataStream(nil);
   finally
-    Stream.Free;
+    if Assigned(Stream) then FreeAndNil(Stream);
   end;
 end;
 

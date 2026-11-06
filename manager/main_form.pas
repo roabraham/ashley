@@ -305,10 +305,12 @@ begin
     if hSnap = INVALID_HANDLE_VALUE then Exit;
     Proc.dwSize := SizeOf(Proc);
     if Process32First(hSnap, Proc) then
-    repeat
-      if Proc.th32ParentProcessID = AProcessID then
+    begin
+      repeat
+        if not(Proc.th32ParentProcessID = AProcessID) then continue;
         KillProcessTree(Proc.th32ProcessID);
-    until not(Process32Next(hSnap, Proc));
+      until not(Process32Next(hSnap, Proc));
+    end;
     CloseHandle(hSnap);
     hSnap := OpenProcess(PROCESS_TERMINATE, False, AProcessID);
     if not(hSnap = 0) then
@@ -394,7 +396,12 @@ begin
       MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
       Exit;
     end;
-    OpenDocument(filenameFixed);
+    if not(OpenDocument(filenameFixed)) then
+    begin
+      MainStatusBar.SimpleText := 'Error opening document: ' + filenameFixed;
+      MessageDlg('Error', MainStatusBar.SimpleText, mtError, [mbOK], 0);
+      Exit;
+    end;
     MainStatusBar.SimpleText := 'Document opened: ' + filenameFixed;
     Result := true;
   except
@@ -443,8 +450,7 @@ begin
     FLockFileHandle := -1;
     InstanceID := LowerCase(MD5Print(MD5String(trim(ParamStr(0)))));
     LockFile := INSTANCE_PREFIX + InstanceID + '.lock';
-    if FileExists(LockFile) then
-      fpUnlink(PChar(LockFile));
+    if FileExists(LockFile) then fpUnlink(PChar(LockFile));
     {$ENDIF}
   except
     on x: Exception do
@@ -663,7 +669,7 @@ begin
           LLMserverProcess.Terminate(0);
           {$ENDIF}
           WaitCount := 0;
-          while (LLMserverProcess.Running) and (WaitCount < 100) do
+          while LLMserverProcess.Running and (WaitCount < 100) do
           begin
             Sleep(100);
             Application.ProcessMessages;
@@ -786,10 +792,6 @@ end;
 procedure TMainForm.GenerateEmbeddings;
 begin
   try
-    {//Temporarily disabled
-    MainStatusBar.SimpleText := 'Embedding generation GUI is currently not available.';
-    ShowMessage(MainStatusBar.SimpleText);
-    Exit;}
     if not(LLMserverProcess.Running) then
     begin
       MainStatusBar.SimpleText := 'The server is not running! You have to start it first!';
@@ -1448,8 +1450,7 @@ procedure TMainForm.SystemTrayIconMouseDown(Sender: TObject;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   try
-    if Button = mbLeft then
-      MainPopupMenu.PopUp(Mouse.CursorPos.X, Mouse.CursorPos.Y);
+    if Button = mbLeft then MainPopupMenu.PopUp(Mouse.CursorPos.X, Mouse.CursorPos.Y);
   except
     on x: Exception do
     begin

@@ -740,7 +740,11 @@ begin
       MessageDlg('Error', 'Folder does not exist: ' + FolderNameFixed, mtError, [mbOK], 0);
       Exit;
     end;
-    OpenDocument(FolderNameFixed);
+    if not(OpenDocument(FolderNameFixed)) then
+    begin
+      MessageDlg('Error', 'Error opening folder: ' + FolderNameFixed, mtError, [mbOK], 0);
+      Exit;
+    end;
     Result := true;
   except
     on x: Exception do
@@ -1002,8 +1006,7 @@ begin
         ComboBox.ItemIndex := max(FoundIndex, 0);
         if ComboBox.Items.Count > 1 then ComboBox.Enabled := true;
       end
-      else
-        CheckBox.Enabled := false;
+      else CheckBox.Enabled := false;
       if ComboBox.Items.Count <= 1 then ComboBox.Enabled := false;
       Exit;
     end;
@@ -1029,8 +1032,7 @@ begin
         ComboBox.ItemIndex := max(FoundIndex, 0);
         if ComboBox.Items.Count > 1 then ComboBox.Enabled := true;
       end
-      else
-        ttsModelsAvailable := false;
+      else ttsModelsAvailable := false;
       if ComboBox.Items.Count <= 1 then ComboBox.Enabled := false;
       Exit;
     end;
@@ -1652,6 +1654,7 @@ begin
       end;
       //Load devices
       foundDeviceHeader := false;
+      SL := nil;
       SL := TStringList.Create;
       try
         LLMserverProcess.Executable := EngineItem.ServerBinary;
@@ -1699,7 +1702,7 @@ begin
           if foundDeviceHeader then DeviceComboBox.Items.EndUpdate;
         end;
       finally
-        FreeAndNil(SL);
+        if Assigned(SL) then FreeAndNil(SL);
       end;
     finally
       if DeviceComboBox.Items.Count >= 1 then
@@ -1761,6 +1764,8 @@ begin
       end;
       //Load devices
       foundDeviceHeader := false;
+      SL := nil;
+      OutputStream := nil;
       SL := TStringList.Create;
       OutputStream := TMemoryStream.Create;
       try
@@ -1872,6 +1877,7 @@ begin
               deviceID := trim(Copy(output_line, k, j - k));
             end;
             // Build display title: name: desc mem=... id=...
+            deviceItem := nil;
             deviceItem := TDeviceComboBoxItem.Create;
             try
               // ID = index from [0], [1], [2] - what --device expects
@@ -1922,8 +1928,8 @@ begin
           if foundDeviceHeader then TTSdeviceComboBox.Items.EndUpdate;
         end;
       finally
-        FreeAndNil(SL);
-        FreeAndNil(OutputStream);
+        if Assigned(SL) then FreeAndNil(SL);
+        if Assigned(OutputStream) then FreeAndNil(OutputStream);
         if not(TTSdeviceComboBox.Items.Count >= 1) then ttsFallbackNeeded := true;
       end;
     finally
@@ -2377,8 +2383,9 @@ begin
       LoadSelectedPersona;
       Exit;
     end;
-    JSONList := TStringList.Create;
+    JSONList := nil;
     JSONData := nil;
+    JSONList := TStringList.Create;
     try
       JSONList.LoadFromFile(personaConfigFile);
       if not(length(JSONList.Text) >= 1) then
@@ -2526,6 +2533,7 @@ begin
     AvatarStoredFileName := ''
   else
     BackgroundStoredFileName := '';
+  ImageStream := nil;
   ImageStream := TMemoryStream.Create;
   TempJSON := nil;
   IsTempJSONCreated := false;
@@ -2593,7 +2601,7 @@ begin
     begin
       if Assigned(TempJSON) then FreeAndNil(TempJSON);
     end;
-    FreeAndNil(ImageStream);
+    if Assigned(ImageStream) then FreeAndNil(ImageStream);
   end;
 end;
 
@@ -2607,6 +2615,7 @@ begin
   if not(Assigned(ImageControl)) then Exit;
   if not(Assigned(ImageControl.Picture.Graphic)) then Exit;
   if ImageControl.Picture.Graphic.Empty then Exit;
+  TempStream := nil;
   TempStream := TMemoryStream.Create;
   try
     // 1. Default to saving the current graphic
@@ -2626,7 +2635,7 @@ begin
     Source.Position := 0;
     Result := EncodeStringBase64(StreamToString(Source));
   finally
-    FreeAndNil(TempStream);
+    if Assigned(TempStream) then FreeAndNil(TempStream);
   end;
 end;
 
@@ -2647,12 +2656,13 @@ function TSettingsForm.StreamToString(Stream: TStream): string;
 var StringStream: TStringStream;
 begin
   Result := '';
+  StringStream := nil;
   StringStream := TStringStream.Create('');
   try
     StringStream.CopyFrom(Stream, 0);
     Result := StringStream.DataString;
   finally
-    FreeAndNil(StringStream);
+    if Assigned(StringStream) then FreeAndNil(StringStream);
   end;
 end;
 
@@ -2937,13 +2947,14 @@ end;
 procedure TSettingsForm.LoadSelectedPersona;
 var
   personaItem: TPersonaComboBoxItem;
-  ImageJSONData: TJSONData;
   ImageJSONObj: TJSONObject;
   ImageJSONList: TStringList;
   ImageBase64: String;
   ImageStream: TMemoryStream;
   procedure ProcessImage(const JSONStr: AnsiString; TargetImage: TImage);
-    var ImageFileName: AnsiString;
+    var
+      ImageFileName: AnsiString;
+      ImageJSONData: TJSONData;
     begin
       TargetImage.AutoSize := False;
       TargetImage.Proportional := True;
@@ -2962,6 +2973,7 @@ var
         TargetImage.Picture.Clear;
         Exit;
       end;
+      ImageJSONData := nil;
       try
         ImageJSONList.Text := JSONStr;
         ImageJSONData := GetJSON(ImageJSONList.Text);
@@ -3050,15 +3062,16 @@ begin
       PersonaBehaviorSimilarityThreshold.Value := personaItem.BehaviorSimilarityThreshold
     else
       PersonaBehaviorSimilarityThreshold.Value := 80;
+    ImageJSONList := nil;
+    ImageStream := nil;
     ImageJSONList := TStringList.Create;
     ImageStream := TMemoryStream.Create;
-    ImageJSONData := nil;
     try
       ProcessImage(personaItem.Avatar, PersonaAvatarImage);
       ProcessImage(personaItem.BackgroundImage, PersonaBackgroundImage);
     finally
-      FreeAndNil(ImageJSONList);
-      FreeAndNil(ImageStream);
+      if Assigned(ImageJSONList) then FreeAndNil(ImageJSONList);
+      if Assigned(ImageStream) then FreeAndNil(ImageStream);
     end;
   except
     on x: Exception do
@@ -3245,8 +3258,9 @@ var
 begin
   //Default values
   saveSettingsError := false;
-  JSONList := TStringList.Create;
+  JSONList := nil;
   JSONData := nil;
+  JSONList := TStringList.Create;
   try
     try
       //Reset working directory
@@ -3340,8 +3354,7 @@ begin
           if ModelComboBox.Items.Count >= 1 then ModelComboBox.ItemIndex := 0;
           MessageDlg('Error', 'The selected model not found in model directory!', mtError, [mbOK], 0);
         end
-        else
-          ModelComboBox.ItemIndex := foundIndex;
+        else ModelComboBox.ItemIndex := foundIndex;
       end;
       //Load embedding model
       loadedEmbeddingModel := trim(RootObj.Get('embedding_model', ''));
@@ -3353,8 +3366,7 @@ begin
           if EmbeddingModelComboBox.Items.Count >= 1 then EmbeddingModelComboBox.ItemIndex := 0;
           MessageDlg('Error', 'The selected model not found in embedding directory!', mtError, [mbOK], 0);
         end
-        else
-          EmbeddingModelComboBox.ItemIndex := foundIndex;
+        else EmbeddingModelComboBox.ItemIndex := foundIndex;
       end;
       //Load main TTS model
       loadedTTSmainModel := trim(RootObj.Get('tts_model_main', ''));
@@ -3365,8 +3377,7 @@ begin
         begin
           if MainTTSmodelComboBox.Items.Count >= 1 then MainTTSmodelComboBox.ItemIndex := 0;
         end
-        else
-          MainTTSmodelComboBox.ItemIndex := foundIndex;
+        else MainTTSmodelComboBox.ItemIndex := foundIndex;
       end;
       //Load TTS voice model
       loadedTTSvoiceModel := trim(RootObj.Get('tts_model_voice', ''));
@@ -3377,8 +3388,7 @@ begin
         begin
           if VoiceTTSmodelComboBox.Items.Count >= 1 then VoiceTTSmodelComboBox.ItemIndex := 0;
         end
-        else
-          VoiceTTSmodelComboBox.ItemIndex := foundIndex;
+        else VoiceTTSmodelComboBox.ItemIndex := foundIndex;
       end;
       //Enable or disable LLM service
       LLMnode := RootObj.Find('llm_enabled');
@@ -3431,8 +3441,7 @@ begin
         else
           LLMproxyServiceTimeout.Value := StrToIntDef(trim(ProxyTimeoutNode.AsString), 1);
       end
-      else
-        LLMproxyServiceTimeout.Value := 60;
+      else LLMproxyServiceTimeout.Value := 60;
       //Set max proxy connections
       ProxyMaxConnectionsNode := RootObj.Find('max_proxy_connections');
       if Assigned(ProxyMaxConnectionsNode) then
@@ -3442,8 +3451,7 @@ begin
         else
           LLMproxyServiceMaxConnections.Value := StrToIntDef(trim(ProxyMaxConnectionsNode.AsString), 1);
       end
-      else
-        LLMproxyServiceMaxConnections.Value := 200;
+      else LLMproxyServiceMaxConnections.Value := 200;
       //Set max proxy package size
       ProxyMaxPackageSizeNode := RootObj.Find('max_package_size');
       if Assigned(ProxyMaxPackageSizeNode) then
@@ -3453,8 +3461,7 @@ begin
         else
           LLMproxyServiceMaxPackageSize.Value := StrToIntDef(trim(ProxyMaxPackageSizeNode.AsString), 1);
       end
-      else
-        LLMproxyServiceMaxPackageSize.Value := 2097152;
+      else LLMproxyServiceMaxPackageSize.Value := 2097152;
       //Get LLM parameters
       ParamsObj := RootObj.Get('parameters', TJSONObject(nil));
       if Assigned(ParamsObj) then
@@ -3573,8 +3580,8 @@ begin
         MessageDlg('Error', 'Could not parse ' + wrapperConfigFile + ': ' + x.Message, mtError, [mbOK], 0);
     end;
   finally
-    JSONData.Free;
-    JSONList.Free;
+    if Assigned(JSONData) then FreeAndNil(JSONData);
+    if Assigned(JSONList) then FreeAndNil(JSONList);
   end;
 end;
 
@@ -3714,8 +3721,7 @@ begin
             llmConversationalPort := StrToIntDef(NewValue, llmConversationalPort);
             ParamsObj.Add(KeyName, IntToStr(llmConversationalPort));
           end
-          else
-            ParamsObj.Add(KeyName, NewValue);
+          else ParamsObj.Add(KeyName, NewValue);
         end;
         RootObj.Add('parameters', ParamsObj);
         ParamsObj := nil;
@@ -3745,8 +3751,7 @@ begin
             llmEmbeddingPort := StrToIntDef(NewValue, llmEmbeddingPort);
             ParamsObj.Add(KeyName, IntToStr(llmEmbeddingPort));
           end
-          else
-            ParamsObj.Add(KeyName, NewValue);
+          else ParamsObj.Add(KeyName, NewValue);
         end;
         RootObj.Add('embedding_parameters', ParamsObj);
         ParamsObj := nil;
@@ -3789,8 +3794,7 @@ begin
             llmTTSport := StrToIntDef(NewValue, llmTTSport);
             ParamsObj.Add(KeyName, IntToStr(llmTTSport));
           end
-          else
-            ParamsObj.Add(KeyName, NewValue);
+          else ParamsObj.Add(KeyName, NewValue);
         end;
         RootObj.Add('tts_parameters', ParamsObj);
         ParamsObj := nil;
@@ -4067,15 +4071,6 @@ begin
     BackgroundImageFormat := '';
     AvatarStoredFileName := '';
     BackgroundStoredFileName := '';
-    TitleList := TStringList.Create;
-    TitleList.Sorted := true;
-    TitleList.Duplicates := dupIgnore;
-    EmbeddingTitleList := TStringList.Create;
-    EmbeddingTitleList.Sorted := true;
-    EmbeddingTitleList.Duplicates := dupIgnore;
-    TTStitleList := TStringList.Create;
-    TTStitleList.Sorted := true;
-    TTStitleList.Duplicates := dupIgnore;
     canHandleEngineChange := false;
     configDataSaved := false;
     saveSettingsError := false;
@@ -4087,6 +4082,19 @@ begin
     ttsModelsAvailable := false;
     llmEmbeddingDeviceFound := false;
     ttsDeviceFound := false;
+    TitleList := nil;
+    EmbeddingTitleList := nil;
+    TTStitleList := nil;
+    defaultTTSmodelList := nil;
+    TitleList := TStringList.Create;
+    TitleList.Sorted := true;
+    TitleList.Duplicates := dupIgnore;
+    EmbeddingTitleList := TStringList.Create;
+    EmbeddingTitleList.Sorted := true;
+    EmbeddingTitleList.Duplicates := dupIgnore;
+    TTStitleList := TStringList.Create;
+    TTStitleList.Sorted := true;
+    TTStitleList.Duplicates := dupIgnore;
     defaultTTSmodelList :=  TTTSmodelList.Create;
     //Directories and files
     {$IFDEF MSWINDOWS}
@@ -4173,8 +4181,7 @@ begin
             item.TTSbinary := TTSserverFilePath;
             if item.TTSusesGPU = 0 then ttsFallbackBinary := item.TTSbinary;
           end
-          else
-            item.TTSbinary := '';
+          else item.TTSbinary := '';
           LlamaEngineComboBox.Items.AddObject(trim(LlamaQuery.FieldByName('name').AsString), item);
         end;
         LlamaQuery.Next;

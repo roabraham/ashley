@@ -12,12 +12,19 @@ uses
 type
   { TAboutForm: dialog form that displays application title, version, copyright, and license information. }
   TAboutForm = class(TForm)
+    { Component to show application name. }
     AppTitle: TLabel;
+    { Component to show application version. }
     AppVersion: TLabel;
+    { Component to show copyright information. }
     AppCopyright: TLabel;
+    { Component to close the window. }
     OKbutton: TButton;
+    { Decorative component. }
     LogoImage: TImage;
+    { Decorative component. }
     LogoBevel: TBevel;
+    { Component to show license text. }
     LicenseMemo: TRichMemo;
     { Initializes the form with version information and loads the license file. }
     procedure FormCreate(Sender: TObject);
