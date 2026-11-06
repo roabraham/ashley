@@ -418,7 +418,7 @@ begin
     JsonObj.Add('error', Msg);
     JsonStr := JsonObj.AsJSON;
   finally
-    FreeAndNil(JsonObj);
+    if Assigned(JsonObj) then FreeAndNil(JsonObj);
   end;
   Response := 'HTTP/1.1 ' + Status + #13#10 +
     'Content-Type: application/json' + #13#10 +
@@ -486,8 +486,7 @@ begin
       if C = #10 then Break;
       if not(C = #13) then Res := Res + C;
     end
-    else
-      Break;
+    else Break;
     if Length(Res) > FMaxPackageSize then Break;
   end;
   Result := Res;
@@ -507,14 +506,18 @@ begin
   if P <= 0 then Exit;
   // Move pointer to the start of the actual value (after the colon)
   Inc(P, Length('content-length:'));
-  while (P <= Length(Headers)) and (Headers[P] in [' ', #9]) do
+  while true do
   begin
+    if P > Length(Headers) then Break;
+    if not(Headers[P] in [' ', #9]) then Break;
     Inc(P);
   end;
   // Find the end of the line (CR or LF)
   PEnd := P;
-  while (PEnd <= Length(Headers)) and (Headers[PEnd] in ['0'..'9']) do
+  while true do
   begin
+    if PEnd > Length(Headers) then Break;
+    if not(Headers[PEnd] in ['0'..'9']) then Break;
     Inc(PEnd);
   end;
   // Extract and trim the numeric string
@@ -550,6 +553,7 @@ begin
   if FClientHandle = -1 then Exit; //If handle is dead, exit
   FillChar(Buffer, SizeOf(Buffer), 0);
   RequestBody := '';
+  ClientConn := nil;
   ClientConn := TSocketStream.Create(FClientHandle);
   try
     try
@@ -584,8 +588,7 @@ begin
       // Extract the first word (the HTTP Method) from the first line
       Line := RequestHeader;
       i := Pos(#13#10, Line);
-      if i > 0 then
-        SetLength(Line, i - 1); // Narrow down to the request line
+      if i > 0 then SetLength(Line, i - 1); // Narrow down to the request line
       // Grab the first word. Delimiters are space and tab.
       if not(uppercase(ExtractWord(1, Line, [' ', #9])) = 'POST') then
       begin
@@ -614,7 +617,7 @@ begin
       end;
       SetLength(RequestBody, ContentLength);
       i := 1;
-      while (i <= ContentLength) and not(Terminated) do
+      while not(Terminated) and (i <= ContentLength) do
       begin
         // Force global timeout
         if (Now - FStartTime) * 86400 > FProxyTimeout then
@@ -680,8 +683,7 @@ begin
       // This handles spaces, tabs, and any consecutive whitespaces automatically.
       Line := RequestHeader;
       i := Pos(#13#10, Line);
-      if i > 0 then
-        SetLength(Line, i - 1); // Narrow down to just the first line
+      if i > 0 then SetLength(Line, i - 1); // Narrow down to just the first line
       // Word 1 is method (POST), Word 2 is the URI/Endpoint
       ReceivedEndpoint := ExtractWord(2, Line, [' ', #9]);
       // Validate ReceivedEndpoint and Select Port
@@ -752,6 +754,8 @@ begin
         WriteLn('[WORKER] Streaming request redirected to port ', FinalTargetPort)
       else
         WriteLn('[WORKER] Request redirected to port ', FinalTargetPort);
+      LlamaStream := nil;
+      FLlamaSocket := -1;
       LlamaStream := TInetSocket.Create('127.0.0.1', FinalTargetPort);
       FLlamaSocket := LlamaStream.Handle;
       try
@@ -759,8 +763,10 @@ begin
         if (i > 0) and (length(ReceivedEndpoint) >= 1) then
         begin
           Delete(RequestHeader, i, Length(ReceivedEndpoint));
-          while (Length(FinalEndpoint) > 0) and (FinalEndpoint[1] = '/') do
+          while true do
           begin
+            if not(Length(FinalEndpoint) > 0) then Break;
+            if not(FinalEndpoint[1] = '/') then Break;
             Delete(FinalEndpoint, 1, 1);
           end;
           Insert('/' + FinalEndpoint, RequestHeader, i);
@@ -928,7 +934,7 @@ begin
       finally
         if Assigned(LastObject) then FreeAndNil(LastObject);
         FLlamaSocket := -1;
-        FreeAndNil(LlamaStream);
+        if Assigned(LlamaStream) then FreeAndNil(LlamaStream);
       end;
     except
       on E: Exception do
@@ -949,7 +955,7 @@ begin
       end;
     end;
   finally
-    FreeAndNil(ClientConn);
+    if Assigned(ClientConn) then FreeAndNil(ClientConn);
     FClientHandle := -1;
     if not(FLlamaSocket = -1) then
     begin
@@ -988,9 +994,11 @@ destructor TProxyThread.Destroy;
 var i: Integer;
 begin
   for i := 0 to FWorkers.Count - 1 do
+  begin
     TWorkerThread(FWorkers[i]).Terminate;
-  FreeAndNil(FWorkers);
-  FreeAndNil(FServerSocket);
+  end;
+  if Assigned(FWorkers) then FreeAndNil(FWorkers);
+  if Assigned(FServerSocket) then FreeAndNil(FServerSocket);
   inherited Destroy;
 end;
 
@@ -1010,14 +1018,10 @@ begin
       FWorkers.Delete(i);
       continue;
     end;
-    if W.Terminated then
-    begin
-      if not(W.FClientHandle = -1) then
-      begin
-        CloseSocket(W.FClientHandle);
-        W.FClientHandle := -1;
-      end;
-    end;
+    if not(W.Terminated) then continue;
+    if W.FClientHandle = -1 then continue;
+    CloseSocket(W.FClientHandle);
+    W.FClientHandle := -1;
   end;
 end;
 
@@ -1030,33 +1034,27 @@ begin
   for i := FWorkers.Count - 1 downto 0 do
   begin
     W := TWorkerThread(FWorkers[i]);
-    if (Now - W.StartTime) * 86400 > FProxyTimeout then
+    if not((Now - W.StartTime) * 86400 > FProxyTimeout) then continue;
+    WriteLn('[PROXY] Worker timed out. Terminating.');
+    W.Terminate;
+    if not(W.FClientHandle = -1) then
     begin
-      WriteLn('[PROXY] Worker timed out. Terminating.');
-      W.Terminate;
-      if not(W.FClientHandle = -1) then
-      begin
-        fpshutdown(W.FClientHandle, 2);
-        CloseSocket(W.FClientHandle);
-        W.FClientHandle := -1;
-      end;
-      if not(W.FLlamaSocket = -1) then
-      begin
-        fpshutdown(W.FLlamaSocket, 2);
-        CloseSocket(W.FLlamaSocket);
-        W.FLlamaSocket := -1;
-      end;
-      if not(W.Finished) then
-      begin
-        W.WaitFor;
-        if not(W.Finished) then
-        begin
-          WriteLn('[PROXY] Worker did not terminate gracefully. Force-removing.');
-          FWorkers.Delete(i);
-          FreeAndNil(W);
-        end;
-      end;
+      fpshutdown(W.FClientHandle, 2);
+      CloseSocket(W.FClientHandle);
+      W.FClientHandle := -1;
     end;
+    if not(W.FLlamaSocket = -1) then
+    begin
+      fpshutdown(W.FLlamaSocket, 2);
+      CloseSocket(W.FLlamaSocket);
+      W.FLlamaSocket := -1;
+    end;
+    if W.Finished then continue;
+    W.WaitFor;
+    if W.Finished then continue;
+    WriteLn('[PROXY] Worker did not terminate gracefully. Force-removing.');
+    FWorkers.Delete(i);
+    FreeAndNil(W);
   end;
 end;
 
@@ -1133,7 +1131,7 @@ begin
       Listener.WaitFor;
       FreeAndNil(Listener);
     end;
-    FreeAndNil(FServerSocket);
+    if Assigned(FServerSocket) then FreeAndNil(FServerSocket);
   end;
 end;
 
@@ -1357,6 +1355,9 @@ end;
 { TServiceWrapper.SetupDatabase: Opens connection to the SQLite configuration database. }
 procedure TServiceWrapper.SetupDatabase;
 begin
+  FConn := nil;
+  FTrans := nil;
+  FQuery := nil;
   FConn := TSQLite3Connection.Create(nil);
   FTrans := TSQLTransaction.Create(FConn);
   FQuery := TSQLQuery.Create(nil);
@@ -1523,6 +1524,9 @@ begin
     FQuery.Close;
   end;
   { --- STEP 3: Load config_data from DB (Mandatory Filter with TTS Fallback) --- }
+  AllowedParams := nil;
+  AllowedEmbeddingParams := nil;
+  AllowedTTSparams := nil;
   AllowedParams := TStringList.Create;
   AllowedEmbeddingParams := TStringList.Create;
   AllowedTTSparams := TStringList.Create;
@@ -1932,9 +1936,9 @@ begin
       end;
     end;
   finally
-    FreeAndNil(AllowedParams);
-    FreeAndNil(AllowedEmbeddingParams);
-    FreeAndNil(AllowedTTSparams);
+    if Assigned(AllowedParams) then FreeAndNil(AllowedParams);
+    if Assigned(AllowedEmbeddingParams) then FreeAndNil(AllowedEmbeddingParams);
+    if Assigned(AllowedTTSparams) then FreeAndNil(AllowedTTSparams);
   end;
   { --- FINAL VALIDATION --- }
   if not(FileExists(FServerBinary)) then raise Exception.Create('Server binary missing: ' + FServerBinary);
@@ -2054,6 +2058,7 @@ begin
     end;
     if not(FileExists(OpenSslCfg)) then raise Exception.Create('Cannot create OpenSSL config file.');
     // Generate certificate using OpenSSL
+    Parameters := nil;
     Parameters := TStringList.Create;
     try
       Parameters.Add('req');
@@ -2077,7 +2082,7 @@ begin
       if not(ExecAndCapture(FOpensslBinary, Parameters) = 0) then
         raise Exception.Create('Failed to generate SSL certificate.');
     finally
-      FreeAndNil(Parameters);
+      if Assigned(Parameters) then FreeAndNil(Parameters);
     end;
     WriteLn('[INFO] SSL certificate generated successfully.');
   finally
@@ -2118,6 +2123,7 @@ var
   ExitCode: Integer;
   i: Integer;
 begin
+  Process := nil;
   Process := TProcess.Create(nil);
   try
     Process.Executable := command;
@@ -2138,7 +2144,7 @@ begin
     ExitCode := Process.ExitCode;
     Result := ExitCode;
   finally
-    FreeAndNil(Process);
+    if Assigned(Process) then FreeAndNil(Process);
   end;
 end;
 
@@ -2159,6 +2165,7 @@ begin
     // Use OpenSSL -checkend option to verify certificate validity
     // Returns 0 if cert will NOT expire within N seconds (still valid)
     // Returns 1 if cert WILL expire within N seconds (or already expired)
+    Parameters := nil;
     Parameters := TStringList.Create;
     try
       Parameters.Add('x509');
@@ -2169,7 +2176,7 @@ begin
       Parameters.Add(IntToStr(Seconds));
       Code := ExecAndCapture(FOpensslBinary, Parameters);
     finally
-      FreeAndNil(Parameters);
+      if Assigned(Parameters) then FreeAndNil(Parameters);
     end;
     //WriteLn('[DEBUG] Code: ' + IntToStr(Code));
     Result := not(Code = 0);
@@ -2240,8 +2247,7 @@ var
           Err := IOResult;
         end;
       finally
-        if Err = 0 then
-          CloseFile(F);
+        if Err = 0 then CloseFile(F);
         {$I+} // Re-enable IO errors
       end;
     except
@@ -2268,6 +2274,12 @@ begin
   pIdx := FTTSparams.IndexOf('--port');
   if not(pIdx = -1) and (pIdx < FTTSparams.Count - 1) then
     TTSport := StrToIntDef(trim(FTTSparams[pIdx+1]), 8082);
+  FProcess := nil;
+  FEmbeddingProcess := nil;
+  FTTSprocess := nil;
+  FPhpProcess := nil;
+  FWebserverProcess := nil;
+  PortsReserved := nil;
   FProcess := TProcess.Create(nil);
   FEmbeddingProcess := TProcess.Create(nil);
   FTTSprocess := TProcess.Create(nil);
