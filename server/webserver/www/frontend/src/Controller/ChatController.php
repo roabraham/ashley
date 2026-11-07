@@ -820,7 +820,7 @@ class ChatController extends AbstractController
             $minAutocompleteLength = max(intval(trim($autocompleteConfig['min_autocomplete_length'] ?? 3)), 1);
             // A missing or non-string text field is treated as "nothing typed yet" instead of an error: the popup simply stays hidden.
             $rawInputText = $data['text'] ?? '';
-            $text = is_string($rawInputText) ? trim($rawInputText) : '';
+            $text = is_string($rawInputText) ? trim(preg_replace('/\s+/u', ' ', $rawInputText)) : '';
             if ($text == '') { return $this->json(['success' => true, 'items' => []]); }
             if (mb_strlen($text, 'UTF-8') > self::MAX_AUTOCOMPLETE_INPUT_LENGTH) {
                 return $this->json([
@@ -956,7 +956,7 @@ class ChatController extends AbstractController
             if (empty($personalityId)) { return null; }
             // FAST PATH: case-insensitive exact match on user_prompt
             // A normalized, trimmed comparison avoids the embedding/LLM round-trip when the user typed a known prompt verbatim. This is orders of magnitude faster and returns the identical response payload.
-            $normalizedMessage = trim($userMessage);
+            $normalizedMessage = trim(preg_replace('/\s+/u', ' ', $userMessage));
             $exactMatch = $db->createQueryBuilder()
                 ->select('id', 'response_action', 'response_message')
                 ->from('behavior')
@@ -966,7 +966,7 @@ class ChatController extends AbstractController
                 ->setMaxResults(1)
                 ->executeQuery()
                 ->fetchAssociative();
-            if ($exactMatch) { return $this->buildBehaviorMatchResult($exactMatch, $persona, $session, 1.0, $userMessage, $llmConfig, $db); }
+            if ($exactMatch) { return $this->buildBehaviorMatchResult($exactMatch, $persona, $session, 1.0, $normalizedMessage, $llmConfig, $db); }
             // SLOW PATH: cosine similarity on embeddings (requires embedding service)
             if (!$embeddingEnabled) { return null; }
             $embeddingHost = '127.0.0.1';
@@ -980,7 +980,7 @@ class ChatController extends AbstractController
             );
             $requestTimeout = max(intval(trim($llmConfig['request_timeout'] ?? self::DEFAULT_REQUEST_TIMEOUT)), 1);
             $client = HttpClient::create(['timeout' => $requestTimeout, 'max_duration' => $requestTimeout]);
-            $response = $client->request('POST', $embeddingUrl, ['json' => ['input' => $userMessage]]);
+            $response = $client->request('POST', $embeddingUrl, ['json' => ['input' => $normalizedMessage]]);
             if ($response->getStatusCode() !== 200) { return null; }
             $decoded = $response->toArray();
             $userVector = $decoded['data'][0]['embedding'] ?? $decoded['embedding'] ?? null;
@@ -1034,7 +1034,7 @@ class ChatController extends AbstractController
                 ->executeQuery()
                 ->fetchAssociative();
             if (!$match) { return null; }
-            return $this->buildBehaviorMatchResult($match, $persona, $session, $bestScore, $userMessage, $llmConfig, $db);
+            return $this->buildBehaviorMatchResult($match, $persona, $session, $bestScore, $normalizedMessage, $llmConfig, $db);
         } catch (\Throwable $e) {
             return null;
         }
