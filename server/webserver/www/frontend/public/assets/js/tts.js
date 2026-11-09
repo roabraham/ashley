@@ -47,7 +47,8 @@
         MAX_CHARS: 160,           // floor(64 * 2.5) for the default tts_max_tokens=64
         MAX_TOKENS: 64,
         REQUEST_TIMEOUT: 60,
-        DEFAULT_THEME: 'LIGHT'
+        DEFAULT_THEME: 'LIGHT',
+        AUDIO_CONTENT_TYPE: 'audio/mpeg'
     };
 
     /** Characters-per-token ratio used for the token estimate (UTF-8). Mirrors the PHP backend. */
@@ -61,7 +62,7 @@
         currentAudio: null,
         cachedText: null,
         audioBlobUrl: null,
-        audioContentType: 'audio/mpeg',
+        audioContentType: DEFAULT_CONFIG.AUDIO_CONTENT_TYPE,
         defaultTheme: DEFAULT_CONFIG.DEFAULT_THEME,
         apiEndpoint: DEFAULT_CONFIG.API_ENDPOINT,
         maxChars: DEFAULT_CONFIG.MAX_CHARS,
@@ -122,9 +123,9 @@
         try {
             if (theme.toUpperCase().trim() === 'DARK') {
                 document.body.classList.add('dark-mode');
-            } else {
-                document.body.classList.remove('dark-mode');
+                return;
             }
+            document.body.classList.remove('dark-mode');
         } catch (e) {
             console.warn('[Theme] Failed to apply theme:', e.message);
         }
@@ -154,7 +155,9 @@
      */
     function storeTheme(theme) {
         try {
+            if (typeof theme !== 'string') { return false; }
             const themeFixed = theme.toUpperCase().trim();
+            if (themeFixed === '') { return false; }
             localStorage.setItem(THEME_STORAGE_KEY, themeFixed);
             return true;
         } catch (e) {
@@ -185,7 +188,7 @@
      */
     function initTheme() {
         const stored = getStoredTheme();
-        const theme = (stored === null ? getDefaultTheme() : stored);
+        const theme = (stored ? stored : getDefaultTheme());
         applyTheme(theme);
         updateThemeToggleButton(theme);
     }
@@ -221,6 +224,7 @@
      * @param {'LIGHT'|'DARK'} theme
      */
     function updateThemeToggleButton(theme) {
+        if (typeof theme !== 'string') { return; }
         const btn = document.getElementById('theme-toggle-btn');
         if (!btn) { return; }
         const sunSpan = btn.querySelector('.theme-icon-sun');
@@ -249,20 +253,23 @@
      */
     function getConfigValue(name, defaultValue, transformer) {
         try {
-            if (typeof window[name] === 'undefined') { return defaultValue; }
-            const value = window[name];
+            if (typeof name !== 'string') { return defaultValue; }
+            const nameFixed = name.trim();
+            if (nameFixed === '') { return defaultValue; }
+            if (typeof window[nameFixed] === 'undefined') { return defaultValue; }
+            const value = window[nameFixed];
             if (value === null || value === undefined) { return defaultValue; }
             if (typeof transformer === 'function') {
                 try {
                     return transformer(value);
                 } catch (te) {
-                    console.warn(`[Config] Transformer error for ${name}:`, te.message);
+                    console.warn(`[Config] Transformer error for ${nameFixed}:`, te.message);
                     return defaultValue;
                 }
             }
             return value;
         } catch (e) {
-            console.warn(`[Config] Error reading ${name}:`, e.message);
+            console.warn(`[Config] Error reading ${nameFixed}:`, e.message);
             return defaultValue;
         }
     }
@@ -312,7 +319,8 @@
      * @returns {number}
      */
     function estimateTokens(text) {
-        if (typeof text !== 'string' || text.length === 0) { return 0; }
+        if (typeof text !== 'string') { return 0; }
+        if (text.length === 0) { return 0; }
         return Math.ceil(text.length / CHARS_PER_TOKEN);
     }
 
@@ -326,13 +334,15 @@
      * @param {string} message
      */
     function showErrorModal(message) {
+        const messageFixed = (typeof message === 'string' ? message.trim() : String(message).trim());
+        if (messageFixed === '') { return; }
         const modalEl = document.getElementById('error-modal');
         const messageEl = document.getElementById('error-message');
         if (!modalEl || !messageEl) {
-            console.error('[Error Modal]', message);
+            console.error('[Error Modal]', messageFixed);
             return;
         }
-        messageEl.textContent = typeof message === 'string' ? message : String(message);
+        messageEl.textContent = messageFixed;
         showModal(modalEl);
     }
 
@@ -462,7 +472,8 @@
      */
     function updatePlaybackButtons() {
         if (!DOM.playBtn || !DOM.downloadBtn || !DOM.stopBtn || !DOM.input) { return; }
-        const hasInput = (typeof DOM.input.value === 'string' && DOM.input.value.trim().length > 0);
+        const inputFixed = (typeof DOM.input.value === 'string' ? DOM.input.value.trim() : '');
+        const hasInput = (inputFixed.length > 0);
         DOM.playBtn.disabled = !hasInput || AppState.isPlaying;
         DOM.downloadBtn.disabled = !AppState.audioBlobUrl || AppState.isPlaying;
         DOM.stopBtn.disabled = !AppState.isPlaying;
@@ -475,10 +486,12 @@
      * @param {string} blobUrl - Object URL pointing at the audio blob.
      */
     function playAudio(blobUrl) {
-        if (typeof blobUrl !== 'string' || blobUrl.length === 0) { return; }
+        if (typeof blobUrl !== 'string') { return; }
+        const blobUrlFixed = blobUrl.trim();
+        if (blobUrlFixed === '') { return; }
         try {
             stopAudio();
-            const audio = new Audio(blobUrl);
+            const audio = new Audio(blobUrlFixed);
             AppState.currentAudio = audio;
             AppState.isPlaying = true;
             updatePlaybackButtons();
@@ -522,13 +535,14 @@
      * @param {string} filename - Suggested filename for the download.
      */
     function triggerAudioDownload(blobUrl, filename) {
-        if (typeof blobUrl !== 'string' || blobUrl.length === 0) {
+        const blobUrlFixed = (typeof blobUrl === 'string' ? blobUrl.trim() : '');
+        if (blobUrlFixed === '') {
             showErrorModal('No audio available to download.');
             return;
         }
         try {
             const a = document.createElement('a');
-            a.href = blobUrl;
+            a.href = blobUrlFixed;
             a.download = filename;
             document.body.appendChild(a);
             a.click();
@@ -563,16 +577,15 @@
      * @throws {Error} On network, HTTP, or JSON error responses.
      */
     async function sendToTtsApi(text) {
-        if (typeof text !== 'string' || text.trim().length === 0) {
-            throw new Error('Invalid text');
-        }
+        const textFixed = (typeof text === 'string' ? text.trim() : '');
+        if (textFixed === '') { throw new Error('Invalid text'); }
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), AppState.requestTimeout * 1000);
         try {
             const response = await fetch(getApiUrl(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ input: text }),
+                body: JSON.stringify({ input: textFixed }),
                 signal: controller.signal
             });
             if (!response.ok) {
@@ -592,8 +605,8 @@
             }
             const buffer = await response.arrayBuffer();
             const contentType = (response.headers && typeof response.headers.get === 'function')
-                ? (response.headers.get('content-type') || 'audio/mpeg')
-                : 'audio/mpeg';
+                ? (response.headers.get('content-type') || DEFAULT_CONFIG.AUDIO_CONTENT_TYPE)
+                : DEFAULT_CONFIG.AUDIO_CONTENT_TYPE;
             return { buffer, contentType };
         } finally {
             clearTimeout(timeoutId);
@@ -607,10 +620,10 @@
      * @returns {boolean}
      */
     function isPlainObject(value) {
-        return value !== null &&
-               typeof value === 'object' &&
-               !Array.isArray(value) &&
-               Object.prototype.toString.call(value) === '[object Object]';
+        if (value === null) { return false; }
+        if (typeof value !== 'object') { return false; }
+        if (Array.isArray(value)) { return false; }
+        return (Object.prototype.toString.call(value) === '[object Object]');
     }
 
     // =============================================================================
@@ -727,7 +740,13 @@
     function splitIntoChunks(text, maxTokens) {
         const chunks = [];
         if (typeof text !== 'string') { return chunks; }
-        if (!Number.isFinite(maxTokens) || maxTokens < 1) { maxTokens = DEFAULT_CONFIG.MAX_TOKENS; }
+        if (isNaN(maxTokens)) {
+            maxTokens = DEFAULT_CONFIG.MAX_TOKENS;
+        } else if (!Number.isFinite(maxTokens)) {
+            maxTokens = DEFAULT_CONFIG.MAX_TOKENS;
+        } else if (maxTokens < 1){
+            maxTokens = DEFAULT_CONFIG.MAX_TOKENS;
+        }
         const maxChars = Math.floor(maxTokens * CHARS_PER_TOKEN);
         if (maxChars < 1) { return chunks; }
         let remaining = text;
@@ -757,11 +776,14 @@
             }
             let splitIndex = -1;
             if (lastSentenceEnd !== -1) {
-                splitIndex = lastSentenceEnd;          // include the punctuation
+                // include the punctuation
+                splitIndex = lastSentenceEnd;
             } else if (lastSubsentence !== -1) {
-                splitIndex = lastSubsentence;          // include the subsentence mark
+                // include the subsentence mark
+                splitIndex = lastSubsentence;
             } else if (lastWhitespace !== -1) {
-                splitIndex = lastWhitespace - 1;        // cut before the trailing whitespace
+                // cut before the trailing whitespace
+                splitIndex = lastWhitespace - 1;
             }
             if (splitIndex !== -1 && splitIndex >= 0) {
                 chunks.push(remaining.slice(0, splitIndex + 1));
@@ -795,12 +817,14 @@
      * @param {number} [startIndex] - Optional first index to revoke (default 0).
      */
     function revokeSpeechBlobs(blobs, startIndex) {
-        const start = (typeof startIndex === 'number' && startIndex >= 0) ? startIndex : 0;
+        const start = Math.max(typeof startIndex === 'number' ? startIndex : 0, 0);
         for (let i = start; i < blobs.length; i++) {
             const info = blobs[i];
-            if (info && typeof info.blobUrl === 'string' && info.blobUrl.length > 0) {
-                try { URL.revokeObjectURL(info.blobUrl); } catch (e) { /* ignore */ }
-            }
+            if (!info) { continue; }
+            if (typeof info.blobUrl !== 'string') { continue; }
+            const blobUrlFixed = info.blobUrl.trim();
+            if (blobUrlFixed === '') { continue; }
+            try { URL.revokeObjectURL(blobUrlFixed); } catch (e) { /* ignore */ }
         }
     }
 
@@ -838,7 +862,7 @@
      * @returns {boolean}
      */
     function isSpeechActive() {
-        return AppState.speech.isSpeaking === true;
+        return (AppState.speech.isSpeaking === true);
     }
 
     /**
@@ -861,18 +885,21 @@
             playSpeechChunk();
             return;
         }
-        if (!info || typeof info.blobUrl !== 'string' || info.blobUrl.length === 0) {
-            return; // not yet fetched — will be started once its fetch completes
+        let blobUrlFixed = '';
+        if (info) {
+            blobUrlFixed = (typeof info.blobUrl === 'string' ? info.blobUrl.trim() : '');
+        }
+        if (blobUrlFixed === '') {
+            // not yet fetched — will be started once its fetch completes
+            return;
         }
 
-        const audio = new Audio(info.blobUrl);
+        const audio = new Audio(blobUrlFixed);
         s.currentAudio = audio;
 
         const finishCurrent = () => {
-            if (s.currentAudio === audio) {
-                s.currentAudio = null;
-            }
-            try { URL.revokeObjectURL(info.blobUrl); } catch (e) { /* ignore */ }
+            if (s.currentAudio === audio) { s.currentAudio = null; }
+            try { URL.revokeObjectURL(blobUrlFixed); } catch (e) { /* ignore */ }
             s.blobs[idx] = null;
             s.playIndex = idx + 1;
         };
@@ -886,7 +913,8 @@
             if (s.playIndex < s.chunks.length) {
                 const next = s.blobs[s.playIndex];
                 if (next) {
-                    playSpeechChunk(); // next chunk already fetched
+                    // next chunk already fetched
+                    playSpeechChunk();
                 }
                 // else: next chunk will be played automatically once its fetch
                 // completes (see fetchSpeechChunk pipeline below).
@@ -898,7 +926,7 @@
         audio.onerror = () => {
             if (s.currentAudio !== audio) { return; }
             s.currentAudio = null;
-            try { URL.revokeObjectURL(info.blobUrl); } catch (e) { /* ignore */ }
+            try { URL.revokeObjectURL(blobUrlFixed); } catch (e) { /* ignore */ }
             s.blobs[idx] = null;
             s.playIndex = idx + 1;
             if (s.aborted) {
@@ -907,9 +935,7 @@
             }
             if (s.playIndex < s.chunks.length) {
                 const next = s.blobs[s.playIndex];
-                if (next) {
-                    playSpeechChunk();
-                }
+                if (next) { playSpeechChunk(); }
             } else {
                 s.isSpeaking = false;
             }
@@ -919,7 +945,7 @@
             // Autoplay policy or similar: treat as an error and move on.
             if (s.currentAudio !== audio) { return; }
             s.currentAudio = null;
-            try { URL.revokeObjectURL(info.blobUrl); } catch (e) { /* ignore */ }
+            try { URL.revokeObjectURL(blobUrlFixed); } catch (e) { /* ignore */ }
             s.blobs[idx] = null;
             s.playIndex = idx + 1;
             if (s.aborted) {
@@ -928,9 +954,7 @@
             }
             if (s.playIndex < s.chunks.length) {
                 const next = s.blobs[s.playIndex];
-                if (next) {
-                    playSpeechChunk();
-                }
+                if (next) { playSpeechChunk(); }
             } else {
                 s.isSpeaking = false;
             }
@@ -959,14 +983,12 @@
                 // No blob URL was created yet, so there is nothing to revoke.
                 return;
             }
-            const blob = new Blob([result.buffer], { type: result.contentType || 'audio/mpeg' });
+            const blob = new Blob([result.buffer], { type: result.contentType || DEFAULT_CONFIG.AUDIO_CONTENT_TYPE });
             const blobUrl = URL.createObjectURL(blob);
-            s.blobs[idx] = { blobUrl: blobUrl, contentType: result.contentType || 'audio/mpeg' };
+            s.blobs[idx] = { blobUrl: blobUrl, contentType: result.contentType || DEFAULT_CONFIG.AUDIO_CONTENT_TYPE };
 
             // If this is the chunk due to play and nothing is playing, start it.
-            if (idx === s.playIndex && !s.currentAudio && !s.aborted) {
-                playSpeechChunk();
-            }
+            if (idx === s.playIndex && !s.currentAudio && !s.aborted) { playSpeechChunk(); }
             // Keep the pipeline full: request the next chunk immediately.
             fetchNextSpeechChunk();
         }).catch((err) => {
@@ -1000,7 +1022,8 @@
         stopSpeech(); // chat interruption: drop any previous speech immediately
         const s = AppState.speech;
 
-        if (typeof text !== 'string' || text.trim().length === 0) {
+        const textFixed = (typeof text === 'string' ? text.trim() : '');
+        if (textFixed === '') {
             s.isSpeaking = false;
             return;
         }
@@ -1011,7 +1034,7 @@
             return;
         }
 
-        s.chunks = splitIntoChunks(text, AppState.maxTokens);
+        s.chunks = splitIntoChunks(textFixed, AppState.maxTokens);
         s.blobs = s.chunks.map(() => null);
         s.fetchIndex = 0;
         s.playIndex = 0;
