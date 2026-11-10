@@ -196,9 +196,9 @@
         try {
             if (theme.toUpperCase().trim() === 'DARK') {
                 document.body.classList.add('dark-mode');
-            } else {
-                document.body.classList.remove('dark-mode');
+                return;
             }
+            document.body.classList.remove('dark-mode');
         } catch (e) {
             console.warn('[Theme] Failed to apply theme:', e.message);
         }
@@ -233,8 +233,10 @@
      */
     function storeTheme(theme) {
         try {
-            const theme_fixed = theme.toUpperCase().trim();
-            localStorage.setItem(THEME_STORAGE_KEY, theme_fixed);
+            if (typeof theme !== 'string') { return false; }
+            const themeFixed = theme.toUpperCase().trim();
+            if (themeFixed === '') { return false; }
+            localStorage.setItem(THEME_STORAGE_KEY, themeFixed);
             return true;
         } catch (e) {
             console.warn('[Theme] Failed to write localStorage:', e.message);
@@ -272,7 +274,7 @@
      */
     function initTheme() {
         const stored = getStoredTheme();
-        const theme = (stored === null ? getDefaultTheme() : stored);
+        const theme = (stored ? stored : getDefaultTheme());
         applyTheme(theme);
         updateThemeToggleButton(theme);
     }
@@ -294,6 +296,7 @@
      * @param {'LIGHT'|'DARK'} theme
      */
     function updateThemeToggleButton(theme) {
+        if (typeof theme !== 'string') { return; }
         const btn = document.getElementById('theme-toggle-btn');
         if (!btn) { return; }
         const sunSpan = btn.querySelector('.theme-icon-sun');
@@ -322,20 +325,23 @@
      */
     function getConfigValue(name, defaultValue, transformer) {
         try {
-            if (typeof window[name] === 'undefined') { return defaultValue; }
-            const value = window[name];
+            if (typeof name !== 'string') { return defaultValue; }
+            const nameFixed = name.trim();
+            if (nameFixed === '') { return defaultValue; }
+            if (typeof window[nameFixed] === 'undefined') { return defaultValue; }
+            const value = window[nameFixed];
             if (value === null || value === undefined) { return defaultValue; }
             if (typeof transformer === 'function') {
                 try {
                     return transformer(value);
                 } catch (te) {
-                    console.warn(`[Config] Transformer error for ${name}:`, te.message);
+                    console.warn(`[Config] Transformer error for ${nameFixed}:`, te.message);
                     return defaultValue;
                 }
             }
             return value;
         } catch (e) {
-            console.warn(`[Config] Error reading ${name}:`, e.message);
+            console.warn(`[Config] Error reading ${nameFixed}:`, e.message);
             return defaultValue;
         }
     }
@@ -388,7 +394,8 @@
      * @returns {string} Safe HTML string for insertion into a bubble.
      */
     function formatMessageText(text) {
-        if (typeof text !== 'string' || text.length === 0) { return ''; }
+        if (typeof text !== 'string') { return ''; }
+        if (text === '') { return ''; }
         const segments = text.split(/```/g);
         const result = [];
         for (let i = 0; i < segments.length; i++) {
@@ -432,10 +439,10 @@
      * @returns {boolean}
      */
     function isPlainObject(value) {
-        return value !== null &&
-               typeof value === 'object' &&
-               !Array.isArray(value) &&
-               Object.prototype.toString.call(value) === '[object Object]';
+        if (value === null) { return false; }
+        if (typeof value !== 'object') { return false; }
+        if (Array.isArray(value)) { return false; }
+        return (Object.prototype.toString.call(value) === '[object Object]');
     }
 
     /**
@@ -457,15 +464,21 @@
      */
     const Storage = {
         getItem(key) {
-            try { return localStorage.getItem(key); }
+            const keyFixed = (typeof key === 'string') ? key.trim() : String(key).trim();
+            if (keyFixed === '') { return null; }
+            try { return localStorage.getItem(keyFixed); }
             catch (e) { console.warn('[Storage] Read error:', e.message); return null; }
         },
         setItem(key, value) {
-            try { localStorage.setItem(key, value); return true; }
+            const keyFixed = (typeof key === 'string') ? key.trim() : String(key).trim();
+            if (keyFixed === '') { return false; }
+            try { localStorage.setItem(keyFixed, value); return true; }
             catch (e) { console.warn('[Storage] Write error:', e.message); return false; }
         },
         removeItem(key) {
-            try { localStorage.removeItem(key); return true; }
+            const keyFixed = (typeof key === 'string') ? key.trim() : String(key).trim();
+            if (keyFixed === '') { return false; }
+            try { localStorage.removeItem(keyFixed); return true; }
             catch (e) { console.warn('[Storage] Remove error:', e.message); return false; }
         }
     };
@@ -491,6 +504,8 @@
          * @param {function} onConfirm - Callback invoked on confirmation.
          */
         show(message, onConfirm) {
+            const messageFixed = (typeof message === 'string' ? message.trim() : String(message).trim());
+            if (messageFixed === '') { return; }
             const modalEl   = document.getElementById('confirm-modal');
             const messageEl = document.getElementById('confirm-message');
             const okBtn     = document.getElementById('confirm-ok-btn');
@@ -499,7 +514,7 @@
                 if (typeof onConfirm === 'function') { onConfirm(); }
                 return;
             }
-            messageEl.textContent = message;
+            messageEl.textContent = messageFixed;
             // Store the pending callback; the OK button's handler is bound once
             // (see initEvents) so we never clone/replace the node — cloning left a
             // detached element that could hold focus and swallow Enter in some
@@ -515,14 +530,16 @@
      * @param {string} message
      */
     function showErrorModal(message) {
+        const messageFixed = (typeof message === 'string' ? message.trim() : String(message).trim());
+        if (messageFixed === '') { return; }
         const modalEl   = document.getElementById('error-modal');
         const messageEl = document.getElementById('error-message');
         if (!modalEl || !messageEl) {
             // Fallback: log to console if markup is missing.
-            console.error('[Error Modal]', message);
+            console.error('[Error Modal]', messageFixed);
             return;
         }
-        messageEl.textContent = typeof message === 'string' ? message : String(message);
+        messageEl.textContent = messageFixed;
         showModal(modalEl);
     }
 
@@ -566,7 +583,7 @@
             'select:not([disabled]), textarea:not([disabled]), ' +
             '[tabindex]:not([tabindex="-1"])'
         );
-        if (focusable.length === 0) {
+        if (!focusable.length) {
             e.preventDefault();
             activeModalEl.focus();
             return;
@@ -574,17 +591,15 @@
         const first = focusable[0];
         const last  = focusable[focusable.length - 1];
         if (e.shiftKey) {
-            if (document.activeElement === first ||
-                    !activeModalEl.contains(document.activeElement)) {
+            if (document.activeElement === first || (!activeModalEl.contains(document.activeElement))) {
                 last.focus();
                 e.preventDefault();
             }
-        } else {
-            if (document.activeElement === last ||
-                    !activeModalEl.contains(document.activeElement)) {
-                first.focus();
-                e.preventDefault();
-            }
+            return;
+        }
+        if (document.activeElement === last || (!activeModalEl.contains(document.activeElement))) {
+            first.focus();
+            e.preventDefault();
         }
     }
 
@@ -697,7 +712,8 @@
      * @returns {number}
      */
     function estimateTokens(text) {
-        if (typeof text !== 'string' || text.length === 0) { return 0; }
+        if (typeof text !== 'string') { return 0; }
+        if (!text.length) { return 0; }
         return Math.ceil(text.length / CHARS_PER_TOKEN);
     }
 
@@ -718,11 +734,11 @@
             if (!isValidMessage(msg)) { continue; }
             total += estimateTokens(msg.content);
         }
-        if (typeof pendingMessage === 'string' && pendingMessage.length > 0) {
-            total += estimateTokens(pendingMessage);
+        if (typeof pendingMessage === 'string') {
+            if (pendingMessage.length > 0) { total += estimateTokens(pendingMessage); }
         }
-        if (typeof AppState.systemPrompt === 'string' && AppState.systemPrompt.length > 0) {
-            total += estimateTokens(AppState.systemPrompt);
+        if (typeof AppState.systemPrompt === 'string') {
+            if (AppState.systemPrompt.length > 0) { total += estimateTokens(AppState.systemPrompt); }
         }
         return total;
     }
@@ -746,11 +762,11 @@
     function updateExportButtonVisibility() {
         const exportBtn = document.getElementById('export-conversation-btn');
         if (!exportBtn) { return; }
-        let hasData;
+        let hasData = false;
         if (AppState.responseMode === 2) {
-            hasData = Array.isArray(AppState.chatHistory) && AppState.chatHistory.length > 0;
+            if (Array.isArray(AppState.chatHistory)) { hasData = (AppState.chatHistory.length > 0); }
         } else {
-            hasData = AppState.hasSessionConversation === true;
+            hasData = (AppState.hasSessionConversation === true);
         }
         exportBtn.style.display = hasData ? '' : 'none';
     }
@@ -795,8 +811,7 @@
             return res.json();
         })
         .then((data) => {
-            if (isPlainObject(data) && data.success === true &&
-                    Array.isArray(data.conversation_history)) {
+            if (isPlainObject(data) && data.success === true && Array.isArray(data.conversation_history)) {
                 for (const msg of data.conversation_history) {
                     if (!isValidMessage(msg)) { continue; }
                     appendMessage(msg.role, msg.content);
@@ -816,7 +831,7 @@
     function exportConversation() {
         if (AppState.responseMode === 2) {
             const dataToExport = Array.isArray(AppState.chatHistory) ? AppState.chatHistory : [];
-            if (dataToExport.length === 0) {
+            if (!dataToExport.length) {
                 showErrorModal('There is no data to export!');
                 return;
             }
@@ -862,11 +877,21 @@
      */
     function triggerJsonDownload(jsonContent, filename) {
         try {
-            const blob = new Blob([jsonContent], { type: 'application/json' });
+            const jsonContentFixed = (typeof jsonContent === 'string') ? jsonContent.trim() : '';
+            if (jsonContentFixed === '') {
+                showErrorModal('No data to download.');
+                return;
+            }
+            const filenameFixed = (typeof filename === 'string') ? filename.trim() : '';
+            if (filenameFixed === '') {
+                showErrorModal('Invalid download filename!');
+                return;
+            }
+            const blob = new Blob([jsonContentFixed], { type: 'application/json' });
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
             a.href     = url;
-            a.download = filename;
+            a.download = filenameFixed;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -914,7 +939,7 @@
                         content: msg.content.trim()
                     }))
                     .filter((msg) => msg.content.length > 0);
-                if (validMessages.length === 0) {
+                if (!validMessages.length) {
                     throw new Error('No data to import! The file contains no valid messages.');
                 }
                 if (AppState.responseMode === 2) {
@@ -937,8 +962,7 @@
                     return res.json();
                 })
                 .then((data) => {
-                    if (isPlainObject(data) && data.success === true &&
-                            Array.isArray(data.conversation_history)) {
+                    if (isPlainObject(data) && data.success === true && Array.isArray(data.conversation_history)) {
                         if (DOM.chatBox) { DOM.chatBox.innerHTML = ''; }
                         AppState.lastUserMessageDiv = null;
                         displayInitialMessage();
@@ -948,13 +972,13 @@
                         }
                         AppState.hasSessionConversation = true;
                         updateExportButtonVisibility();
-                    } else {
-                        throw new Error(
-                            (isPlainObject(data) && typeof data.error === 'string')
-                                ? data.error
-                                : 'Import failed'
-                        );
+                        return;
                     }
+                    throw new Error(
+                        (isPlainObject(data) && typeof data.error === 'string')
+                            ? data.error
+                            : 'Import failed'
+                    );
                 })
                 .catch((err) => {
                     console.warn('[Import] Server error:', err.message);
@@ -962,14 +986,10 @@
                 });
             } catch (err) {
                 console.warn('[Import] Parse error:', err.message);
-                if (typeof err.message === 'string' &&
-                        err.message.indexOf('No data to import') === 0) {
+                if (typeof err.message === 'string' && err.message.indexOf('No data to import') === 0) {
                     showErrorModal(err.message);
                 } else {
-                    showErrorModal(
-                        'Failed to parse conversation file. ' +
-                        'Please ensure it is a valid JSON file.'
-                    );
+                    showErrorModal('Failed to parse conversation file. Please ensure it is a valid JSON file.');
                 }
             }
         };
@@ -1063,7 +1083,8 @@
      * @param {string} [pendingMessage] - Message about to be sent.
      */
     function pruneHistoryByTokenCount(pendingMessage) {
-        if (!Array.isArray(AppState.chatHistory) || AppState.chatHistory.length === 0) { return; }
+        if (!Array.isArray(AppState.chatHistory)) { return; }
+        if (!AppState.chatHistory.length) { return; }
         let total = getHistoryTokenCount(pendingMessage);
         const maxTokens = Math.round(AppState.warningThreshold * 0.7);
         while (total > maxTokens && AppState.chatHistory.length > 0) {
@@ -1096,7 +1117,7 @@
      */
     function compressHistoryViaApi(pendingMessage, callback) {
         const cb = typeof callback === 'function' ? callback : () => {};
-        if (!Array.isArray(AppState.chatHistory) || AppState.chatHistory.length < 1) {
+        if (!Array.isArray(AppState.chatHistory) || (!AppState.chatHistory.length)) {
             cb();
             return;
         }
@@ -1112,8 +1133,8 @@
             action: 'summarize',
             conversation_history: AppState.chatHistory
         };
-        if (typeof pendingMessage === 'string' && pendingMessage.length > 0) {
-            payload.pending_message = pendingMessage;
+        if (typeof pendingMessage === 'string') {
+            if (pendingMessage.length > 0) { payload.pending_message = pendingMessage; }
         }
 
         // The server enforces its own authoritative request timeout server-side
@@ -1232,19 +1253,26 @@
             console.warn('[UI] Chat box not initialised');
             return null;
         }
-        const senderStr = typeof sender === 'string' ? sender : 'chatbot';
+        const senderStr = (typeof sender === 'string') ? sender.trim() : 'chatbot';
         const messageDiv = document.createElement('div');
-        const extraClass = (typeof messageClass === 'string' && messageClass.length > 0) ? (' ' + messageClass) : '';
+        let extraClass = '';
+        if (typeof messageClass === 'string') {
+            const messageClassFixed = messageClass.trim();
+            if (messageClassFixed !== '') { extraClass = (' ' + messageClassFixed); }
+        }
         messageDiv.className = 'message ' + (senderStr === 'user' ? 'user-message' : 'chatbot-message') + extraClass;
         messageDiv.setAttribute('tabindex', '-1');
         let html = '';
-        if (typeof action === 'string' && action.length > 0) {
-            html += `<span style="font-style:italic;">*${escapeHtml(action.trim())}*</span> `;
+        if (typeof action === 'string') {
+            const actionFixed = action.trim();
+            if (actionFixed !== '') { html += `<span style="font-style:italic;">*${escapeHtml(actionFixed)}*</span> `; }
         }
-        if (typeof text === 'string' && text.length > 0) {
-            // Unescape literal \n sequences that some LLMs emit as the two characters \n.
-            const fixedText = text.replace(/\\n/g, '\n');
-            html += formatMessageText(fixedText);
+        if (typeof text === 'string') {
+            if (text.length > 0) {
+                // Unescape literal \n sequences that some LLMs emit as the two characters \n.
+                const fixedText = text.replace(/\\n/g, '\n');
+                html += formatMessageText(fixedText);
+            }
         }
         messageDiv.innerHTML = `<div class="bubble">${html}</div>`;
         try {
@@ -1263,12 +1291,13 @@
      * @param {string} videoFileName - Filename relative to the media/ directory.
      */
     function appendVideoMessage(videoFileName) {
-        if (!DOM.chatBox || typeof videoFileName !== 'string' || videoFileName.length === 0) {
-            return;
-        }
+        if (!DOM.chatBox) { return; }
+        if (typeof videoFileName !== 'string') { return; }
+        const videoFileNameFixed = videoFileName.trim();
+        if (videoFileNameFixed === '') { return; }
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message chatbot-message';
-        const videoPath = 'media/' + encodeURIComponent(videoFileName);
+        const videoPath = 'media/' + encodeURIComponent(videoFileNameFixed);
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'text-center mt-2 mb-3 w-100';
         loadingDiv.innerHTML =
@@ -1304,7 +1333,7 @@
             errorDiv.className = 'alert alert-warning mt-2 mb-3 w-100';
             errorDiv.innerHTML =
                 '<strong class="me-2">Video not found:</strong>' +
-                escapeHtml(videoFileName);
+                escapeHtml(videoFileNameFixed);
             messageDiv.innerHTML = '';
             messageDiv.appendChild(errorDiv);
             DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
@@ -1330,11 +1359,9 @@
      * Remove the thinking indicator if it is present.
      */
     function removeThinkingMessage() {
-        if (AppState.thinkingMessageDiv &&
-                AppState.thinkingMessageDiv.parentNode) {
-            AppState.thinkingMessageDiv.parentNode.removeChild(
-                AppState.thinkingMessageDiv
-            );
+        if (!AppState.thinkingMessageDiv) { return; }
+        if (AppState.thinkingMessageDiv.parentNode) {
+            AppState.thinkingMessageDiv.parentNode.removeChild(AppState.thinkingMessageDiv);
         }
         AppState.thinkingMessageDiv = null;
     }
@@ -1365,7 +1392,9 @@
      * @param {string} base64 - Base64-encoded WAV data.
      */
     function playAudioFromBase64(base64) {
-        if (typeof base64 !== 'string' || base64.length === 0) { return; }
+        if (typeof base64 !== 'string') { return; }
+        const base64Fixed = base64.trim();
+        if (base64Fixed === '') { return; }
         try {
             // Stop and release any previously playing audio.
             if (AppState.currentAudio) {
@@ -1377,13 +1406,17 @@
             }
             let byteCharacters;
             try {
-                byteCharacters = atob(base64);
+                byteCharacters = atob(base64Fixed);
             } catch (e) {
                 console.warn('[Audio] Base64 decode error:', e.message);
                 return;
             }
             if (typeof byteCharacters !== 'string') {
                 console.warn('[Audio] Decoded value is not a string');
+                return;
+            }
+            if (!byteCharacters.length) {
+                console.warn('[Audio] Decoded value is empty');
                 return;
             }
             const byteArray = new Uint8Array(byteCharacters.length);
@@ -1434,38 +1467,37 @@
      * @param {boolean}  [skipCompression] - If true, skip the pre-flight compression check.
      */
     async function connectToLlamaDirect(userMessage, callback, skipCompression) {
-        if (typeof userMessage !== 'string' || userMessage.trim().length === 0) {
+        const userMessageFixed = (typeof userMessage === 'string') ? userMessage.trim() : '';
+        if (userMessageFixed === '') {
             if (typeof callback === 'function') { callback(null); }
             return;
         }
         // FIX-BUG-6: Only attempt compression once per send cycle.
         if (!skipCompression) {
-            const currentTokens = getHistoryTokenCount(userMessage);
+            const currentTokens = getHistoryTokenCount(userMessageFixed);
             if (currentTokens > AppState.warningThreshold && AppState.chatHistory.length > 0) {
                 if (AppState.memoryMode === 1) {
-                    pruneHistoryByTokenCount(userMessage);
+                    pruneHistoryByTokenCount(userMessageFixed);
                 } else {
                     await new Promise((resolve) => {
-                        compressHistoryViaApi(userMessage, () => resolve());
+                        compressHistoryViaApi(userMessageFixed, () => resolve());
                     });
-                    return connectToLlamaDirect(userMessage, callback, true);
+                    return connectToLlamaDirect(userMessageFixed, callback, true);
                 }
             }
         }
         // Build the messages array: optional system prompt + history + new user turn.
         const messages = [];
-        if (typeof AppState.systemPrompt === 'string' &&
-                AppState.systemPrompt.length > 0) {
+        if (typeof AppState.systemPrompt === 'string' && AppState.systemPrompt.length > 0) {
             messages.push({ role: 'system', content: AppState.systemPrompt });
         }
         if (Array.isArray(AppState.chatHistory)) {
             for (const msg of AppState.chatHistory) {
-                if (isValidMessage(msg)) {
-                    messages.push({ role: msg.role, content: msg.content });
-                }
+                if (!isValidMessage(msg)) { continue; }
+                messages.push({ role: msg.role, content: msg.content });
             }
         }
-        messages.push({ role: 'user', content: userMessage });
+        messages.push({ role: 'user', content: userMessageFixed });
         let payload;
         try {
             payload = JSON.stringify({
@@ -1524,7 +1556,7 @@
                 if (dots) { dots.style.display = 'none'; }
                 const shouldSave = (assistantMessage.length > 0);
                 if (shouldSave) {
-                    AppState.chatHistory.push({ role: 'user', content: userMessage });
+                    AppState.chatHistory.push({ role: 'user', content: userMessageFixed });
                     AppState.chatHistory.push({ role: 'assistant', content: assistantMessage });
                     saveHistoryToStorage();
                     // Speak the completed streaming reply through TTS (only when enabled).
@@ -1607,7 +1639,6 @@
             removeThinkingMessage();
             const decoder = new TextDecoder();
             let buffer = '';
-
             while (true) {
                 const result = await reader.read();
                 if (result.done) { break; }
@@ -1656,16 +1687,15 @@
      * @param {function} callback - Receives a plain object response or { error: string }.
      */
     function sendToApi(message, callback) {
-        if (typeof message !== 'string' || message.trim().length === 0) {
-            if (typeof callback === 'function') {
-                callback({ error: 'Invalid message' });
-            }
+        const messageFixed = (typeof message === 'string') ? message.trim() : '';
+        if (messageFixed === '') {
+            if (typeof callback === 'function') { callback({ error: 'Invalid message' }); }
             return;
         }
         fetch(getApiUrl(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: message })
+            body: JSON.stringify({ message: messageFixed })
         })
         .then((res) => {
             if (!res.ok) { throw new Error('HTTP ' + res.status); }
@@ -1702,8 +1732,8 @@
         AppState.userStoppedStream = false;
         if (!DOM.input) { return; }
         const rawValue = DOM.input.value;
-        const message  = typeof rawValue === 'string' ? rawValue.trim() : '';
-        if (message.length <= 0) {
+        const message  = (typeof rawValue === 'string') ? rawValue.trim() : '';
+        if (message === '') {
             DOM.input.classList.add('is-invalid');
             DOM.input.focus();
             return;
@@ -1772,8 +1802,8 @@
                 return;
             }
             // Detect a server-requested mode upgrade.
-            if (typeof data.response_mode === 'number' && data.response_mode === 2) {
-                AppState.responseMode = 2;
+            if (typeof data.response_mode === 'number') {
+                if (data.response_mode === 2) { AppState.responseMode = 2; }
             }
             // Behavior match found (reply or response_action) - use it
             if (
@@ -1844,12 +1874,9 @@
             playAudioFromBase64(data.audio_data);
         }
         // Response with an action verb
-        if (typeof data.response_action === 'string' &&
-                data.response_action.trim().length > 0) {
+        if (typeof data.response_action === 'string' && data.response_action.trim().length > 0) {
             const action = data.response_action.trim();
-            if (action === '#LOOP_VIDEO' &&
-                    typeof data.media_data === 'string' &&
-                    data.media_data.length > 0) {
+            if (action === '#LOOP_VIDEO' && typeof data.media_data === 'string' && data.media_data.length > 0) {
                 appendVideoMessage(data.media_data);
                 const videoReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
                 if (videoReply.length > 0) {
@@ -1900,12 +1927,12 @@
      * @param {string} text - Assistant reply text to speak.
      */
     function maybeSpeak(text) {
-        if (typeof text !== 'string' || text.trim().length === 0) { return; }
+        if (typeof text !== 'string') { return; }
+        const textFixed = text.trim();
+        if (textFixed === '') { return; }
         if (AppState.requestEpoch !== AppState.sessionEpoch) { return; }
-        if (AppState.ttsEnabled === true &&
-            typeof window.TTS === 'object' &&
-            typeof window.TTS.speak === 'function') {
-            window.TTS.speak(text);
+        if (AppState.ttsEnabled === true && typeof window.TTS === 'object' && typeof window.TTS.speak === 'function') {
+            window.TTS.speak(textFixed);
         }
     }
 
@@ -1989,7 +2016,7 @@
             e.stopImmediatePropagation();
             const messages     = DOM.chatBox.querySelectorAll('.message');
             const messageCount = messages.length;
-            if (messageCount === 0) { return; }
+            if (!messageCount) { return; }
             const activeEl     = document.activeElement;
             let currentIndex = -1;
             for (let i = 0; i < messageCount; i++) {
@@ -2152,6 +2179,7 @@
         const trimmedText = text.trim();
         if (trimmedText === '') { return []; }
         const candidates = trimmedText.split(/\s+/);
+        if (!candidates.length) { return []; }
         const words = [];
         const seenWords = new Set();
         for (let index = 0; index < candidates.length; index++) {
@@ -2202,6 +2230,7 @@
     function extractAutocompleteItems(data) {
         if (!isPlainObject(data) || data.success !== true) { return []; }
         if (!Array.isArray(data.items)) { return []; }
+        if (!data.items.length) { return []; }
         const items = [];
         const seenPrompts = new Set();
         for (let index = 0; index < data.items.length; index++) {
@@ -2223,20 +2252,22 @@
         if (!listElement) { return; }
         while (listElement.firstChild) { listElement.removeChild(listElement.firstChild); }
         const fragment = document.createDocumentFragment();
-        for (let index = 0; index < AutocompleteState.items.length; index++) {
-            const prompt = AutocompleteState.items[index];
-            const optionElement = document.createElement('li');
-            optionElement.className = AUTOCOMPLETE_OPTION_CLASS;
-            optionElement.id = AUTOCOMPLETE_OPTION_ID_PREFIX + index;
-            optionElement.setAttribute('role', 'option');
-            optionElement.setAttribute('aria-selected', 'false');
-            optionElement.setAttribute('data-autocomplete-index', String(index));
-            optionElement.setAttribute('title', prompt);
-            const promptElement = document.createElement('span');
-            promptElement.className = 'autocomplete-item-prompt';
-            promptElement.textContent = prompt;
-            optionElement.appendChild(promptElement);
-            fragment.appendChild(optionElement);
+        if (AutocompleteState.items.length) {
+            for (let index = 0; index < AutocompleteState.items.length; index++) {
+                const prompt = AutocompleteState.items[index];
+                const optionElement = document.createElement('li');
+                optionElement.className = AUTOCOMPLETE_OPTION_CLASS;
+                optionElement.id = AUTOCOMPLETE_OPTION_ID_PREFIX + index;
+                optionElement.setAttribute('role', 'option');
+                optionElement.setAttribute('aria-selected', 'false');
+                optionElement.setAttribute('data-autocomplete-index', String(index));
+                optionElement.setAttribute('title', prompt);
+                const promptElement = document.createElement('span');
+                promptElement.className = 'autocomplete-item-prompt';
+                promptElement.textContent = prompt;
+                optionElement.appendChild(promptElement);
+                fragment.appendChild(optionElement);
+            }
         }
         listElement.appendChild(fragment);
     }
@@ -2253,7 +2284,7 @@
     function openAutocomplete(items) {
         const listElement = AutocompleteState.listElement;
         if (!listElement) { return; }
-        if (!Array.isArray(items) || items.length === 0) {
+        if (!Array.isArray(items) || (!items.length)) {
             closeAutocomplete();
             return;
         }
@@ -2288,7 +2319,8 @@
      */
     function isAutocompleteOpen() {
         const listElement = AutocompleteState.listElement;
-        return (listElement !== null && listElement.hidden === false);
+        if (listElement === null) { return false; }
+        return (listElement.hidden === false);
     }
 
     /**
@@ -2301,24 +2333,26 @@
         if (!listElement) { return; }
         const optionElements = listElement.querySelectorAll('.' + AUTOCOMPLETE_OPTION_CLASS);
         const itemCount = optionElements.length;
-        if (itemCount === 0) {
+        if (!itemCount) {
             AutocompleteState.activeIndex = -1;
             return;
         }
         const normalizedIndex = ((requestedIndex % itemCount) + itemCount) % itemCount;
         AutocompleteState.activeIndex = normalizedIndex;
-        for (let index = 0; index < itemCount; index++) {
-            const isActive = (index === normalizedIndex);
-            if (isActive) { optionElements[index].classList.add('is-active'); }
-            else { optionElements[index].classList.remove('is-active'); }
-            optionElements[index].setAttribute('aria-selected', isActive ? 'true' : 'false');
+        if (itemCount) {
+            for (let index = 0; index < itemCount; index++) {
+                const isActive = (index === normalizedIndex);
+                if (isActive) { optionElements[index].classList.add('is-active'); }
+                else { optionElements[index].classList.remove('is-active'); }
+                optionElements[index].setAttribute('aria-selected', isActive ? 'true' : 'false');
+            }
         }
         if (DOM.input) {
             DOM.input.setAttribute('aria-activedescendant', AUTOCOMPLETE_OPTION_ID_PREFIX + normalizedIndex);
         }
     }
 
-/**
+    /**
      * Fill the textarea with the highlighted suggestion and dismiss the popup.
      *
      * The whole draft is replaced by the stored prompt: the suggestion only makes
@@ -2406,8 +2440,13 @@
         AutocompleteState.requestSequence += 1;
         cancelAutocompleteLookup();
         closeAutocomplete();
-        const text = DOM.input.value.trim();
-        if (typeof text !== 'string' || text === '') { return; }
+        let text = DOM.input.value;
+        if (typeof text === 'string') {
+            text = text.trim();
+        } else {
+            text = String(text).trim();
+        }
+        if (text === '') { return; }
         if (text.length > AUTOCOMPLETE_MAX_TEXT_LENGTH) { return; }
         if (collectAutocompleteSearchWords(text).length === 0) { return; }
         const requestSequence = AutocompleteState.requestSequence;
@@ -2424,7 +2463,7 @@
      * @returns {boolean} True when the event was handled and must not reach handleKeydown().
      */
     function handleAutocompleteKeydown(e) {
-        if (!e || !isAutocompleteOpen() || AutocompleteState.items.length === 0) { return false; }
+        if (!e || !isAutocompleteOpen() || (!AutocompleteState.items.length)) { return false; }
         const hasHighlight = (AutocompleteState.activeIndex >= 0);
         // Clear any mouse hover state so keyboard and mouse highlights are never both visible.
         clearAutocompleteHover();
@@ -2462,8 +2501,7 @@
                 e.stopImmediatePropagation();
                 applyActiveAutocompleteItem();
                 return true;
-            default:
-                return false;
+            default: return false;
         }
     }
 
@@ -2651,8 +2689,7 @@
         );
         readAutocompleteConfig();
         // Derive the compression threshold from validated values.
-        const calculated = AppState.llmCtxSize -
-                         (AppState.llmMaxResponseTokens + AppState.safetyMargin);
+        const calculated = AppState.llmCtxSize - (AppState.llmMaxResponseTokens + AppState.safetyMargin);
         AppState.warningThreshold = Math.max(calculated, 0);
         // TTS configuration (injected on the chat page so chat.js can gate TTS on
         // the service being enabled and reach the correct endpoint).
@@ -2803,12 +2840,10 @@
      * Called on page load in streaming mode (2).
      */
     function displayChatHistory() {
-        if (!Array.isArray(AppState.chatHistory) ||
-                AppState.chatHistory.length === 0) { return; }
+        if (!Array.isArray(AppState.chatHistory) || (!AppState.chatHistory.length)) { return; }
         for (const msg of AppState.chatHistory) {
-            if (isValidMessage(msg)) {
-                appendMessage(msg.role, msg.content);
-            }
+            if (!isValidMessage(msg)) { continue; }
+            appendMessage(msg.role, msg.content);
         }
     }
 
@@ -2833,9 +2868,7 @@
             bindThemeToggle();
             displayInitialMessage();
             if (AppState.responseMode === 1) {
-                if (AppState.hasSessionConversation) {
-                    fetchConversationHistoryFromApi();
-                }
+                if (AppState.hasSessionConversation) { fetchConversationHistoryFromApi(); }
             } else if (AppState.responseMode === 2) {
                 loadHistoryFromStorage();
                 displayChatHistory();

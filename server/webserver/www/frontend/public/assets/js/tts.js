@@ -320,7 +320,7 @@
      */
     function estimateTokens(text) {
         if (typeof text !== 'string') { return 0; }
-        if (text.length === 0) { return 0; }
+        if (!text.length) { return 0; }
         return Math.ceil(text.length / CHARS_PER_TOKEN);
     }
 
@@ -540,10 +540,15 @@
             showErrorModal('No audio available to download.');
             return;
         }
+        const filenameFixed = (typeof filename === 'string') ? filename.trim() : '';
+        if (filenameFixed === '') {
+            showErrorModal('Invalid download filename!');
+            return;
+        }
         try {
             const a = document.createElement('a');
             a.href = blobUrlFixed;
-            a.download = filename;
+            a.download = filenameFixed;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
