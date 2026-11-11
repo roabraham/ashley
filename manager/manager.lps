@@ -127,7 +127,7 @@
         <UsageCount Value="10"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="25">
+    <JumpHistory HistoryIndex="24">
       <Position>
         <Filename Value="main_form.pas"/>
       </Position>
@@ -220,10 +220,6 @@
       <Position>
         <Filename Value="settings_form.pas"/>
         <Caret Line="4474" TopLine="4452"/>
-      </Position>
-      <Position>
-        <Filename Value="settings_form.pas"/>
-        <Caret Line="21" Column="48" TopLine="67"/>
       </Position>
     </JumpHistory>
     <RunParams>

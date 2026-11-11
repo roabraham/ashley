@@ -20,8 +20,9 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="5"/>
-      <BuildNr Value="6"/>
-      <StringTable Comments="Service manager application" CompanyName="Robert Abraham" FileDescription="Service manager application" InternalName="Service Manager" LegalCopyright="Robert Abraham" LegalTrademarks="Robert Abraham" OriginalFilename="manager.exe" ProductName="Service Manager" ProductVersion="0.5"/>
+      <RevisionNr Value="1"/>
+      <BuildNr Value="1"/>
+      <StringTable Comments="Service manager application" CompanyName="Robert Abraham" FileDescription="Service manager application" InternalName="Service Manager" LegalCopyright="Robert Abraham" LegalTrademarks="Robert Abraham" OriginalFilename="manager.exe" ProductName="Service Manager" ProductVersion="0.5.1a"/>
     </VersionInfo>
     <BuildModes>
       <Item Name="Debug" Default="True"/>

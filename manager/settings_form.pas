@@ -2055,7 +2055,7 @@ begin
     if engineItem.ProxyMaxConnections >= 1 then LLMproxyServiceMaxConnections.Value := engineItem.ProxyMaxConnections;
     if engineItem.ProxyMaxPackageSize >= 1 then LLMproxyServiceMaxPackageSize.Value := engineItem.ProxyMaxPackageSize;
     if not(length(engineItem.TTSbinary) >= 1) then ttsFallbackNeeded := true;
-    GeneralTTSsettingsGroupBox.Enabled := (((length(engineItem.TTSbinary) >= 1) or (length(ttsFallbackBinary) >= 1)) and ttsModelsAvailable);
+    TTStabSheet.Enabled := (((length(engineItem.TTSbinary) >= 1) or (length(ttsFallbackBinary) >= 1)) and ttsModelsAvailable);
     ReloadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
     //Load devices
     LoadDevices('LLAMA_CPP');
@@ -3102,8 +3102,8 @@ begin
     engineItem := TEngineComboBoxItem(LlamaEngineComboBox.Items.Objects[LlamaEngineComboBox.ItemIndex]);
     if not(Assigned(engineItem)) then Exit;
     if not(length(engineItem.TTSbinary) >= 1) then ttsFallbackNeeded := true;
-    GeneralTTSsettingsGroupBox.Enabled := (((length(engineItem.TTSbinary) >= 1) or (length(ttsFallbackBinary) >= 1)) and ttsModelsAvailable);
-    if not(GeneralTTSsettingsGroupBox.Enabled) then EnableTTScheckBox.Checked := false;
+    TTStabSheet.Enabled := (((length(engineItem.TTSbinary) >= 1) or (length(ttsFallbackBinary) >= 1)) and ttsModelsAvailable);
+    if not(TTStabSheet.Enabled) then EnableTTScheckBox.Checked := false;
     ReloadDevicesButton.Enabled := not(engineItem.UsesGPU = 0);
     LoadDevices('LLAMA_CPP');
     LoadDevices('TTS');
@@ -3413,9 +3413,9 @@ begin
       if Assigned(TTSnode) then
       begin
         if TTSnode.JSONType = jtNumber then
-          EnableTTScheckBox.Checked := (not(TTSnode.AsInteger = 0) and GeneralTTSsettingsGroupBox.Enabled)
+          EnableTTScheckBox.Checked := (not(TTSnode.AsInteger = 0) and TTStabSheet.Enabled)
         else
-          EnableTTScheckBox.Checked := ((IndexStr(LowerCase(trim(TTSnode.AsString)), ['0', 'false', 'no']) = -1) and GeneralTTSsettingsGroupBox.Enabled);
+          EnableTTScheckBox.Checked := ((IndexStr(LowerCase(trim(TTSnode.AsString)), ['0', 'false', 'no']) = -1) and TTStabSheet.Enabled);
       end;
       //Enable or disable logging
       LogNode := RootObj.Find('logging');

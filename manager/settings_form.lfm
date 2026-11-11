@@ -790,6 +790,7 @@ object SettingsForm: TSettingsForm
       Caption = 'TTS'
       ClientHeight = 436
       ClientWidth = 778
+      Enabled = False
       ParentShowHint = False
       ShowHint = True
       object TTStabSheetScrollBox: TScrollBox
@@ -954,7 +955,6 @@ object SettingsForm: TSettingsForm
           Caption = 'General'
           ClientHeight = 130
           ClientWidth = 735
-          Enabled = False
           TabOrder = 0
           object EnableTTScheckBox: TCheckBox
             Left = 8
