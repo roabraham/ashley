@@ -469,11 +469,12 @@ class ConfigService {
      * 2. {@see personality.db} - active personality row from the {@code personalities} table (selected by name from the JSON file, otherwise the highest-priority active row).
      * 3. {@see personality.json} - JSON file overrides applied on top of the database row.
      *
+     * @param bool $needImages when set TRUE, avatar and background images will also be processed (optional)
      * @return array<string,mixed> Key-value map whose keys match the original
      *         {@code $persona_config} array so controllers share the same
      *         interface.
      */
-    public function getPersonaConfig(): array {
+    public function getPersonaConfig(bool $needImages = false): array {
         $persona = [
             'personality_name'              => null,
             'chatbot_name'                  => 'ChatBot',
@@ -534,13 +535,15 @@ class ConfigService {
                 $persona['css_override'] = trim($data['css_override'] ?? '');
                 $similarity_threshold = intval(trim($data['behavior_similarity_threshold'] ?? 0));
                 if ($similarity_threshold >= 1) { $persona['behavior_similarity_threshold']  = $similarity_threshold; }
-                // Format base-64 images stored in the DB
-                foreach (['avatar' => 'avatar_img', 'background_image' => 'background_img'] as $dbField => $cfgKey) {
-                    $imgRaw = trim($data[$dbField] ?? '');
-                    if (empty($imgRaw)) { continue; }
-                    $imgJson = json_decode($imgRaw, true);
-                    if (!isset($imgJson['content'])) { continue; }
-                    $persona[$cfgKey] = $this->formatBase64Image($imgJson['content'], $imgJson['filename'] ?? '');
+                // Format base-64 images stored in the DB when needed
+                if ($needImages) {
+                    foreach (['avatar' => 'avatar_img', 'background_image' => 'background_img'] as $dbField => $cfgKey) {
+                        $imgRaw = trim($data[$dbField] ?? '');
+                        if (empty($imgRaw)) { continue; }
+                        $imgJson = json_decode($imgRaw, true);
+                        if (!isset($imgJson['content'])) { continue; }
+                        $persona[$cfgKey] = $this->formatBase64Image($imgJson['content'], $imgJson['filename'] ?? '');
+                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -573,12 +576,14 @@ class ConfigService {
             }
             $similarity_threshold = intval(trim($jsonData['behavior_similarity_threshold'] ?? 0));
             if ($similarity_threshold >= 1) { $persona['behavior_similarity_threshold']  = $similarity_threshold; }
-            // Format base-64 images from JSON overrides
-            foreach (['avatar' => 'avatar_img', 'background_image' => 'background_img'] as $jsonField => $cfgKey) {
-                if (!isset($jsonData[$jsonField])) { continue; }
-                if (!is_array($jsonData[$jsonField])) { continue; }
-                if (!isset($jsonData[$jsonField]['content'])) { continue; }
-                $persona[$cfgKey] = $this->formatBase64Image($jsonData[$jsonField]['content'], $jsonData[$jsonField]['filename'] ?? '');
+            // Format base-64 images from JSON overrides when needed
+            if ($needImages) {
+                foreach (['avatar' => 'avatar_img', 'background_image' => 'background_img'] as $jsonField => $cfgKey) {
+                    if (!isset($jsonData[$jsonField])) { continue; }
+                    if (!is_array($jsonData[$jsonField])) { continue; }
+                    if (!isset($jsonData[$jsonField]['content'])) { continue; }
+                    $persona[$cfgKey] = $this->formatBase64Image($jsonData[$jsonField]['content'], $jsonData[$jsonField]['filename'] ?? '');
+                }
             }
         }
         return $persona;

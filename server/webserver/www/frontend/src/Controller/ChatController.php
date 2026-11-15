@@ -100,7 +100,7 @@ class ChatController extends AbstractController
     #[Route('/', name: 'app_chat_index', methods: ['GET'])]
     public function index(SessionInterface $session): Response {
         $llmConfig = $this->configService->getLlmConfig();
-        $persona = $this->configService->getPersonaConfig();
+        $persona = $this->configService->getPersonaConfig(true);
         $autocomplete_config = $this->configService->getAutocompleteConfig();
         $responseMode = intval($persona['response_mode'] ?? 1);
         // Pre-calculate values that the template and JS need
@@ -165,7 +165,7 @@ class ChatController extends AbstractController
     #[Route('/api/chat', name: 'app_chat_api', methods: ['POST'])]
     public function handleApi(Request $request, SessionInterface $session): Response {
         $llmConfig = $this->configService->getLlmConfig();
-        $persona = $this->configService->getPersonaConfig();
+        $persona = $this->configService->getPersonaConfig(false);
         // Set limits
         $memory_limit = trim($llmConfig['memory_limit'] ?? '1G');
         @ini_set('memory_limit', $memory_limit);
