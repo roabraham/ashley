@@ -814,7 +814,22 @@
             if (isPlainObject(data) && data.success === true && Array.isArray(data.conversation_history)) {
                 for (const msg of data.conversation_history) {
                     if (!isValidMessage(msg)) { continue; }
-                    appendMessage(msg.role, msg.content);
+                    // Re-render media attachments persisted in server-side history (mode 1).
+                    if (msg.role === 'assistant' &&
+                        typeof msg.media_action === 'string' && msg.media_action.trim().length > 0 &&
+                        typeof msg.media_data === 'string' && msg.media_data.trim().length > 0
+                    ) {
+                        const actionFixed = msg.media_action.trim();
+                        const mediaFixed = msg.media_data.trim();
+                        if (['#LOOP_VIDEO', '#LOOP_VIDEO_FROM_DIRECTORY'].includes(actionFixed)) {
+                            appendVideoMessage(mediaFixed);
+                        } else if (['#GET_IMAGE', '#GET_IMAGE_FROM_DIRECTORY'].includes(actionFixed)) {
+                            appendImageMessage(mediaFixed);
+                        }
+                    }
+                    if (typeof msg.content === 'string' && msg.content.trim().length > 0) {
+                        appendMessage(msg.role, msg.content);
+                    }
                 }
             }
         })
@@ -934,11 +949,23 @@
                 }
                 const validMessages = importedData
                     .filter(isValidMessage)
-                    .map((msg) => ({
-                        role: msg.role.trim(),
-                        content: msg.content.trim()
-                    }))
-                    .filter((msg) => msg.content.length > 0);
+                    .map((msg) => {
+                        const entry = {
+                            role: msg.role.trim(),
+                            content: msg.content.trim()
+                        };
+                        if (
+                            typeof msg.media_action === 'string' && msg.media_action.trim().length > 0 &&
+                            typeof msg.media_data === 'string' && msg.media_data.trim().length > 0
+                        ) {
+                            entry.media_action = msg.media_action.trim();
+                            entry.media_data = msg.media_data.trim();
+                        }
+                        return entry;
+                    })
+                    .filter((msg) => (msg.content.length > 0 || (
+                        typeof msg.media_action === 'string' && msg.media_action.trim().length > 0 &&
+                        typeof msg.media_data === 'string' && msg.media_data.trim().length > 0)));
                 if (!validMessages.length) {
                     throw new Error('No data to import! The file contains no valid messages.');
                 }
@@ -968,7 +995,22 @@
                         displayInitialMessage();
                         for (const msg of data.conversation_history) {
                             if (!isValidMessage(msg)) { continue; }
-                            appendMessage(msg.role.trim(), msg.content.trim());
+                            // Re-render media attachments from imported server-side history (mode 1).
+                            if (msg.role === 'assistant' &&
+                                typeof msg.media_action === 'string' && msg.media_action.trim().length > 0 &&
+                                typeof msg.media_data === 'string' && msg.media_data.trim().length > 0
+                            ) {
+                                const actionFixed = msg.media_action.trim();
+                                const mediaFixed = msg.media_data.trim();
+                                if (['#LOOP_VIDEO', '#LOOP_VIDEO_FROM_DIRECTORY'].includes(actionFixed)) {
+                                    appendVideoMessage(mediaFixed);
+                                } else if (['#GET_IMAGE', '#GET_IMAGE_FROM_DIRECTORY'].includes(actionFixed)) {
+                                    appendImageMessage(mediaFixed);
+                                }
+                            }
+                            if (typeof msg.content === 'string' && msg.content.trim().length > 0) {
+                                appendMessage(msg.role.trim(), msg.content.trim());
+                            }
                         }
                         AppState.hasSessionConversation = true;
                         updateExportButtonVisibility();
@@ -1288,16 +1330,15 @@
      * Append a looping video message to the chat box.
      * Shows a spinner while the HEAD request confirms the video exists.
      *
-     * @param {string} videoFileName - Filename relative to the media/ directory.
+     * @param {string} videoPath - Full URL path to the video file (no media/ prefix added here).
      */
-    function appendVideoMessage(videoFileName) {
+    function appendVideoMessage(videoPath) {
         if (!DOM.chatBox) { return; }
-        if (typeof videoFileName !== 'string') { return; }
-        const videoFileNameFixed = videoFileName.trim();
-        if (videoFileNameFixed === '') { return; }
+        if (typeof videoPath !== 'string') { return; }
+        const videoPathFixed = videoPath.trim();
+        if (videoPathFixed === '') { return; }
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message chatbot-message';
-        const videoPath = 'media/' + encodeURIComponent(videoFileNameFixed);
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'text-center mt-2 mb-3 w-100';
         loadingDiv.innerHTML =
@@ -1308,21 +1349,25 @@
         messageDiv.appendChild(loadingDiv);
         DOM.chatBox.appendChild(messageDiv);
         DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
-        fetch(videoPath, { method: 'HEAD' })
+        fetch(videoPathFixed, { method: 'HEAD' })
         .then((response) => {
             if (!response.ok) { throw new Error('Video not found'); }
             const videoContainer = document.createElement('div');
             videoContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
             const video = document.createElement('video');
-            video.src         = videoPath;
+            video.src         = videoPathFixed;
             video.controls    = true;
             video.loop        = true;
             video.playsInline = true;
             video.muted       = true;
             video.autoplay    = true;
             video.className   = 'chat-video rounded shadow-sm';
-            video.style.maxHeight = '240px';
-            video.style.width     = 'auto';
+            video.style.maxWidth  = '100%';
+            video.style.maxHeight = '50vh';
+            video.style.height    = 'auto';
+            video.onloadedmetadata = () => {
+                if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+            };
             messageDiv.innerHTML = '';
             videoContainer.appendChild(video);
             messageDiv.appendChild(videoContainer);
@@ -1331,13 +1376,182 @@
         .catch(() => {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'alert alert-warning mt-2 mb-3 w-100';
-            errorDiv.innerHTML =
-                '<strong class="me-2">Video not found:</strong>' +
-                escapeHtml(videoFileNameFixed);
+            errorDiv.innerHTML = '<strong class="me-2">Video not found:</strong>' + escapeHtml(videoPathFixed);
             messageDiv.innerHTML = '';
             messageDiv.appendChild(errorDiv);
             DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
         });
+    }
+
+    /**
+     * Append a static image message to the chat box.
+     * Shows a spinner while the HEAD request confirms the image exists.
+     * Renders with the same responsive bounds as a looping video.
+     *
+     * @param {string} imagePath - Full URL path to the image file.
+     */
+    function appendImageMessage(imagePath) {
+        if (!DOM.chatBox) { return; }
+        if (typeof imagePath !== 'string') { return; }
+        const imagePathFixed = imagePath.trim();
+        if (imagePathFixed === '') { return; }
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message chatbot-message';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'text-center mt-2 mb-3 w-100';
+        loadingDiv.innerHTML =
+            '<div class="spinner-border text-secondary" role="status" ' +
+            'style="width:2rem;height:2rem;">' +
+            '<span class="visually-hidden">Loading...</span></div>' +
+            '<div class="small text-muted mt-2">Loading image...</div>';
+        messageDiv.appendChild(loadingDiv);
+        DOM.chatBox.appendChild(messageDiv);
+        DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+        fetch(imagePathFixed, { method: 'HEAD' })
+        .then((response) => {
+            if (!response.ok) { throw new Error('Image not found'); }
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
+            const image = document.createElement('img');
+            image.src          = imagePathFixed;
+            image.alt          = '';
+            image.className    = 'chat-image img-fluid rounded shadow-sm';
+            image.style.cursor = 'pointer';
+            image.style.maxHeight = '50vh';
+            image.tabIndex     = 0;
+            image.setAttribute('role', 'button');
+            image.setAttribute('aria-label', 'Open image preview');
+            image.addEventListener('click', () => {
+                showImagePreview(imagePathFixed);
+            });
+            // Keyboard: open the preview with Enter or Space (EU accessibility compliance).
+            image.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    showImagePreview(imagePathFixed);
+                }
+            });
+            image.onload = () => {
+                if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+            };
+            messageDiv.innerHTML = '';
+            imageContainer.appendChild(image);
+            messageDiv.appendChild(imageContainer);
+            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+        })
+        .catch(() => {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-warning mt-2 mb-3 w-100';
+            errorDiv.innerHTML = '<strong class="me-2">Image not found:</strong>' + escapeHtml(imagePathFixed);
+            messageDiv.innerHTML = '';
+            messageDiv.appendChild(errorDiv);
+            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+        });
+    }
+
+    /**
+     * Show a full-screen image preview popup.
+     * Elegant, theme-aware lightbox: dark blurred backdrop, rounded image surface
+     * that scales to fit the viewport, a loading spinner while the image fetches,
+     * an error state on failure, and a dismiss button. Closes on Escape or a click
+     * outside the dialog.
+     *
+     * @param {string} imageSrc - The image source URL.
+     */
+    function showImagePreview(imageSrc) {
+        if (typeof imageSrc !== 'string') { return; }
+        const imageSrcFixed = imageSrc.trim();
+        if (imageSrcFixed === '') { return; }
+        let modalEl = document.getElementById('image-preview-modal');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.id = 'image-preview-modal';
+            modalEl.className = 'modal fade image-preview-modal';
+            modalEl.setAttribute('tabindex', '-1');
+            modalEl.setAttribute('role', 'dialog');
+            modalEl.setAttribute('aria-modal', 'true');
+            modalEl.setAttribute('aria-hidden', 'true');
+            modalEl.innerHTML =
+                '<div class="modal-dialog modal-dialog-centered image-preview-dialog" role="document">' +
+                '<div class="modal-content image-preview-content" role="document">' +
+                '<div class="modal-body p-0 image-preview-body text-center">' +
+                '<div class="image-preview-loading d-none">' +
+                '<div class="spinner-border text-secondary" role="status" ' +
+                'style="width:2.5rem;height:2.5rem;">' +
+                '<span class="visually-hidden">Loading image...</span></div>' +
+                '<div class="mt-2 small text-muted">Loading image...</div>' +
+                '</div>' +
+                '<div class="image-preview-wrapper position-relative d-inline-block">' +
+                '<img src="" class="image-preview-img img-fluid d-none" ' +
+                'alt="Image preview" id="image-preview-img">' +
+                '<button type="button" class="image-preview-download" aria-label="Download image" title="Download image">' +
+                '<img src="/media/bootstrap_icons/download.svg" width="16" height="16" alt="" aria-hidden="true">' +
+                '</button>' +
+                '<button type="button" class="image-preview-close" aria-label="Close preview" title="Close">' +
+                '<img src="/media/bootstrap_icons/x.svg" width="16" height="16" alt="" aria-hidden="true">' +
+                '</button>' +
+                '</div>' +
+                '<div class="image-preview-error d-none">' +
+                '<div class="text-center">' +
+                '<div class="mb-2">&#x26A0;</div>' +
+                '<div>Failed to load image</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+            document.body.appendChild(modalEl);
+            // Click outside the dialog (on the darkened backdrop) closes the preview.
+            modalEl.addEventListener('click', function (e) {
+                if (e.target === modalEl) { hideModal(modalEl); }
+            });
+            // Dismiss button closes the preview.
+            const closeBtn = modalEl.querySelector('.image-preview-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    hideModal(modalEl);
+                });
+            }
+            // Download button downloads the current image.
+            const dlBtn = modalEl.querySelector('.image-preview-download');
+            if (dlBtn) {
+                dlBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const img = modalEl.querySelector('#image-preview-img');
+                    if (!img || !img.src) { return; }
+                    const a = document.createElement('a');
+                    a.href = img.src;
+                    a.download = '';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                });
+            }
+        }
+        const imgEl = modalEl.querySelector('#image-preview-img');
+        const loadingEl = modalEl.querySelector('.image-preview-loading');
+        const errorEl = modalEl.querySelector('.image-preview-error');
+        // Reset state for a fresh preview.
+        if (imgEl) { imgEl.classList.add('d-none'); }
+        if (loadingEl) { loadingEl.classList.remove('d-none'); }
+        if (errorEl) { errorEl.classList.add('d-none'); }
+        // Load the image, toggling between loading / image / error states.
+        if (imgEl) {
+            imgEl.onload = () => {
+                if (loadingEl) { loadingEl.classList.add('d-none'); }
+                if (errorEl) { errorEl.classList.add('d-none'); }
+                imgEl.classList.remove('d-none');
+            };
+            imgEl.onerror = () => {
+                if (loadingEl) { loadingEl.classList.add('d-none'); }
+                if (errorEl) { errorEl.classList.remove('d-none'); }
+            };
+            imgEl.src = imageSrcFixed;
+        }
+        showModal(modalEl);
     }
 
     /**
@@ -1876,17 +2090,54 @@
         // Response with an action verb
         if (typeof data.response_action === 'string' && data.response_action.trim().length > 0) {
             const action = data.response_action.trim();
-            if (action === '#LOOP_VIDEO' && typeof data.media_data === 'string' && data.media_data.length > 0) {
-                appendVideoMessage(data.media_data);
+            // Video cases: #LOOP_VIDEO and #LOOP_VIDEO_FROM_DIRECTORY
+            if (
+                ['#LOOP_VIDEO', '#LOOP_VIDEO_FROM_DIRECTORY'].includes(action) &&
+                typeof data.media_data === 'string' && data.media_data.length > 0
+            ) {
+                const videoPathFixed = data.media_data.trim();
+                appendVideoMessage(videoPathFixed);
                 const videoReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
                 if (videoReply.length > 0) {
                     appendMessage('chatbot', videoReply);
-                    if (AppState.responseMode === 2) {
-                        AppState.chatHistory.push({ role: 'user',      content: message });
-                        AppState.chatHistory.push({ role: 'assistant', content: '*#LOOP_VIDEO* ' + videoReply });
-                        saveHistoryToStorage();
-                    }
                     maybeSpeak(videoReply);
+                }
+                if (AppState.responseMode === 2) {
+                    AppState.chatHistory.push({ role: 'user', content: message });
+                    // Persist the media reference so it survives a page reload
+                    AppState.chatHistory.push({
+                        role: 'assistant',
+                        content: videoReply,
+                        media_action: action,
+                        media_data: videoPathFixed
+                    });
+                    saveHistoryToStorage();
+                }
+                finishProcessing();
+                return;
+            }
+            // Image cases: #GET_IMAGE and #GET_IMAGE_FROM_DIRECTORY
+            if (
+                ['#GET_IMAGE', '#GET_IMAGE_FROM_DIRECTORY'].includes(action) &&
+                typeof data.media_data === 'string' && data.media_data.length > 0
+            ) {
+                const imagePathFixed = data.media_data.trim();
+                appendImageMessage(imagePathFixed);
+                const imageReply = (typeof data.reply === 'string') ? data.reply.trim() : '';
+                if (imageReply.length > 0) {
+                    appendMessage('chatbot', imageReply);
+                    maybeSpeak(imageReply);
+                }
+                if (AppState.responseMode === 2) {
+                    AppState.chatHistory.push({ role: 'user', content: message });
+                    // Persist the media reference so it survives a page reload
+                    AppState.chatHistory.push({
+                        role: 'assistant',
+                        content: imageReply,
+                        media_action: action,
+                        media_data: imagePathFixed
+                    });
+                    saveHistoryToStorage();
                 }
                 finishProcessing();
                 return;
@@ -2843,7 +3094,22 @@
         if (!Array.isArray(AppState.chatHistory) || (!AppState.chatHistory.length)) { return; }
         for (const msg of AppState.chatHistory) {
             if (!isValidMessage(msg)) { continue; }
-            appendMessage(msg.role, msg.content);
+            // Re-render media attachments persisted in history so they survive reload
+            if (msg.role === 'assistant' &&
+                typeof msg.media_action === 'string' && msg.media_action.trim().length > 0 &&
+                typeof msg.media_data === 'string' && msg.media_data.trim().length > 0
+            ) {
+                const actionFixed = msg.media_action.trim();
+                const mediaFixed = msg.media_data.trim();
+                if (['#LOOP_VIDEO', '#LOOP_VIDEO_FROM_DIRECTORY'].includes(actionFixed)) {
+                    appendVideoMessage(mediaFixed);
+                } else if (['#GET_IMAGE', '#GET_IMAGE_FROM_DIRECTORY'].includes(actionFixed)) {
+                    appendImageMessage(mediaFixed);
+                }
+            }
+            if (typeof msg.content === 'string' && msg.content.trim().length > 0) {
+                appendMessage(msg.role, msg.content);
+            }
         }
     }
 

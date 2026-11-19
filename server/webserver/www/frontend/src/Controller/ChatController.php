@@ -2,6 +2,9 @@
 
 namespace App\Controller;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use App\Service\ConfigService;
 use App\Service\DatabaseConnection;
 use Doctrine\DBAL\Connection;
@@ -222,10 +225,15 @@ class ChatController extends AbstractController
                 foreach ($stored as $msg) {
                     if (empty($msg['role'])) { continue; }
                     if (!isset($msg['content'])) { continue; }
-                    $history[] = [
+                    $entry = [
                         'role' => $msg['role'],
                         'content' => $msg['content']
                     ];
+                    if ((!empty($msg['media_action'])) && (!empty($msg['media_data']))) {
+                        $entry['media_action'] = $msg['media_action'];
+                        $entry['media_data'] = $msg['media_data'];
+                    }
+                    $history[] = $entry;
                 }
             }
         }
@@ -291,10 +299,15 @@ class ChatController extends AbstractController
         foreach ($history as $msg) {
             if (empty($msg['role'])) { continue; }
             if (!isset($msg['content'])) { continue; }
-            $exportData[] = [
+            $entry = [
                 'role' => $msg['role'],
                 'content' => $msg['content']
             ];
+            if ((!empty($msg['media_action'])) && (!empty($msg['media_data']))) {
+                $entry['media_action'] = $msg['media_action'];
+                $entry['media_data'] = $msg['media_data'];
+            }
+            $exportData[] = $entry;
         }
         if (empty($exportData)) {
             return $this->json([
@@ -395,11 +408,18 @@ class ChatController extends AbstractController
             if (!in_array($role, self::VALID_ROLES)) { continue; }
             if (!isset($msg['content'])) { continue; }
             $content = trim((string) $msg['content']);
-            if ($content == '') { continue; }
-            $newHistory[] = [
+            $media_action = trim((string) ($msg['media_action'] ?? ''));
+            $media_data = trim((string) ($msg['media_data'] ?? ''));
+            if (($content == '') && (empty($media_action) || empty($media_data))) { continue; }
+            $newEntry = [
                 'role'    => $role,
                 'content' => $content
             ];
+            if ((!empty($media_action)) && (!empty($media_data))) {
+                $newEntry['media_action'] = $media_action;
+                $newEntry['media_data'] = $media_data;
+            }
+            $newHistory[] = $newEntry;
         }
         if (empty($newHistory)) {
             return $this->json([
@@ -1071,9 +1091,19 @@ class ChatController extends AbstractController
             'behavior_id'      => $behaviorId,
         ];
         if ($responseAction != '') { $result['response_action'] = $responseAction; }
-        if ($responseAction == '#LOOP_VIDEO') {
+        $mediaAction = null;
+        $mediaData = null;
+        if (in_array($responseAction, ['#GET_IMAGE', '#LOOP_VIDEO'])) {
+            $mediaAction = $responseAction;
             $mediaData = $this->getRandomMediaData($behaviorId, $session, $llmConfig, $db);
             if (!empty($mediaData)) { $result['media_data'] = $mediaData; }
+        } elseif (in_array($responseAction, ['#GET_IMAGE_FROM_DIRECTORY', '#LOOP_VIDEO_FROM_DIRECTORY'])) {
+            $mediaAction = $responseAction;
+            $mediaData = $this->getRandomMediaData($behaviorId, $session, $llmConfig, $db);
+            if (!empty($mediaData)) {
+                $mediaData = $this->getRandomMediaFileFromDirectory($mediaData, $session, $llmConfig);
+                if (!empty($mediaData)) { $result['media_data'] = $mediaData; }
+            }
         }
         if ($responseMessage != '') { $result['reply'] = $responseMessage; }
         if (intval($persona['response_mode'] ?? 1) != 1) { return $result; }
@@ -1082,13 +1112,21 @@ class ChatController extends AbstractController
         if (empty($history)) { $history = []; }
         if (!is_array($history)) { $history = []; }
         $history[] = ['role' => 'user', 'content' => $userMessage];
-        $historyEntry = $responseMessage;
-        if ($responseAction != '' && $responseMessage == '') {
-            $historyEntry = "*{$responseAction}*";
-        } elseif ($responseAction != '') {
-            $historyEntry = "*{$responseAction}* {$responseMessage}";
+        $newEntry = ['role' => 'assistant'];
+        // Process media action and data if present
+        if ((!empty($mediaAction)) && (!empty($mediaData))) {
+            $newEntry['content'] = $responseMessage;
+            $newEntry['media_action'] = $mediaAction;
+            $newEntry['media_data'] = $mediaData;
+            $history[] = $newEntry;
+        } else {
+            $historyEntry = $responseMessage;
+            if ($responseAction != '') { $historyEntry = trim("*{$responseAction}* {$historyEntry}"); }
+            if ($historyEntry != '') {
+                $newEntry['content'] = $historyEntry;
+                $history[] = $newEntry;
+            }
         }
-        if ($historyEntry != '') { $history[] = ['role' => 'assistant', 'content' => $historyEntry]; }
         $session->set('conversation_history', $history);
         return $result;
     }
@@ -1131,8 +1169,7 @@ class ChatController extends AbstractController
     // =========================================================================
 
     /**
-     * Pick a random media record for the given behavior, ensuring no repeats
-     * until the track is exhausted, then reshuffle.
+     * Pick a random media record for the given behavior, ensuring no repeats until the track is exhausted, then reshuffle.
      *
      * @param int  $behaviorId   Behavior row to pull media for
      * @param SessionInterface $session   Symfony session (tracks used media in the current session)
@@ -1161,13 +1198,81 @@ class ChatController extends AbstractController
             $session->remove('media_data_used');
             return $this->getRandomMediaData($behaviorId, $session, $llmConfig, $db);
         }
-        $mediaData = trim($available[array_rand($available)]);
+        $mediaData = trim((string) $available[array_rand($available)]);
         if ($mediaData == '') { return null; }
         $used[] = $mediaData;
         if (count($used) > $maxMediaSession) {
             $used = array_slice($used, -1 * $maxMediaSession);
         }
         $session->set('media_data_used', $used);
+        return $mediaData;
+    }
+
+    /**
+     * Picks a random file from the specified directory, ensuring no repeats until all files are exhausted, then reshuffles.
+     *
+     * @param string          $mediaDirectory The root directory containing media files.
+     * @param SessionInterface $session       Symfony session (tracks used files in the current session).
+     * @param array           $llmConfig      Configuration array (e.g., max session tracking limits).
+     * @return string|null                    Relative file path, or null if none available.
+     */
+    protected function getRandomMediaFileFromDirectory(string $mediaDirectory, SessionInterface $session, array $llmConfig): ?string {
+        $maxMediaSession = intval($llmConfig['max_media_session'] ?? 255);
+        if ($maxMediaSession <= 0) { return null; }
+        // 1. Resolve and validate the base directory securely (prevents path traversal)
+        $realBaseDir = trim((string) realpath($mediaDirectory));
+        if (empty($realBaseDir)) { return null; }
+        if (!is_dir($realBaseDir)) { return null; }
+        $cleanMediaDir = trim(rtrim($mediaDirectory, '/\\'));
+        if (empty($cleanMediaDir)) { return null; }
+        // 2. Recursively scan the directory for valid files
+        $files = [];
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator(
+                    $realBaseDir,
+                    FilesystemIterator::SKIP_DOTS | FilesystemIterator::FOLLOW_SYMLINKS
+                ),
+                RecursiveIteratorIterator::LEAVES_ONLY
+            );
+            if (empty($iterator)) { return null; }
+            foreach ($iterator as $fileInfo) {
+                if (!$fileInfo->isFile()) { continue; }
+                if (!$fileInfo->isReadable()) { continue; }
+                $filename = trim((string) $fileInfo->getFilename());
+                if (empty($filename)) { continue; }
+                // Skip hidden system files (e.g., .DS_Store, .thumbs)
+                if (str_starts_with($filename, '.')) { continue; }
+                // Skip placeholder files
+                if (preg_match('/^index\.(htm|html|php)$/i', trim((string) basename($filename)))) { continue; }
+                // Compute the relative file path from the base directory
+                $fullPath = trim((string) $fileInfo->getRealPath());
+                if (empty($fullPath)) { continue; }
+                $relativePath = trim(ltrim(str_replace($realBaseDir, '', $fullPath), DIRECTORY_SEPARATOR));
+                if (empty($relativePath)) { continue; }
+                $files[] = "{$cleanMediaDir}/" . str_replace(DIRECTORY_SEPARATOR, '/', $relativePath);
+            }
+        } catch (\Exception $e) { return null; }
+        if (empty($files)) { return null; }
+        // 3. Create a unique session key based on the directory path to avoid session key collisions
+        $sessionKey = 'media_files_used_' . md5($realBaseDir);
+        $used = $session->get($sessionKey, []);
+        // 4. Filter out files already used in this session
+        $available = array_values(array_diff($files, $used));
+        // 5. If all files have been used, clear session tracker and recursively reshuffle
+        if (empty($available)) {
+            $session->remove($sessionKey);
+            return $this->getRandomMediaFileFromDirectory($mediaDirectory, $session, $llmConfig);
+        }
+        // 6. Get random file
+        $mediaData = trim((string) $available[array_rand($available)]);
+        if ($mediaData == '') { return null; }
+        // 7. Update session history and cap it to max_media_session
+        $used[] = $mediaData;
+        if (count($used) > $maxMediaSession) {
+            $used = array_slice($used, -1 * $maxMediaSession);
+        }
+        $session->set($sessionKey, $used);
         return $mediaData;
     }
 

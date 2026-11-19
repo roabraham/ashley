@@ -636,3 +636,165 @@ body.dark-mode .tts-hint { color: #aaa; }
 @media (max-height: 280px) {
     .description-text.tts-description { display: none !important; }
 }
+
+/** Dark backdrop behind the whole modal content */
+.image-preview-modal {
+    background-color: rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+/** Dialog: constrain width/height and center */
+.image-preview-dialog {
+    max-width: 92vw;
+    width: 92vw;
+    max-height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/** Surface: fully transparent so nothing shows behind the image */
+.image-preview-content {
+    position: relative;
+    background: transparent !important;
+    border: none !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+}
+
+/** Wrapper: shrink-wraps the image so the close button sits at its corner */
+.image-preview-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/** Body: edge-to-edge image area. Close button sits on top of the image here */
+.image-preview-body {
+    position: relative;
+    background: transparent !important;
+    border-radius: inherit;
+    min-height: 34vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/** Image: contained, no background box behind it */
+.image-preview-img {
+    display: block;
+    max-width: 90vw;
+    max-height: 74vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    margin: 0 auto;
+    background: transparent !important;
+    border-radius: 0 !important;
+}
+
+/** Loading spinner centered over the image area, readable on the dark backdrop */
+.image-preview-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 2;
+    border-radius: inherit;
+}
+
+/** Error state centered over the image area, readable on the dark backdrop */
+.image-preview-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 3;
+    border-radius: inherit;
+    text-align: center;
+    line-height: 1.4;
+    color: #fff;
+}
+
+/** Close button: on the top-right corner, inside the image area */
+.image-preview-close {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.85;
+    z-index: 10;
+    padding: 0;
+    line-height: 1;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.image-preview-close:hover {
+    background: rgba(0, 0, 0, 0.8);
+    opacity: 1;
+}
+.image-preview-close:focus {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    opacity: 1;
+}
+
+/** Download button: next to the close button (left), inside the image area. */
+.image-preview-download {
+    position: absolute;
+    top: 0.4rem;
+    right: 2.8rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.85;
+    z-index: 10;
+    padding: 0;
+    line-height: 1;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.image-preview-download:hover {
+    background: rgba(0, 0, 0, 0.8);
+    opacity: 1;
+}
+.image-preview-download:focus {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    opacity: 1;
+}
+
+/** Icons on dark buttons: invert black Bootstrap icons to white */
+.image-preview-close img,
+.image-preview-download img { filter: invert(1); }
+
+/** Mobile tweaks. */
+@media (max-width: 576px) {
+    .image-preview-dialog { max-width: 96vw; width: 96vw; }
+    .image-preview-img { max-width: 94vw; max-height: 66vh; }
+    .image-preview-close { width: 2rem; height: 2rem; top: 0.3rem; right: 0.3rem; }
+    .image-preview-download { width: 2rem; height: 2rem; top: 0.3rem; right: 2.5rem; }
+}
