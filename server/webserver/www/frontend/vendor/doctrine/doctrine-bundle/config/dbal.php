@@ -37,12 +37,14 @@ return static function (ContainerConfigurator $container): void {
                 service('doctrine'),
                 true,
                 service('doctrine.debug_data_holder')->nullOnInvalid(),
+                [],
             ])
             ->tag('data_collector', ['template' => '@Doctrine/Collector/db.html.twig', 'id' => 'db', 'priority' => 250])
 
         ->set('doctrine.dbal.connection_factory', ConnectionFactory::class)
             ->args([
-                (string) param('doctrine.dbal.connection_factory.types'),
+                // Filled by RegisterDbalTypePass when types are declared, null otherwise.
+                null,
                 service('doctrine.dbal.connection_factory.dsn_parser'),
             ])
 
@@ -81,6 +83,11 @@ return static function (ContainerConfigurator $container): void {
         ->set('doctrine.dbal.schema_asset_filter_manager', SchemaAssetsFilterManager::class)
             ->abstract()
 
+        ->set('doctrine.manager_registry_aware_connection_provider', ManagerRegistryAwareConnectionProvider::class)
+            ->args([
+                service('doctrine'),
+            ])
+
         ->set('doctrine.database_create_command', CreateDatabaseDoctrineCommand::class)
             ->args([
                 service('doctrine'),
@@ -93,13 +100,13 @@ return static function (ContainerConfigurator $container): void {
             ])
             ->tag('console.command', ['command' => 'doctrine:database:drop'])
 
-        ->set(RunSqlCommand::class)
+        ->set('doctrine.run_sql_command', RunSqlCommand::class)
             ->args([
-                service(ManagerRegistryAwareConnectionProvider::class)->nullOnInvalid(),
+                service('doctrine.manager_registry_aware_connection_provider'),
             ])
             ->tag('console.command', ['command' => 'dbal:run-sql'])
 
-        ->set(ProfilerController::class)
+        ->set('doctrine.profiler_controller', ProfilerController::class)
             ->args([
                 service('twig'),
                 service('doctrine'),

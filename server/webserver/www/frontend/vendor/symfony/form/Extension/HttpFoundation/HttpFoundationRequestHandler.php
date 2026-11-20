@@ -14,6 +14,7 @@ namespace Symfony\Component\Form\Extension\HttpFoundation;
 use Symfony\Component\Form\Exception\UnexpectedTypeException;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\Form\FormInterface;
+use Symfony\Component\Form\MissingDataHandler;
 use Symfony\Component\Form\RequestHandlerInterface;
 use Symfony\Component\Form\Util\FormUtil;
 use Symfony\Component\Form\Util\ServerParams;
@@ -30,10 +31,12 @@ use Symfony\Component\HttpFoundation\Request;
 class HttpFoundationRequestHandler implements RequestHandlerInterface
 {
     private ServerParams $serverParams;
+    private MissingDataHandler $missingDataHandler;
 
     public function __construct(?ServerParams $serverParams = null)
     {
         $this->serverParams = $serverParams ?? new ServerParams();
+        $this->missingDataHandler = new MissingDataHandler();
     }
 
     public function handleRequest(FormInterface $form, mixed $request = null): void
@@ -44,6 +47,7 @@ class HttpFoundationRequestHandler implements RequestHandlerInterface
 
         $name = $form->getName();
         $method = $form->getConfig()->getMethod();
+        $missingData = $this->missingDataHandler->missingData;
 
         if ($method !== $request->getMethod()) {
             return;
@@ -55,13 +59,15 @@ class HttpFoundationRequestHandler implements RequestHandlerInterface
             if ('' === $name) {
                 $data = $request->query->all();
             } else {
-                // Don't submit GET requests if the form's name does not exist
-                // in the request
-                if (!$request->query->has($name)) {
+                $queryData = $request->query->all()[$name] ?? $missingData;
+
+                if ($missingData === $queryData) {
+                    // Don't submit GET requests if the form's name does not exist
+                    // in the request
                     return;
                 }
 
-                $data = $request->query->all()[$name];
+                $data = $this->missingDataHandler->handle($form, $queryData);
             }
         } else {
             // Mark the form with an error if the uploaded size was too large
@@ -71,11 +77,10 @@ class HttpFoundationRequestHandler implements RequestHandlerInterface
                 // Submit the form, but don't clear the default values
                 $form->submit(null, false);
 
-                $form->addError(new FormError(
-                    $form->getConfig()->getOption('upload_max_size_message')(),
-                    null,
-                    ['{{ max }}' => $this->serverParams->getNormalizedIniPostMaxSize()]
-                ));
+                $messageTemplate = $form->getConfig()->getOption('upload_max_size_message')();
+                $messageParameters = ['{{ max }}' => $this->serverParams->getNormalizedIniPostMaxSize()];
+
+                $form->addError(new FormError(strtr($messageTemplate, $messageParameters), $messageTemplate, $messageParameters));
 
                 return;
             }
@@ -88,19 +93,28 @@ class HttpFoundationRequestHandler implements RequestHandlerInterface
                 $params = $request->request->all()[$name] ?? $default;
                 $files = $request->files->get($name, $default);
             } else {
+                $params = $missingData;
+                $files = null;
+            }
+
+            if ($missingData === $params) {
                 // Don't submit the form if it is not present in the request
                 return;
+            }
+
+            if ('PATCH' !== $method) {
+                $params = $this->missingDataHandler->handle($form, $params);
             }
 
             if (\is_array($params) && \is_array($files)) {
                 $data = FormUtil::mergeParamsAndFiles($params, $files);
             } else {
-                $data = $params ?: $files;
+                $data = null === $params || '' === $params || [] === $params ? $files : $params;
             }
         }
 
         // Don't auto-submit the form unless at least one field is present.
-        if ('' === $name && \count(array_intersect_key($data, $form->all())) <= 0) {
+        if ('' === $name && !array_intersect_key($data, $form->all())) {
             return;
         }
 

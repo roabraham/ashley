@@ -42,6 +42,14 @@ final class ObjectEquals extends Constraint
     }
 
     /**
+     * Returns the negated string representation of the constraint.
+     */
+    protected function negatedToString(): string
+    {
+        return 'two objects are not equal';
+    }
+
+    /**
      * @throws ActualValueIsNotAnObjectException
      * @throws ComparisonMethodDoesNotAcceptParameterTypeException
      * @throws ComparisonMethodDoesNotDeclareBoolReturnTypeException
@@ -125,7 +133,9 @@ final class ObjectEquals extends Constraint
         $typeName = $type->getName();
 
         if ($typeName === 'self') {
+            // @codeCoverageIgnoreStart
             $typeName = $other::class;
+            // @codeCoverageIgnoreEnd
         }
 
         if (!$this->expected instanceof $typeName) {
@@ -147,5 +157,10 @@ final class ObjectEquals extends Constraint
     protected function failureDescription(mixed $other): string
     {
         return $this->toString();
+    }
+
+    protected function negatedFailureDescription(mixed $other): string
+    {
+        return $this->negatedToString();
     }
 }

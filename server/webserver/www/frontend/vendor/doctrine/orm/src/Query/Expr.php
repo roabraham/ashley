@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Doctrine\ORM\Query;
 
 use Doctrine\ORM\Internal\NoUnknownNamedArguments;
+use SortDirection;
 use Traversable;
 
 use function implode;
@@ -38,6 +39,8 @@ class Expr
      * @param Expr\Comparison|Expr\Func|Expr\Andx|Expr\Orx|string ...$x Optional clause. Defaults to null,
      *                                                                  but requires at least one defined
      *                                                                  when converting to string.
+     *
+     * @no-named-arguments
      */
     public function andX(Expr\Comparison|Expr\Func|Expr\Andx|Expr\Orx|string ...$x): Expr\Andx
     {
@@ -58,6 +61,8 @@ class Expr
      * @param Expr\Comparison|Expr\Func|Expr\Andx|Expr\Orx|string ...$x Optional clause. Defaults to null,
      *                                                                  but requires at least one defined
      *                                                                  when converting to string.
+     *
+     * @no-named-arguments
      */
     public function orX(Expr\Comparison|Expr\Func|Expr\Andx|Expr\Orx|string ...$x): Expr\Orx
     {
@@ -71,7 +76,7 @@ class Expr
      */
     public function asc(mixed $expr): Expr\OrderBy
     {
-        return new Expr\OrderBy($expr, 'ASC');
+        return new Expr\OrderBy($expr, SortDirection::Ascending);
     }
 
     /**
@@ -79,7 +84,7 @@ class Expr
      */
     public function desc(mixed $expr): Expr\OrderBy
     {
-        return new Expr\OrderBy($expr, 'DESC');
+        return new Expr\OrderBy($expr, SortDirection::Descending);
     }
 
     /**
@@ -229,6 +234,8 @@ class Expr
      * Creates an instance of COUNT(DISTINCT) function, with the given argument.
      *
      * @param mixed ...$x Argument to be used in COUNT(DISTINCT) function.
+     *
+     * @no-named-arguments
      */
     public function countDistinct(mixed ...$x): string
     {
@@ -476,6 +483,8 @@ class Expr
      * Creates a CONCAT() function expression with the given arguments.
      *
      * @param mixed ...$x Arguments to be used in CONCAT() function.
+     *
+     * @no-named-arguments
      */
     public function concat(mixed ...$x): Expr\Func
     {

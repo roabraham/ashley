@@ -67,7 +67,10 @@ class MainConfiguration implements ConfigurationInterface
                     ->values(ExposeSecurityLevel::cases())
                     ->defaultValue(ExposeSecurityLevel::None)
                 ->end()
-                ->booleanNode('erase_credentials')->defaultTrue()->end()
+                ->booleanNode('erase_credentials')
+                    ->defaultTrue()
+                    ->setDeprecated('symfony/security-bundle', '8.1', 'Setting the "%path%.%node%" configuration option is deprecated. It will be removed in Symfony 9.0, as the "eraseCredentials()" method was removed in Symfony 8.0.')
+                ->end()
                 ->arrayNode('access_decision_manager')
                     ->addDefaultsIfNotSet()
                     ->children()
@@ -236,7 +239,7 @@ class MainConfiguration implements ConfigurationInterface
                         ->beforeNormalization()->ifString()->then(static fn ($v) => $v ? array_map('trim', explode(',', $v)) : [])->end()
                         ->enumPrototype()
                             ->values([
-                                '*', 'cache', 'cookies', 'storage', 'executionContexts',
+                                '*', 'cache', 'cookies', 'storage', 'clientHints', 'executionContexts', 'prefetchCache', 'prerenderCache',
                             ])
                         ->end()
                     ->end()
@@ -314,7 +317,7 @@ class MainConfiguration implements ConfigurationInterface
         $firewallNodeBuilder
             ->end()
             ->validate()
-                ->ifTrue(static fn ($v) => true === $v['security'] && isset($v['pattern']) && !isset($v['request_matcher']))
+                ->ifTrue(static fn ($v) => $v['security'] && isset($v['pattern']) && !isset($v['request_matcher']))
                 ->then(static function ($firewall) use ($abstractFactoryKeys) {
                     foreach ($abstractFactoryKeys as $k) {
                         if (!isset($firewall[$k]['check_path'])) {
@@ -380,7 +383,7 @@ class MainConfiguration implements ConfigurationInterface
                 ->thenInvalid('You cannot set multiple provider types for the same provider')
             ->end()
             ->validate()
-                ->ifTrue(static fn ($v) => 0 === \count($v))
+                ->ifTrue(static fn ($v) => !$v)
                 ->thenInvalid('You must set a provider definition for the provider.')
             ->end()
         ;

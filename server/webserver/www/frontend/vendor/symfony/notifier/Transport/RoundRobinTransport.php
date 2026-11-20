@@ -127,7 +127,7 @@ class RoundRobinTransport implements TransportInterface
     {
         // the cursor initial value is randomized so that
         // when are not in a daemon, we are still rotating the transports
-        return mt_rand(0, \count($this->transports) - 1);
+        return random_int(0, \count($this->transports) - 1);
     }
 
     protected function getNameSymbol(): string
@@ -140,3 +140,5 @@ class RoundRobinTransport implements TransportInterface
         return ++$cursor >= \count($this->transports) ? 0 : $cursor;
     }
 }
+
+// @php-cs-fixer-ignore random_api_migration

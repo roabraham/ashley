@@ -11,9 +11,7 @@
 
 namespace Symfony\Bundle\MonologBundle;
 
-use Monolog\Formatter\JsonFormatter;
-use Monolog\Formatter\LineFormatter;
-use Monolog\Handler\HandlerInterface;
+use Symfony\Bundle\MonologBundle\DependencyInjection\Compiler\AddHandlersToManagerPass;
 use Symfony\Bundle\MonologBundle\DependencyInjection\Compiler\AddProcessorsPass;
 use Symfony\Bundle\MonologBundle\DependencyInjection\Compiler\LoggerChannelPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -30,16 +28,15 @@ final class MonologBundle extends Bundle
 
         $container->addCompilerPass(new LoggerChannelPass());
         $container->addCompilerPass(new AddProcessorsPass());
+        $container->addCompilerPass(new AddHandlersToManagerPass());
     }
 
-    /**
-     * @internal
-     */
-    public static function includeStacktraces(HandlerInterface $handler): void
+    public function shutdown(): void
     {
-        $formatter = $handler->getFormatter();
-        if ($formatter instanceof LineFormatter || $formatter instanceof JsonFormatter) {
-            $formatter->includeStacktraces();
+        parent::shutdown();
+
+        if ($this->container?->has('monolog.handler_lifecycle_manager')) {
+            $this->container->get('monolog.handler_lifecycle_manager')->close();
         }
     }
 }

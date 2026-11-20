@@ -50,12 +50,12 @@ class MakefileConfigurator extends AbstractConfigurator
     {
         $recipeUpdate->setOriginalFile(
             'Makefile',
-            $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getOriginalRecipe(), $originalConfig)
+            $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getOriginalRecipe(), $originalConfig, $recipeUpdate->getLock())
         );
 
         $recipeUpdate->setNewFile(
             'Makefile',
-            $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getNewRecipe(), $newConfig)
+            $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getNewRecipe(), $newConfig, $recipeUpdate->getLock())
         );
     }
 
@@ -73,6 +73,7 @@ class MakefileConfigurator extends AbstractConfigurator
         if (!file_exists($makefile)) {
             $envKey = $this->options->get('runtime')['env_var_name'] ?? 'APP_ENV';
             $dotenvPath = $this->options->get('runtime')['dotenv_path'] ?? '.env';
+            $tab = "\t";
             file_put_contents(
                 $this->options->get('root-dir').'/Makefile',
                 <<<EOF
@@ -83,7 +84,7 @@ class MakefileConfigurator extends AbstractConfigurator
                     .DEFAULT_GOAL := help
                     .PHONY: help
                     help:
-                        @awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z-]+:.*?## .*$$/ {printf "\033[32m%-15s\033[0m %s\\n", $$1, $$2}' Makefile | sort
+                    {$tab}@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z-]+:.*?## .*$$/ {printf "\033[32m%-15s\033[0m %s\\n", $$1, $$2}' Makefile | sort
 
                     EOF
             );
@@ -94,20 +95,20 @@ class MakefileConfigurator extends AbstractConfigurator
         }
     }
 
-    private function getContentsAfterApplyingRecipe(string $rootDir, Recipe $recipe, array $definitions): ?string
+    private function getContentsAfterApplyingRecipe(string $rootDir, Recipe $recipe, array $definitions, Lock $lock): ?string
     {
-        if (0 === \count($definitions)) {
-            return null;
-        }
-
         $file = $rootDir.'/Makefile';
         $originalContents = file_exists($file) ? file_get_contents($file) : null;
 
-        $this->configureMakefile(
-            $recipe,
-            $definitions,
-            true
-        );
+        if (0 === \count($definitions)) {
+            $this->unconfigure($recipe, $definitions, $lock);
+        } else {
+            $this->configureMakefile(
+                $recipe,
+                $definitions,
+                true
+            );
+        }
 
         $updatedContents = file_exists($file) ? file_get_contents($file) : null;
 

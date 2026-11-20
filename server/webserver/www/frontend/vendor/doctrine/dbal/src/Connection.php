@@ -194,6 +194,7 @@ class Connection implements ServerVersionProvider
             }
 
             $this->platform = $this->driver->getDatabasePlatform($versionProvider);
+            $this->platform->setTypeProvider($this->_config->getTypeProvider());
         }
 
         return $this->platform;
@@ -277,11 +278,9 @@ class Connection implements ServerVersionProvider
         $this->autoCommit = $autoCommit;
 
         // Commit all currently active transactions if any when switching auto-commit mode.
-        if ($this->_conn === null || $this->transactionNestingLevel === 0) {
-            return;
+        if ($this->_conn !== null && $this->transactionNestingLevel !== 0) {
+            $this->commitAll();
         }
-
-        $this->commitAll();
     }
 
     /**
@@ -832,7 +831,6 @@ class Connection implements ServerVersionProvider
 
         [$cacheKey, $realKey] = $qcp->generateCacheKeys($sql, $params, $types, $connectionParams);
 
-        // @phpstan-ignore missingType.checkedException
         $item = $resultCache->getItem($cacheKey);
 
         if ($item->isHit()) {
@@ -1099,11 +1097,9 @@ class Connection implements ServerVersionProvider
             --$this->transactionNestingLevel;
         }
 
-        if ($this->autoCommit !== false || $this->transactionNestingLevel !== 0) {
-            return;
+        if ($this->autoCommit === false && $this->transactionNestingLevel === 0) {
+            $this->beginTransaction();
         }
-
-        $this->beginTransaction();
     }
 
     /**
@@ -1188,11 +1184,9 @@ class Connection implements ServerVersionProvider
             throw SavepointsNotSupported::new();
         }
 
-        if (! $platform->supportsReleaseSavepoints()) {
-            return;
+        if ($platform->supportsReleaseSavepoints()) {
+            $this->executeStatement($platform->releaseSavePoint($savepoint));
         }
-
-        $this->executeStatement($platform->releaseSavePoint($savepoint));
     }
 
     /**
@@ -1278,7 +1272,8 @@ class Connection implements ServerVersionProvider
      */
     public function convertToDatabaseValue(mixed $value, string $type): mixed
     {
-        return Type::getType($type)->convertToDatabaseValue($value, $this->getDatabasePlatform());
+        return $this->_config->getTypeProvider()->get($type)
+            ->convertToDatabaseValue($value, $this->getDatabasePlatform());
     }
 
     /**
@@ -1294,7 +1289,8 @@ class Connection implements ServerVersionProvider
      */
     public function convertToPHPValue(mixed $value, string $type): mixed
     {
-        return Type::getType($type)->convertToPHPValue($value, $this->getDatabasePlatform());
+        return $this->_config->getTypeProvider()->get($type)
+            ->convertToPHPValue($value, $this->getDatabasePlatform());
     }
 
     /**
@@ -1360,7 +1356,7 @@ class Connection implements ServerVersionProvider
     private function getBindingInfo(mixed $value, string|ParameterType|Type $type): array
     {
         if (is_string($type)) {
-            $type = Type::getType($type);
+            $type = $this->_config->getTypeProvider()->get($type);
         }
 
         if ($type instanceof Type) {

@@ -56,13 +56,20 @@ class InMemoryTransport implements TransportInterface, ResetInterface
     ) {
     }
 
-    public function get(): iterable
+    /**
+     * @param int $fetchSize Best-effort hint about how many messages can be received in one call
+     */
+    public function get(/* int $fetchSize = 1 */): iterable
     {
+        $fetchSize = \func_num_args() > 0 ? max(1, func_get_arg(0)) : 1;
         $envelopes = [];
         $now = $this->clock?->now() ?? new \DateTimeImmutable();
-        foreach ($this->decode($this->queue) as $id => $envelope) {
+        foreach ($this->queue as $id => $encodedEnvelope) {
             if (!isset($this->availableAt[$id]) || $now > $this->availableAt[$id]) {
-                $envelopes[] = $envelope;
+                $envelopes[] = $this->decodeQueue([$id => $encodedEnvelope])[$id];
+                if (\count($envelopes) >= $fetchSize) {
+                    break;
+                }
             }
         }
 
@@ -102,7 +109,7 @@ class InMemoryTransport implements TransportInterface, ResetInterface
         /** @var DelayStamp|null $delayStamp */
         if ($delayStamp = $envelope->last(DelayStamp::class)) {
             $now = $this->clock?->now() ?? new \DateTimeImmutable();
-            $this->availableAt[$id] = $now->modify(\sprintf('+%d seconds', $delayStamp->getDelay() / 1000));
+            $this->availableAt[$id] = $now->setTimezone(new \DateTimeZone('UTC'))->modify(\sprintf('+%d milliseconds', $delayStamp->getDelay()));
         }
 
         return $envelope;
@@ -158,5 +165,22 @@ class InMemoryTransport implements TransportInterface, ResetInterface
         }
 
         return array_map($this->serializer->decode(...), $messagesEncoded);
+    }
+
+    /**
+     * @return array<int, Envelope>
+     */
+    private function decodeQueue(array $queue): array
+    {
+        $envelopes = $this->decode($queue);
+
+        foreach ($envelopes as $id => $envelope) {
+            // the serializer can return an envelope without stamps, as when the message fails to decode
+            if (!$envelope->last(TransportMessageIdStamp::class)) {
+                $envelopes[$id] = $envelope->with(new TransportMessageIdStamp($id));
+            }
+        }
+
+        return $envelopes;
     }
 }

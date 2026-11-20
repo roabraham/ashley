@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 3.7.0
+
+- Render the HTML attributes of `<twig:Turbo:Stream:From>` on the `<turbo-mercure-stream-source>` element, and add an `attributes` argument to `turbo_stream_from()`
+- Add a `subscribe` option to `turbo_stream_from()` and `<twig:Turbo:Stream:From>`, to grant a private stream source more topics than the ones it listens to
+- Add the `turbo.mercure.ignore_cookie_domain_errors` option, to render nothing and log a warning instead of failing when the authorization cookie of a private stream source cannot be created for the domain of the page
+
+## 3.6.0
+
+- Support the Mercure protocol 1.0 in `turbo_stream_from()` and `<twig:Turbo:Stream:From>`: listening to every entity of a class subscribes to a URL Pattern (`:id`) instead of a URI Template (`{id}`), which the protocol 1.0 dropped
+- `turbo_stream_listen()` throws an exception when the hub speaks the Mercure protocol 1.0: its Stimulus controller subscribes with the `topic` query parameter of the protocol 0.x; use `turbo_stream_from()` instead
+- Add support for MercureBundle ^0.6 and Mercure ^0.9, which default hubs to the Mercure protocol 1.0
+
+## 3.5.0
+
+- Add support for Symfony 8.2's standalone `AssetMapperBundle`
+- Fix broadcasting an entity whose identifier is made of associations
+- Add support for Twig 4.
+  On Twig 4, a Fully Qualified Class Name written with single backslashes in `turbo_stream_from()` or `<twig:Turbo:Stream:From>` resolves to the class it names, where Twig 3 dropped the backslashes and turned `'App\Entity\Book'` into the unusable topic `AppEntityBook`. Templates already using the documented `'App\\Entity\\Book'` form are unaffected.
+
+## 3.2.0
+
+- Prevent installation alongside `symfony/mercure` 0.7.0 and 0.7.1, which are incompatible
+
+## 3.1.0
+
+- Add a minimal layout for Turbo Frame responses, allowing `head` content like meta tags to work properly
+- Add `TurboFrame` service methods and Twig functions `turbo_is_frame_request()`/`turbo_frame_request_id()` to detect Turbo Frame requests
+- Add `<turbo-mercure-stream-source>` custom element, `turbo_stream_from()` Twig function and `<twig:Turbo:Stream:From>` Twig component
+- Deprecate `turbo_stream_listen()` Twig function, use `turbo_stream_from()` or the `<twig:Turbo:Stream:From>` Twig component instead
+- Deprecate `Symfony\UX\Turbo\Twig\TurboStreamListenRendererInterface` interface, use `Symfony\UX\Turbo\StreamSourceRendererInterface` instead
+- Deprecate `Symfony\UX\Turbo\Bridge\Mercure\TurboStreamListenRenderer` class, use `Symfony\UX\Turbo\Bridge\Mercure\MercureStreamSourceRenderer` instead
+- Deprecate `Symfony\UX\Turbo\Bridge\Mercure\TopicSet` class
+- Deprecate the `mercure-turbo-stream` Stimulus controller, use the `<turbo-mercure-stream-source>` custom element instead
+
 ## 3.0.0
 
 - Minimum required Symfony version is now 7.4

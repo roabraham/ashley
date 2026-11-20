@@ -9,6 +9,7 @@
  */
 namespace SebastianBergmann\CodeCoverage\Report;
 
+use function array_sum;
 use function assert;
 use function basename;
 use function count;
@@ -38,7 +39,11 @@ final class OpenClover
     use EnsuresUtf8;
 
     /**
+     * @param null|non-empty-string $target
+     *
      * @throws WriteOperationFailedException
+     *
+     * @return non-empty-string
      */
     public function process(Directory $report, ?string $target = null, ?string $name = null): string
     {
@@ -89,7 +94,7 @@ final class OpenClover
                     $namespace = $class->namespace;
                 }
 
-                foreach ($class->methods as $methodName => $method) {
+                foreach ($class->methods as $method) {
                     /** @phpstan-ignore equal.notAllowed */
                     if ($method->executableLines == 0) {
                         continue;
@@ -108,7 +113,7 @@ final class OpenClover
 
                     foreach (range($method->startLine, $method->endLine) as $line) {
                         if (isset($coverageData[$line])) {
-                            $methodCount = max($methodCount, count($coverageData[$line]));
+                            $methodCount = max($methodCount, array_sum($coverageData[$line]));
                         }
                     }
 
@@ -145,7 +150,7 @@ final class OpenClover
                 }
 
                 $lines[$line] = [
-                    'count' => count($data),
+                    'count' => array_sum($data),
                     'type'  => 'stmt',
                 ];
             }

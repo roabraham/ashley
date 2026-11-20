@@ -13,8 +13,10 @@ namespace Symfony\UX\Turbo\DependencyInjection\Compiler;
 
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\UX\Turbo\Bridge\Mercure\Broadcaster;
+use Symfony\UX\Turbo\Bridge\Mercure\MercureStreamSourceRenderer;
 use Symfony\UX\Turbo\Bridge\Mercure\TurboStreamListenRenderer;
 
 /**
@@ -27,6 +29,8 @@ final class RegisterMercureHubsPass implements CompilerPassInterface
 {
     public function process(ContainerBuilder $container): void
     {
+        $ignoreCookieDomainErrors = $container->hasParameter('.turbo.mercure.ignore_cookie_domain_errors') && $container->getParameter('.turbo.mercure.ignore_cookie_domain_errors');
+
         foreach ($container->findTaggedServiceIds('mercure.hub') as $hubId => $tags) {
             $name = str_replace('mercure.hub.', '', $hubId);
 
@@ -35,12 +39,28 @@ final class RegisterMercureHubsPass implements CompilerPassInterface
                 ->addArgument(new Reference('turbo.mercure.stimulus_helper'))
                 ->addArgument(new Reference('turbo.id_accessor'))
                 ->addArgument(new Reference('twig'))
-                ->addTag('turbo.renderer.stream_listen', ['transport' => $name]);
+                ->addArgument($name)
+                ->addTag('turbo.renderer.stream_listen', ['transport' => $name])
+                // Deprecated on the service rather than when the class is loaded: it is registered for every hub, so
+                // only the applications actually rendering turbo_stream_listen() get the deprecation
+                ->setDeprecated('symfony/ux-turbo', '3.1', \sprintf('The "%%service_id%%" service is deprecated since Symfony UX 3.1, use "turbo.mercure.%s.stream_source_renderer" with turbo_stream_from() or the <twig:Turbo:Stream:From> Twig component instead. It will be removed in 4.0.', $name));
+
+            $container->register("turbo.mercure.$name.stream_source_renderer", MercureStreamSourceRenderer::class)
+                ->addArgument(new Reference('turbo.id_accessor'))
+                ->addArgument(new Reference('twig'))
+                ->addArgument($name)
+                ->addArgument(new Reference($hubId))
+                ->addArgument($ignoreCookieDomainErrors)
+                ->addArgument(new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE))
+                ->addTag('monolog.logger', ['channel' => 'turbo'])
+                ->addTag('turbo.stream_source_renderer', ['transport' => $name]);
 
             foreach ($tags as $tag) {
                 if (isset($tag['default']) && $tag['default'] && 'default' !== $name) {
                     $container->getDefinition("turbo.mercure.$name.renderer")
                         ->addTag('turbo.renderer.stream_listen', ['transport' => 'default']);
+                    $container->getDefinition("turbo.mercure.$name.stream_source_renderer")
+                        ->addTag('turbo.stream_source_renderer', ['transport' => 'default']);
                 }
             }
 

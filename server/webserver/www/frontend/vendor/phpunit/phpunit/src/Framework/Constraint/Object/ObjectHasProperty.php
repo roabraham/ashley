@@ -11,6 +11,7 @@ namespace PHPUnit\Framework\Constraint;
 
 use function gettype;
 use function is_object;
+use function is_scalar;
 use function sprintf;
 use ReflectionObject;
 
@@ -33,6 +34,17 @@ final class ObjectHasProperty extends Constraint
     {
         return sprintf(
             'has property "%s"',
+            $this->propertyName,
+        );
+    }
+
+    /**
+     * Returns the negated string representation of the constraint.
+     */
+    protected function negatedToString(): string
+    {
+        return sprintf(
+            'does not have property "%s"',
             $this->propertyName,
         );
     }
@@ -62,19 +74,35 @@ final class ObjectHasProperty extends Constraint
      */
     protected function failureDescription(mixed $other): string
     {
+        return $this->describe($other, $this->toString());
+    }
+
+    protected function negatedFailureDescription(mixed $other): string
+    {
+        return $this->describe($other, $this->negatedToString());
+    }
+
+    private function describe(mixed $other, string $propertyDescription): string
+    {
         if (is_object($other)) {
             return sprintf(
                 'object of class "%s" %s',
                 $other::class,
-                $this->toString(),
+                $propertyDescription,
             );
+        }
+
+        if (is_scalar($other)) {
+            $value = (string) $other;
+        } else {
+            $value = '';
         }
 
         return sprintf(
             '"%s" (%s) %s',
-            $other,
+            $value,
             gettype($other),
-            $this->toString(),
+            $propertyDescription,
         );
     }
 }

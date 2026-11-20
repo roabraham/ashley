@@ -10,8 +10,12 @@
 namespace PHPUnit\Runner\Baseline;
 
 use const DIRECTORY_SEPARATOR;
+use function array_pop;
 use function assert;
+use function count;
 use function dirname;
+use function explode;
+use function implode;
 use function is_file;
 use function realpath;
 use function sprintf;
@@ -57,7 +61,11 @@ final readonly class Reader
             );
         }
 
-        $version = (int) $document->documentElement->getAttribute('version');
+        $documentElement = $document->documentElement;
+
+        assert($documentElement !== null);
+
+        $version = (int) $documentElement->getAttribute('version');
 
         if ($version !== Baseline::VERSION) {
             throw new CannotLoadBaselineException(
@@ -69,35 +77,96 @@ final readonly class Reader
             );
         }
 
-        $baseline          = new Baseline;
-        $baselineDirectory = dirname(realpath($baselineFile));
+        $baseline             = new Baseline;
+        $resolvedBaselineFile = realpath($baselineFile);
+
+        assert($resolvedBaselineFile !== false);
+
+        $baselineDirectory = dirname($resolvedBaselineFile);
         $xpath             = new DOMXPath($document);
 
-        foreach ($xpath->query('file') as $fileElement) {
-            assert($fileElement instanceof DOMElement);
+        $fileElements = $xpath->query('file');
 
-            $file = $baselineDirectory . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $fileElement->getAttribute('path'));
+        if ($fileElements !== false) {
+            foreach ($fileElements as $fileElement) {
+                assert($fileElement instanceof DOMElement);
 
-            foreach ($xpath->query('line', $fileElement) as $lineElement) {
-                assert($lineElement instanceof DOMElement);
+                $file = $this->withoutParentDirectorySegments(
+                    $baselineDirectory . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $fileElement->getAttribute('path')),
+                );
 
-                $line = (int) $lineElement->getAttribute('number');
-                $hash = $lineElement->getAttribute('hash');
+                $lineElements = $xpath->query('line', $fileElement);
 
-                foreach ($xpath->query('issue', $lineElement) as $issueElement) {
-                    assert($issueElement instanceof DOMElement);
+                if ($lineElements === false) {
+                    // @codeCoverageIgnoreStart
+                    continue;
+                    // @codeCoverageIgnoreEnd
+                }
 
-                    $description = $issueElement->textContent;
+                foreach ($lineElements as $lineElement) {
+                    assert($lineElement instanceof DOMElement);
 
-                    assert($line > 0);
-                    assert($hash !== '');
-                    assert($description !== '');
+                    $line = (int) $lineElement->getAttribute('number');
+                    $hash = $lineElement->getAttribute('hash');
 
-                    $baseline->add(Issue::from($file, $line, $hash, $description));
+                    $issueElements = $xpath->query('issue', $lineElement);
+
+                    if ($issueElements === false) {
+                        // @codeCoverageIgnoreStart
+                        continue;
+                        // @codeCoverageIgnoreEnd
+                    }
+
+                    foreach ($issueElements as $issueElement) {
+                        assert($issueElement instanceof DOMElement);
+
+                        $description = $issueElement->textContent;
+
+                        assert($line > 0);
+                        assert($hash !== '');
+                        assert($description !== '');
+
+                        $baseline->add(Issue::from($file, $line, $hash, $description));
+                    }
                 }
             }
         }
 
         return $baseline;
+    }
+
+    /**
+     * The path of a file that is not in the directory of the baseline, or in
+     * a directory below it, starts with a segment for the parent directory
+     * for each directory that has to be left, for instance ../src/File.php.
+     * These segments are resolved so that the path is the one that is
+     * reported for an issue that is triggered in the file.
+     *
+     * @param non-empty-string $path
+     *
+     * @return non-empty-string
+     */
+    private function withoutParentDirectorySegments(string $path): string
+    {
+        $segments = [];
+
+        foreach (explode(DIRECTORY_SEPARATOR, $path) as $segment) {
+            if ($segment !== '..') {
+                $segments[] = $segment;
+
+                continue;
+            }
+
+            // the first segment is the root of the filesystem
+            if (count($segments) > 1) {
+                array_pop($segments);
+            }
+        }
+
+        $path = implode(DIRECTORY_SEPARATOR, $segments);
+
+        assert($path !== '');
+
+        return $path;
     }
 }

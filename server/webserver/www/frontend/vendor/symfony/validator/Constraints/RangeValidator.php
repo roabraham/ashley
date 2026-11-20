@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\Validator\Constraints;
 
+use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\Clock\DatePoint;
 use Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
 use Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
 use Symfony\Component\PropertyAccess\PropertyAccess;
@@ -25,8 +27,10 @@ use Symfony\Component\Validator\Exception\UnexpectedTypeException;
  */
 class RangeValidator extends ConstraintValidator
 {
-    public function __construct(private ?PropertyAccessorInterface $propertyAccessor = null)
-    {
+    public function __construct(
+        private ?PropertyAccessorInterface $propertyAccessor = null,
+        private ?ClockInterface $clock = null,
+    ) {
     }
 
     public function validate(mixed $value, Constraint $constraint): void
@@ -65,7 +69,7 @@ class RangeValidator extends ConstraintValidator
         if ($value instanceof \DateTimeInterface) {
             if (\is_string($min)) {
                 try {
-                    $min = new $value($min);
+                    $min = $this->clock ? $value::createFromInterface(new DatePoint($min, null, $this->clock->now())) : new $value($min);
                 } catch (\Exception) {
                     throw new ConstraintDefinitionException(\sprintf('The min value "%s" could not be converted to a "%s" instance in the "%s" constraint.', $min, get_debug_type($value), get_debug_type($constraint)));
                 }
@@ -73,7 +77,7 @@ class RangeValidator extends ConstraintValidator
 
             if (\is_string($max)) {
                 try {
-                    $max = new $value($max);
+                    $max = $this->clock ? $value::createFromInterface(new DatePoint($max, null, $this->clock->now())) : new $value($max);
                 } catch (\Exception) {
                     throw new ConstraintDefinitionException(\sprintf('The max value "%s" could not be converted to a "%s" instance in the "%s" constraint.', $max, get_debug_type($value), get_debug_type($constraint)));
                 }
@@ -83,7 +87,7 @@ class RangeValidator extends ConstraintValidator
         $hasLowerLimit = null !== $min;
         $hasUpperLimit = null !== $max;
 
-        if ($hasLowerLimit && $hasUpperLimit && ($value < $min || $value > $max)) {
+        if ($hasLowerLimit && $hasUpperLimit && ($this->isGreaterThan($min, $value) || $this->isGreaterThan($value, $max))) {
             $message = $constraint->notInRangeMessage;
             $code = Range::NOT_IN_RANGE_ERROR;
 
@@ -106,7 +110,7 @@ class RangeValidator extends ConstraintValidator
             return;
         }
 
-        if ($hasUpperLimit && $value > $max) {
+        if ($hasUpperLimit && $this->isGreaterThan($value, $max)) {
             $violationBuilder = $this->context->buildViolation($constraint->maxMessage)
                 ->setParameter('{{ value }}', $this->formatValue($value, self::PRETTY_DATE))
                 ->setParameter('{{ limit }}', $this->formatValue($max, self::PRETTY_DATE))
@@ -125,7 +129,7 @@ class RangeValidator extends ConstraintValidator
             return;
         }
 
-        if ($hasLowerLimit && $value < $min) {
+        if ($hasLowerLimit && $this->isGreaterThan($min, $value)) {
             $violationBuilder = $this->context->buildViolation($constraint->minMessage)
                 ->setParameter('{{ value }}', $this->formatValue($value, self::PRETTY_DATE))
                 ->setParameter('{{ limit }}', $this->formatValue($min, self::PRETTY_DATE))
@@ -141,6 +145,43 @@ class RangeValidator extends ConstraintValidator
 
             $violationBuilder->addViolation();
         }
+    }
+
+    private function isGreaterThan(mixed $value, mixed $limit): bool
+    {
+        // PHP compares numeric strings beyond the int range as floats, so only those can lose precision
+        if (!$this->isFloatString($value) && !$this->isFloatString($limit)) {
+            return $value > $limit;
+        }
+
+        if ((!\is_int($value) && !\is_string($value)) || (!\is_int($limit) && !\is_string($limit))) {
+            return $value > $limit;
+        }
+
+        $valueString = trim((string) $value, " \t\n\r\v\f");
+        $limitString = trim((string) $limit, " \t\n\r\v\f");
+
+        if (!preg_match('/^[+-]?[0-9]+$/D', $valueString) || !preg_match('/^[+-]?[0-9]+$/D', $limitString)) {
+            return $value > $limit;
+        }
+
+        $valueDigits = ltrim(ltrim($valueString, '+-'), '0');
+        $limitDigits = ltrim(ltrim($limitString, '+-'), '0');
+        $valueNegative = '' !== $valueDigits && '-' === $valueString[0];
+        $limitNegative = '' !== $limitDigits && '-' === $limitString[0];
+
+        if ($valueNegative !== $limitNegative) {
+            return $limitNegative;
+        }
+
+        $comparison = strnatcmp($valueDigits, $limitDigits);
+
+        return $valueNegative ? $comparison < 0 : $comparison > 0;
+    }
+
+    private function isFloatString(mixed $value): bool
+    {
+        return \is_string($value) && is_numeric($value) && \is_float($value + 0);
     }
 
     private function getLimit(?string $propertyPath, mixed $default, Constraint $constraint): mixed

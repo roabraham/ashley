@@ -13,12 +13,17 @@ use function array_any;
 use function array_unique;
 use function array_values;
 use function in_array;
+use function sprintf;
 use function strtolower;
 use Exception;
 use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Constraint\Constraint;
+use PHPUnit\Framework\InvalidArgumentException;
+use PHPUnit\Framework\MockObject\Rule\AnyInvokedCount;
 use PHPUnit\Framework\MockObject\Rule\InvocationOrder;
 use PHPUnit\Framework\MockObject\Rule\InvokedCount;
 use PHPUnit\Framework\MockObject\Rule\MethodName;
+use PHPUnit\Framework\MockObject\Runtime\PropertyHook;
 use Throwable;
 
 /**
@@ -47,19 +52,41 @@ final class InvocationHandler
      * @var class-string
      */
     private readonly string $className;
+
+    /**
+     * @var non-empty-string
+     */
+    private readonly string $displayName;
     private readonly bool $returnValueGeneration;
     private readonly bool $isMockObject;
     private bool $sealed                            = false;
     private ?AssertionFailedError $assertionFailure = null;
+    private ?InvocationJournalInternal $journal     = null;
+
+    /**
+     * @var ?non-empty-string
+     */
+    private ?string $journalLabel = null;
+
+    /**
+     * @var array<non-empty-string, non-empty-string>
+     */
+    private array $journalMethodLabels = [];
 
     /**
      * @param list<ConfigurableMethod> $configurableMethods
      * @param class-string             $className
+     * @param ?non-empty-string        $displayName
      */
-    public function __construct(array $configurableMethods, string $className, bool $returnValueGeneration, bool $isMockObject = false)
+    public function __construct(array $configurableMethods, string $className, bool $returnValueGeneration, bool $isMockObject = false, ?string $displayName = null)
     {
+        if ($displayName === null) {
+            $displayName = $className;
+        }
+
         $this->configurableMethods   = $configurableMethods;
         $this->className             = $className;
+        $this->displayName           = $displayName;
         $this->returnValueGeneration = $returnValueGeneration;
         $this->isMockObject          = $isMockObject;
     }
@@ -67,6 +94,53 @@ final class InvocationHandler
     public function isMockObject(): bool
     {
         return $this->isMockObject;
+    }
+
+    /**
+     * @param ?non-empty-string                         $label
+     * @param array<non-empty-string, non-empty-string> $methodLabels
+     *
+     * @throws EmptyInvocationJournalLabelException
+     * @throws InvocationJournalAlreadyRegisteredException
+     * @throws MethodCannotBeConfiguredException
+     * @throws TestDoubleSealedException
+     */
+    public function recordInvocationsIn(InvocationJournalInternal $journal, ?string $label, array $methodLabels): void
+    {
+        if ($this->sealed) {
+            throw new TestDoubleSealedException;
+        }
+
+        if ($this->journal !== null) {
+            throw new InvocationJournalAlreadyRegisteredException;
+        }
+
+        if ($label === '') {
+            throw new EmptyInvocationJournalLabelException;
+        }
+
+        foreach ($methodLabels as $methodName => $methodLabel) {
+            if ($methodLabel === '') {
+                throw new EmptyInvocationJournalLabelException;
+            }
+
+            if (!$this->hasConfigurableMethod($methodName)) {
+                throw new MethodCannotBeConfiguredException($methodName);
+            }
+        }
+
+        if ($label === null) {
+            $label = $this->displayName;
+        }
+
+        $this->journal             = $journal;
+        $this->journalLabel        = $label;
+        $this->journalMethodLabels = $methodLabels;
+    }
+
+    public function recordsInvocations(): bool
+    {
+        return $this->journal !== null;
     }
 
     public function hasInvocationCountRule(): bool
@@ -140,11 +214,56 @@ final class InvocationHandler
     }
 
     /**
+     * The matcher is only added once the method name has been configured
+     * so that a method that cannot be configured does not leave behind a
+     * matcher without a method name rule.
+     *
+     * @param Constraint|non-empty-string|PropertyHook $constraint
+     *
+     * @throws InvalidArgumentException
+     * @throws MethodCannotBeConfiguredException
+     * @throws TestDoubleSealedException
+     */
+    public function method(Constraint|PropertyHook|string $constraint): InvocationStubber
+    {
+        if ($this->sealed) {
+            throw new TestDoubleSealedException;
+        }
+
+        $matcher = new Matcher(new AnyInvokedCount, $this->className);
+
+        if ($this->isMockObject) {
+            $stubber = new InvocationMockerImplementation(
+                $this,
+                $matcher,
+                ...$this->configurableMethods,
+            );
+        } else {
+            $stubber = new InvocationStubberImplementation(
+                $this,
+                $matcher,
+                ...$this->configurableMethods,
+            );
+        }
+
+        $stubber->method($constraint);
+        $stubber->markAsCreatedWithoutExplicitExpects();
+
+        $this->addMatcher($matcher);
+
+        return $stubber;
+    }
+
+    /**
      * @throws \PHPUnit\Framework\MockObject\Exception
      * @throws Exception
      */
     public function invoke(Invocation $invocation): mixed
     {
+        if ($this->journal !== null) {
+            $this->journal->record($this->journalLabelFor($invocation->methodName()));
+        }
+
         $exception      = null;
         $hasReturnValue = false;
         $returnValue    = null;
@@ -231,6 +350,29 @@ final class InvocationHandler
         return $this->sealed;
     }
 
+    public function hasMatcherWithParametersRuleForMethodName(Matcher $excludeMatcher, string $methodName): bool
+    {
+        foreach ($this->matchers as $matcher) {
+            if ($matcher === $excludeMatcher) {
+                continue;
+            }
+
+            if (!$matcher->hasMethodNameRule()) {
+                continue;
+            }
+
+            if (!$matcher->hasParametersRule()) {
+                continue;
+            }
+
+            if ($matcher->methodNameRule()->matchesName($methodName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function addMatcher(Matcher $matcher): void
     {
         $this->matchers[] = $matcher;
@@ -260,5 +402,34 @@ final class InvocationHandler
         }
 
         return array_values(array_unique($names));
+    }
+
+    /**
+     * @param non-empty-string $methodName
+     *
+     * @return non-empty-string
+     */
+    private function journalLabelFor(string $methodName): string
+    {
+        if (isset($this->journalMethodLabels[$methodName])) {
+            return $this->journalMethodLabels[$methodName];
+        }
+
+        return sprintf(
+            '%s::%s()',
+            $this->journalLabel,
+            $methodName,
+        );
+    }
+
+    /**
+     * @param non-empty-string $methodName
+     */
+    private function hasConfigurableMethod(string $methodName): bool
+    {
+        return array_any(
+            $this->configurableMethods,
+            static fn (ConfigurableMethod $method): bool => $method->name() === $methodName,
+        );
     }
 }

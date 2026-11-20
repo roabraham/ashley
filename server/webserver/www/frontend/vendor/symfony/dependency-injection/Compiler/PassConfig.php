@@ -66,6 +66,7 @@ class PassConfig
             new AutowireRequiredPropertiesPass(),
             new ResolveBindingsPass(),
             new ServiceLocatorTagPass(),
+            new TagDecoratorPass(),
             new DecoratorServicePass(),
             new CheckDefinitionValidityPass(),
             new AutowirePass(false),
@@ -264,7 +265,7 @@ class PassConfig
      */
     private function sortPasses(array $passes): array
     {
-        if (0 === \count($passes)) {
+        if (!$passes) {
             return [];
         }
 

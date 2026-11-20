@@ -10,8 +10,8 @@
 namespace SebastianBergmann\CodeCoverage\Report;
 
 use const DIRECTORY_SEPARATOR;
+use function array_sum;
 use function basename;
-use function count;
 use function preg_match;
 use function range;
 use function str_replace;
@@ -37,6 +37,8 @@ final class Cobertura
      * @param null|non-empty-string $target
      *
      * @throws WriteOperationFailedException
+     *
+     * @return non-empty-string
      */
     public function process(Directory $report, ?string $target = null): string
     {
@@ -146,6 +148,8 @@ final class Cobertura
 
                     preg_match("/\((.*?)\)/", $method->signature, $signature);
 
+                    $signatureArguments = $signature[1] ?? '';
+
                     $linesValid   = $method->executableLines;
                     $linesCovered = $method->executedLines;
                     $lineRate     = $linesCovered / $linesValid;
@@ -157,7 +161,7 @@ final class Cobertura
                     $methodElement = $document->createElement('method');
 
                     $methodElement->setAttribute('name', $this->ensureUtf8($methodName));
-                    $methodElement->setAttribute('signature', $this->ensureUtf8($signature[1]));
+                    $methodElement->setAttribute('signature', $this->ensureUtf8($signatureArguments));
                     $methodElement->setAttribute('line-rate', (string) $lineRate);
                     $methodElement->setAttribute('branch-rate', (string) $branchRate);
                     $methodElement->setAttribute('complexity', (string) $method->ccn);
@@ -173,7 +177,7 @@ final class Cobertura
                         $methodLineElement = $document->createElement('line');
 
                         $methodLineElement->setAttribute('number', (string) $line);
-                        $methodLineElement->setAttribute('hits', (string) count($coverageData[$line]));
+                        $methodLineElement->setAttribute('hits', (string) array_sum($coverageData[$line]));
 
                         $methodLinesElement->appendChild($methodLineElement);
 
@@ -254,7 +258,7 @@ final class Cobertura
                     $methodLineElement = $document->createElement('line');
 
                     $methodLineElement->setAttribute('number', (string) $line);
-                    $methodLineElement->setAttribute('hits', (string) count($coverageData[$line]));
+                    $methodLineElement->setAttribute('hits', (string) array_sum($coverageData[$line]));
 
                     $methodLinesElement->appendChild($methodLineElement);
 

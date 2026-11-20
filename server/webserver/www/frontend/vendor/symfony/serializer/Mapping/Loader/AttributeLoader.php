@@ -64,13 +64,22 @@ class AttributeLoader implements LoaderInterface
 
     public function loadClassMetadata(ClassMetadataInterface $classMetadata): bool
     {
-        if (!$sourceClasses = $this->mappedClasses[$classMetadata->getName()] ??= $this->allowAnyClass ? [$classMetadata->getName()] : []) {
+        $className = $classMetadata->getName();
+
+        if (!$sourceClasses = $this->mappedClasses[$className] ??= $this->allowAnyClass ? [$className] : []) {
             return false;
+        }
+
+        // When a class is the target of #[ExtendsSerializationFor], its mapping only lists the
+        // extension classes. The target's own attributes must still be loaded and merged,
+        // so make sure the class is always part of its own source classes.
+        if (!\in_array($className, $sourceClasses, true)) {
+            array_unshift($sourceClasses, $className);
         }
 
         $success = false;
         foreach ($sourceClasses as $sourceClass) {
-            $reflectionClass = $classMetadata->getName() === $sourceClass ? $classMetadata->getReflectionClass() : new \ReflectionClass($sourceClass);
+            $reflectionClass = $className === $sourceClass ? $classMetadata->getReflectionClass() : new \ReflectionClass($sourceClass);
             $success = $this->doLoadClassMetadata($reflectionClass, $classMetadata) || $success;
         }
 
@@ -102,7 +111,7 @@ class AttributeLoader implements LoaderInterface
             }
 
             $attributeMetadata = $attributesMetadata[$property->name];
-            if ($property->getDeclaringClass()->name === $className) {
+            if ($property->class === $className) {
                 if ($classContextAttribute) {
                     $this->setAttributeContextsForGroups($classContextAttribute, $attributeMetadata);
                 }
@@ -135,7 +144,7 @@ class AttributeLoader implements LoaderInterface
         }
 
         foreach ($reflectionClass->getMethods() as $method) {
-            if ($method->getDeclaringClass()->name !== $className) {
+            if ($method->class !== $className) {
                 continue;
             }
             $name = $method->name;
@@ -190,7 +199,7 @@ class AttributeLoader implements LoaderInterface
 
                     $attributeMetadata->setSerializedPath($attribute->serializedPath);
                 } elseif ($attribute instanceof Ignore) {
-                    if ($attributeMetadata) {
+                    if ($attributeMetadata && !$this->hasPublicPropertyForAccessor($reflectionClass, $attributeName)) {
                         $attributeMetadata->setIgnore(true);
                     }
                 } elseif ($attribute instanceof Context) {
@@ -220,8 +229,8 @@ class AttributeLoader implements LoaderInterface
                     }
                     $on = match (true) {
                         $reflector instanceof \ReflectionClass => ' on class '.$reflector->name,
-                        $reflector instanceof \ReflectionMethod => \sprintf(' on "%s::%s()"', $reflector->getDeclaringClass()->name, $reflector->name),
-                        $reflector instanceof \ReflectionProperty => \sprintf(' on "%s::$%s"', $reflector->getDeclaringClass()->name, $reflector->name),
+                        $reflector instanceof \ReflectionMethod => \sprintf(' on "%s::%s()"', $reflector->class, $reflector->name),
+                        $reflector instanceof \ReflectionProperty => \sprintf(' on "%s::$%s"', $reflector->class, $reflector->name),
                         default => '',
                     };
 

@@ -18,6 +18,8 @@ namespace Symfony\Component\DomCrawler\Field;
  */
 class FileFormField extends FormField
 {
+    private static array $temporaryFiles = [];
+
     /**
      * Sets the PHP error code associated with the field.
      *
@@ -63,6 +65,19 @@ class FileFormField extends FormField
                 unlink($tmp);
             }
             copy($value, $tmp);
+            if (!self::$temporaryFiles) {
+                // Browser history and copied field values can outlive this field.
+                register_shutdown_function(static function () {
+                    $pid = getmypid();
+
+                    foreach (self::$temporaryFiles as $file => $ownerPid) {
+                        if ($pid === $ownerPid) {
+                            @unlink($file);
+                        }
+                    }
+                });
+            }
+            self::$temporaryFiles[$tmp] = getmypid();
             $value = $tmp;
         } else {
             $error = \UPLOAD_ERR_NO_FILE;

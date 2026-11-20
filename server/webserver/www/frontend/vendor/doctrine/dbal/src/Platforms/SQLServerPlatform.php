@@ -50,6 +50,8 @@ use const PREG_OFFSET_CAPTURE;
 /**
  * Provides the behavior, features and SQL dialect of the Microsoft SQL Server database platform
  * of the oldest supported version.
+ *
+ * @phpstan-import-type ColumnProperties from Column
  */
 class SQLServerPlatform extends AbstractPlatform
 {
@@ -208,11 +210,11 @@ class SQLServerPlatform extends AbstractPlatform
                     ' ADD' . $this->getDefaultConstraintDeclarationSQL($column);
             }
 
-            if (empty($column['comment']) && ! is_numeric($column['comment'])) {
-                continue;
-            }
+            $comment = $column['comment'] ?? '';
 
-            $commentsSql[] = $this->getCreateColumnCommentSQL($name, $column['name'], $column['comment']);
+            if (! empty($comment) || is_numeric($comment)) {
+                $commentsSql[] = $this->getCreateColumnCommentSQL($name, $column['name'], $comment);
+            }
         }
 
         $columnListSql = $this->getColumnDeclarationListSQL($columns);
@@ -327,7 +329,7 @@ class SQLServerPlatform extends AbstractPlatform
      *
      * @internal The method should be only used by the {@see SQLServerPlatform} class.
      *
-     * @param mixed[] $column Column definition.
+     * @param ColumnProperties $column Column definition.
      */
     protected function getDefaultConstraintDeclarationSQL(array $column): string
     {
@@ -395,7 +397,7 @@ class SQLServerPlatform extends AbstractPlatform
         $tableName = $table->getName();
 
         foreach ($diff->getAddedColumns() as $column) {
-            $columnProperties = $column->toArray();
+            $columnProperties = $column->toArray(true);
 
             $addColumnSql = 'ADD ' . $this->getColumnDeclarationSQL($column->getQuotedName($this), $columnProperties);
 
@@ -407,15 +409,13 @@ class SQLServerPlatform extends AbstractPlatform
 
             $comment = $column->getComment();
 
-            if ($comment === '') {
-                continue;
+            if ($comment !== '') {
+                $commentsSql[] = $this->getCreateColumnCommentSQL(
+                    $tableName,
+                    $column->getQuotedName($this),
+                    $comment,
+                );
             }
-
-            $commentsSql[] = $this->getCreateColumnCommentSQL(
-                $tableName,
-                $column->getQuotedName($this),
-                $comment,
-            );
         }
 
         foreach ($diff->getDroppedColumns() as $column) {
@@ -473,8 +473,8 @@ class SQLServerPlatform extends AbstractPlatform
 
             $columnNameSQL = $newColumn->getQuotedName($this);
 
-            $newDeclarationSQL     = $this->getColumnDeclarationSQL($columnNameSQL, $newColumn->toArray());
-            $oldDeclarationSQL     = $this->getColumnDeclarationSQL($columnNameSQL, $oldColumn->toArray());
+            $newDeclarationSQL     = $this->getColumnDeclarationSQL($columnNameSQL, $newColumn->toArray(true));
+            $oldDeclarationSQL     = $this->getColumnDeclarationSQL($columnNameSQL, $oldColumn->toArray(true));
             $declarationSQLChanged = $newDeclarationSQL !== $oldDeclarationSQL;
 
             $defaultChanged = $columnDiff->hasDefaultChanged();
@@ -494,13 +494,11 @@ class SQLServerPlatform extends AbstractPlatform
             }
 
             if (
-                    $newColumn->getDefault() === null
-                    || (! $requireDropDefaultConstraint && ! $defaultChanged)
+                $newColumn->getDefault() !== null
+                && ($requireDropDefaultConstraint || $defaultChanged)
             ) {
-                continue;
+                $queryParts[] = $this->getAlterTableAddDefaultConstraintClause($newColumn);
             }
-
-            $queryParts[] = $this->getAlterTableAddDefaultConstraintClause($tableName, $newColumn);
         }
 
         foreach ($queryParts as $query) {
@@ -523,12 +521,11 @@ class SQLServerPlatform extends AbstractPlatform
     /**
      * Returns the SQL clause for adding a default constraint in an ALTER TABLE statement.
      *
-     * @param string $tableName The name of the table to generate the clause for.
-     * @param Column $column    The column to generate the clause for.
+     * @param Column $column The column to generate the clause for.
      */
-    private function getAlterTableAddDefaultConstraintClause(string $tableName, Column $column): string
+    private function getAlterTableAddDefaultConstraintClause(Column $column): string
     {
-        $columnDef         = $column->toArray();
+        $columnDef         = $column->toArray(true);
         $columnDef['name'] = $column->getQuotedName($this);
 
         return 'ADD' . $this->getDefaultConstraintDeclarationSQL($columnDef);
@@ -1080,11 +1077,9 @@ class SQLServerPlatform extends AbstractPlatform
     {
         if (is_array($item)) {
             foreach ($item as $key => $value) {
-                if (! is_bool($value) && ! is_numeric($value)) {
-                    continue;
+                if (is_bool($value) || is_numeric($value)) {
+                    $item[$key] = (int) (bool) $value;
                 }
-
-                $item[$key] = (int) (bool) $value;
             }
         } elseif (is_bool($item) || is_numeric($item)) {
             $item = (int) (bool) $item;
@@ -1131,10 +1126,10 @@ class SQLServerPlatform extends AbstractPlatform
             'bit'              => Types::BOOLEAN,
             'blob'             => Types::BLOB,
             'char'             => Types::STRING,
-            'date'             => Types::DATE_MUTABLE,
-            'datetime'         => Types::DATETIME_MUTABLE,
-            'datetime2'        => Types::DATETIME_MUTABLE,
-            'datetimeoffset'   => Types::DATETIMETZ_MUTABLE,
+            'date'             => Types::DATE_IMMUTABLE,
+            'datetime'         => Types::DATETIME_IMMUTABLE,
+            'datetime2'        => Types::DATETIME_IMMUTABLE,
+            'datetimeoffset'   => Types::DATETIMETZ_IMMUTABLE,
             'decimal'          => Types::DECIMAL,
             'double'           => Types::FLOAT,
             'double precision' => Types::FLOAT,
@@ -1147,12 +1142,12 @@ class SQLServerPlatform extends AbstractPlatform
             'numeric'          => Types::DECIMAL,
             'nvarchar'         => Types::STRING,
             'real'             => Types::SMALLFLOAT,
-            'smalldatetime'    => Types::DATETIME_MUTABLE,
+            'smalldatetime'    => Types::DATETIME_IMMUTABLE,
             'smallint'         => Types::SMALLINT,
             'smallmoney'       => Types::INTEGER,
             'sysname'          => Types::STRING,
             'text'             => Types::TEXT,
-            'time'             => Types::TIME_MUTABLE,
+            'time'             => Types::TIME_IMMUTABLE,
             'tinyint'          => Types::SMALLINT,
             'uniqueidentifier' => Types::GUID,
             'varbinary'        => Types::BINARY,
@@ -1252,7 +1247,7 @@ class SQLServerPlatform extends AbstractPlatform
 
             $notnull = ! empty($column['notnull']) ? ' NOT NULL' : '';
 
-            $typeDecl    = $column['type']->getSQLDeclaration($column, $this);
+            $typeDecl    = $this->getColumnType($column)->getSQLDeclaration($column, $this);
             $declaration = $typeDecl . $collation . $notnull;
         }
 
@@ -1273,8 +1268,8 @@ class SQLServerPlatform extends AbstractPlatform
             return false;
         }
 
-        return $this->getDefaultValueDeclarationSQL($column1->toArray())
-            === $this->getDefaultValueDeclarationSQL($column2->toArray());
+        return $this->getDefaultValueDeclarationSQL($column1->toArray(true))
+            === $this->getDefaultValueDeclarationSQL($column2->toArray(true));
     }
 
     /**

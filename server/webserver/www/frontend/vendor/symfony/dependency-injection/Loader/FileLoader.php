@@ -18,8 +18,10 @@ use Symfony\Component\Config\Loader\FileLoader as BaseFileLoader;
 use Symfony\Component\Config\Loader\Loader;
 use Symfony\Component\Config\Resource\GlobResource;
 use Symfony\Component\DependencyInjection\Alias;
+use Symfony\Component\DependencyInjection\Argument\BoundArgument;
 use Symfony\Component\DependencyInjection\Attribute\AsAlias;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
+use Symfony\Component\DependencyInjection\Attribute\Target;
 use Symfony\Component\DependencyInjection\Attribute\When;
 use Symfony\Component\DependencyInjection\Attribute\WhenNot;
 use Symfony\Component\DependencyInjection\ChildDefinition;
@@ -28,6 +30,10 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Exception\LogicException;
+use Symfony\Component\DependencyInjection\Parameter;
+use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\ExpressionLanguage\Expression;
+use Symfony\Component\VarExporter\DeepCloner;
 
 /**
  * FileLoader is the abstract class used by all built-in loaders that are file based.
@@ -44,6 +50,8 @@ abstract class FileLoader extends BaseFileLoader
     protected array $singlyImplemented = [];
     /** @var array<string, Alias> */
     protected array $aliases = [];
+    /** @var array<string, string> */
+    protected array $aliasedTargets = [];
     protected bool $autoRegisterAliasesForSinglyImplementedInterfaces = true;
     protected array $extensionConfigs = [];
     protected int $importing = 0;
@@ -129,24 +137,17 @@ abstract class FileLoader extends BaseFileLoader
         $classes = $this->findClasses($namespace, $resource, (array) $exclude, $source);
 
         $getPrototype = static fn () => clone $prototype;
-        $serialized = serialize($prototype);
 
-        // avoid deep cloning if no definitions are nested
-        if (strpos($serialized, 'O:48:"Symfony\Component\DependencyInjection\Definition"', 55)
-            || strpos($serialized, 'O:53:"Symfony\Component\DependencyInjection\ChildDefinition"', 55)
-        ) {
-            // prepare for deep cloning
-            foreach (['Arguments', 'Properties', 'MethodCalls', 'Configurator', 'Factory', 'Bindings'] as $key) {
-                $serialized = serialize($prototype->{'get'.$key}());
-
-                if (strpos($serialized, 'O:48:"Symfony\Component\DependencyInjection\Definition"')
-                    || strpos($serialized, 'O:53:"Symfony\Component\DependencyInjection\ChildDefinition"')
-                ) {
-                    $getPrototype = static fn () => $getPrototype()->{'set'.$key}(unserialize($serialized));
-                }
+        // deep-clone only the parts that hold mutable objects; the other ones
+        // can be shared between all the definitions created from the prototype
+        foreach (['Arguments', 'Properties', 'MethodCalls', 'Configurator', 'Factory', 'Bindings'] as $key) {
+            if (!self::needsDeepClone($value = $prototype->{'get'.$key}())) {
+                continue;
             }
+
+            $cloner = new DeepCloner($value);
+            $getPrototype = static fn () => $getPrototype()->{'set'.$key}($cloner->clone());
         }
-        unset($serialized);
 
         foreach ($classes as $class => $errorMessage) {
             if (null === $errorMessage && $autoconfigureAttributes) {
@@ -203,7 +204,6 @@ abstract class FileLoader extends BaseFileLoader
                 if ($r->isInterface()) {
                     $this->interfaces[] = $class;
                 }
-                $autoconfigureAttributes?->processClass($this->container, $r);
                 $definition->setAbstract(true)
                     ->addTag('container.excluded', ['source' => 'because the class is abstract']);
                 continue;
@@ -229,13 +229,27 @@ abstract class FileLoader extends BaseFileLoader
                     throw new LogicException(\sprintf('Alias cannot be automatically determined for class "%s". If you have used the #[AsAlias] attribute with a class implementing multiple interfaces, add the interface you want to alias to the first parameter of #[AsAlias].', $class));
                 }
 
-                if (!$attribute->when || \in_array($this->env, $attribute->when, true)) {
+                if ($attribute->when && !\in_array($this->env, $attribute->when, true)) {
+                    continue;
+                }
+                if (!$attribute->target) {
                     if (isset($this->aliases[$alias])) {
                         throw new LogicException(\sprintf('The "%s" alias has already been defined with the #[AsAlias] attribute in "%s".', $alias, $this->aliases[$alias]));
                     }
 
                     $this->aliases[$alias] = new Alias($class, $public);
+                    continue;
                 }
+                if ($public) {
+                    throw new LogicException(\sprintf('#[AsAlias] attributes with a target cannot be public in "%s".', $class));
+                }
+                $this->container->registerAliasForArgument($class, $alias, $attribute->target);
+                $parsedName = (new Target($attribute->target))->getParsedName();
+                $alias = $alias.' $'.$parsedName;
+                if (isset($this->aliasedTargets[$alias])) {
+                    throw new LogicException(\sprintf('The "%s" alias has already been defined with the #[AsAlias] attribute in "%s".', $alias, $class));
+                }
+                $this->aliasedTargets[$alias] = $class;
             }
         }
 
@@ -256,7 +270,7 @@ abstract class FileLoader extends BaseFileLoader
             }
         }
 
-        $this->interfaces = $this->singlyImplemented = $this->aliases = [];
+        $this->interfaces = $this->singlyImplemented = $this->aliases = $this->aliasedTargets = [];
     }
 
     final protected function loadExtensionConfig(string $namespace, array $config, string $file = '?'): void
@@ -408,5 +422,33 @@ abstract class FileLoader extends BaseFileLoader
         $this->container->register($class, $class)
             ->setAbstract(true)
             ->addTag('container.excluded', null !== $source ? $attributes[$source] : []);
+    }
+
+    /**
+     * Tells whether a part of the prototype holds objects that compiler passes mutate,
+     * in which case each service needs its own copy of them.
+     */
+    private static function needsDeepClone(mixed $value): bool
+    {
+        if ($value instanceof BoundArgument) {
+            // bindings track their usage by identifier, so the very same instance can be shared
+            $value = $value->getValues()[0];
+        }
+
+        if (null === $value || \is_scalar($value) || $value instanceof Reference || $value instanceof Parameter || $value instanceof Expression || $value instanceof \UnitEnum) {
+            return false;
+        }
+
+        if (!\is_array($value)) {
+            return true;
+        }
+
+        foreach ($value as $v) {
+            if (self::needsDeepClone($v)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -13,16 +13,27 @@ namespace PHPUnit\TextUI\Configuration;
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
  *
  * @immutable
+ *
+ * @internal This class is not covered by the backward compatibility promise for PHPUnit
  */
 final readonly class Group
 {
+    /**
+     * @var non-empty-string
+     */
     private string $name;
 
+    /**
+     * @param non-empty-string $name
+     */
     public function __construct(string $name)
     {
         $this->name = $name;
     }
 
+    /**
+     * @return non-empty-string
+     */
     public function name(): string
     {
         return $this->name;

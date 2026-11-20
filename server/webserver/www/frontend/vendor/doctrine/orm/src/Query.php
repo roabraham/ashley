@@ -410,12 +410,16 @@ class Query extends AbstractQuery
         $originalValue = $parameter->getValue();
         $value         = $originalValue;
         $rsm           = $this->getResultSetMapping();
+        $parsedRsm     = $this->parserResult->getResultSetMapping();
 
         if ($value instanceof ClassMetadata && isset($rsm->metadataParameterMapping[$key])) {
             $value = $value->getMetadataValue($rsm->metadataParameterMapping[$key]);
         }
 
-        if ($value instanceof ClassMetadata && isset($rsm->discriminatorParameters[$key])) {
+        if (
+            $value instanceof ClassMetadata
+            && (isset($parsedRsm->discriminatorParameters[$key]) || isset($rsm->discriminatorParameters[$key]))
+        ) {
             $value = array_keys(HierarchyDiscriminatorResolver::resolveDiscriminatorsForClass($value, $this->em));
         }
 
@@ -633,7 +637,7 @@ class Query extends AbstractQuery
      */
     public function setLockMode(LockMode|int $lockMode): self
     {
-        if (in_array($lockMode, [LockMode::NONE, LockMode::PESSIMISTIC_READ, LockMode::PESSIMISTIC_WRITE], true)) {
+        if (in_array($lockMode, [LockMode::PESSIMISTIC_READ, LockMode::PESSIMISTIC_WRITE], true)) {
             if (! $this->em->getConnection()->isTransactionActive()) {
                 throw TransactionRequiredException::transactionRequired();
             }

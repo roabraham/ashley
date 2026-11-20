@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Messenger\Bridge\Doctrine\Transport;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection as DBALConnection;
 use Doctrine\DBAL\Exception as DBALException;
 use Doctrine\DBAL\Exception\TableNotFoundException;
@@ -20,12 +21,15 @@ use Doctrine\DBAL\Query\ForUpdate\ConflictResolutionMode;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Schema\AbstractAsset;
+use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\ComparatorConfig;
+use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Name\Identifier;
 use Doctrine\DBAL\Schema\Name\UnqualifiedName;
 use Doctrine\DBAL\Schema\NamedObject;
 use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Schema\Sequence;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
 use Satag\DoctrineFirebirdDriver\Platforms\FirebirdPlatform;
@@ -56,7 +60,6 @@ class Connection implements ResetInterface
     protected ?float $queueEmptiedAt = null;
 
     private bool $autoSetup;
-    private bool $doMysqlCleanup = false;
 
     /**
      * Constructor.
@@ -80,7 +83,6 @@ class Connection implements ResetInterface
     public function reset(): void
     {
         $this->queueEmptiedAt = null;
-        $this->doMysqlCleanup = false;
     }
 
     public function getConfiguration(): array
@@ -129,7 +131,13 @@ class Connection implements ResetInterface
     public function send(string $body, array $headers, int $delay = 0): string
     {
         $now = new \DateTimeImmutable('UTC');
-        $availableAt = $now->modify(\sprintf('%+d seconds', $delay / 1000));
+        $availableAt = $now->modify(\sprintf('%+d milliseconds', $delay));
+
+        if (0 < $delay && '000000' !== $availableAt->format('u')) {
+            // "available_at" is stored with second precision, so a truncated instant would make
+            // the message available before the delay elapsed
+            $availableAt = $availableAt->modify('+1 second');
+        }
 
         $queryBuilder = $this->driverConnection->createQueryBuilder()
             ->insert($this->configuration['table_name'])
@@ -156,14 +164,14 @@ class Connection implements ResetInterface
         ]);
     }
 
-    public function get(): ?array
+    public function get(int $fetchSize = 1): ?array
     {
         get:
         $this->driverConnection->beginTransaction();
         try {
             $query = $this->createAvailableMessagesQueryBuilder()
                 ->orderBy('available_at', 'ASC')
-                ->setMaxResults(1);
+                ->setMaxResults($fetchSize);
 
             if ($this->driverConnection->getDatabasePlatform() instanceof OraclePlatform) {
                 $query->select('m.id');
@@ -183,13 +191,13 @@ class Connection implements ResetInterface
 
             $sql = $this->addLockMode($query, $sql);
 
-            $doctrineEnvelope = $this->executeQuery(
+            $doctrineEnvelopes = $this->executeQuery(
                 $sql,
                 $query->getParameters(),
                 $query->getParameterTypes()
-            )->fetchAssociative();
+            )->fetchAllAssociative();
 
-            if (false === $doctrineEnvelope) {
+            if ([] === $doctrineEnvelopes) {
                 $this->driverConnection->commit();
                 $this->queueEmptiedAt = microtime(true) * 1000;
 
@@ -199,25 +207,45 @@ class Connection implements ResetInterface
             // We need to be sure to empty the queue before blocking again
             $this->queueEmptiedAt = null;
 
-            $doctrineEnvelope = $this->decodeEnvelopeHeaders($doctrineEnvelope);
+            $doctrineEnvelopes = array_map($this->decodeEnvelopeHeaders(...), $doctrineEnvelopes);
 
-            $queryBuilder = $this->driverConnection->createQueryBuilder()
-                ->update($this->configuration['table_name'])
-                ->set('delivered_at', '?')
-                ->where('id = ?');
             $now = new \DateTimeImmutable('UTC');
-            $this->executeStatement($queryBuilder->getSQL(), [
-                $now,
-                $doctrineEnvelope['id'],
-            ], [
-                Types::DATETIME_IMMUTABLE,
-            ]);
+
+            if (1 === \count($doctrineEnvelopes)) {
+                $queryBuilder = $this->driverConnection->createQueryBuilder()
+                    ->update($this->configuration['table_name'])
+                    ->set('delivered_at', '?')
+                    ->where('id = ?');
+
+                $this->executeStatement($queryBuilder->getSQL(), [
+                    $now,
+                    $doctrineEnvelopes[0]['id'],
+                ], [
+                    Types::DATETIME_IMMUTABLE,
+                ]);
+            } else {
+                $ids = array_column($doctrineEnvelopes, 'id');
+                $queryBuilder = $this->driverConnection->createQueryBuilder()
+                    ->update($this->configuration['table_name'])
+                    ->set('delivered_at', '?')
+                    ->where('id IN (?)');
+
+                $this->executeStatement($queryBuilder->getSQL(), [
+                    $now,
+                    $ids,
+                ], [
+                    Types::DATETIME_IMMUTABLE,
+                    ArrayParameterType::STRING,
+                ]);
+            }
 
             $this->driverConnection->commit();
 
-            return $doctrineEnvelope;
+            return $doctrineEnvelopes;
         } catch (\Throwable $e) {
-            $this->driverConnection->rollBack();
+            if ($this->driverConnection->isTransactionActive()) {
+                $this->driverConnection->rollBack();
+            }
 
             if ($this->autoSetup && $e instanceof TableNotFoundException) {
                 $this->setup();
@@ -253,23 +281,21 @@ class Connection implements ResetInterface
             throw new TransportException(\sprintf('Doctrine redeliver_timeout (%ds) cannot be smaller than the keepalive interval (%ds).', $this->configuration['redeliver_timeout'], $seconds));
         }
 
-        $this->driverConnection->beginTransaction();
+        // No transaction here: the keepalive runs from a SIGALRM handler that can interrupt the
+        // connection between the driver call and the nesting-level update, where beginTransaction()
+        // would issue a SAVEPOINT against an idle session and corrupt the nesting state.
         try {
             $queryBuilder = $this->driverConnection->createQueryBuilder()
                 ->update($this->configuration['table_name'])
                 ->set('delivered_at', '?')
                 ->where('id = ?');
-            $now = new \DateTimeImmutable('UTC');
             $this->executeStatement($queryBuilder->getSQL(), [
-                $now,
+                new \DateTimeImmutable('UTC'),
                 $id,
             ], [
                 Types::DATETIME_IMMUTABLE,
             ]);
-
-            $this->driverConnection->commit();
         } catch (\Throwable $e) {
-            $this->driverConnection->rollBack();
             throw new TransportException($e->getMessage(), 0, $e);
         }
     }
@@ -295,8 +321,13 @@ class Connection implements ResetInterface
             // This may also work for other databases if their sequence name is suffixed with '_seq', '_id_seq' or similar.
             return str_starts_with($tableName, $this->configuration['table_name']); // MESSENGER_MESSAGES*
         });
-        $this->updateSchema();
-        $configuration->setSchemaAssetsFilter($assetFilter);
+
+        try {
+            $this->updateSchema();
+        } finally {
+            $configuration->setSchemaAssetsFilter($assetFilter);
+        }
+
         $this->autoSetup = false;
     }
 
@@ -325,6 +356,15 @@ class Connection implements ResetInterface
 
     public function find(mixed $id): ?array
     {
+        // Some platforms cast malformed IDs to existing integer IDs, others fail on IDs that don't fit in a BIGINT.
+        if (\is_string($id) && preg_match('/^(-?)0*([0-9]{1,19})$/D', $id, $m)) {
+            if (19 === \strlen($m[2]) && 0 < strcmp($m[2], $m[1] ? '9223372036854775808' : '9223372036854775807')) {
+                return null;
+            }
+        } elseif (!\is_int($id)) {
+            return null;
+        }
+
         $queryBuilder = $this->createQueryBuilder()
             ->where('m.id = ? and m.queue_name = ?');
 
@@ -335,26 +375,20 @@ class Connection implements ResetInterface
 
     /**
      * @internal
+     *
+     * @param-immediately-invoked-callable $isSameDatabase
      */
-    public function configureSchema(Schema $schema, DBALConnection $forConnection, \Closure $isSameDatabase): void
+    public function configureSchema(Schema $schema, DBALConnection $forConnection, \Closure $isSameDatabase): Schema
     {
         if ($schema->hasTable($this->configuration['table_name'])) {
-            return;
+            return $schema;
         }
 
         if ($forConnection !== $this->driverConnection && !$isSameDatabase($this->executeStatement(...))) {
-            return;
+            return $schema;
         }
 
-        $this->addTableToSchema($schema);
-    }
-
-    /**
-     * @internal
-     */
-    public function getExtraSetupSqlForTable(Table $createdTable): array
-    {
-        return [];
+        return $this->addTableToSchema($schema);
     }
 
     private function createAvailableMessagesQueryBuilder(): QueryBuilder
@@ -466,7 +500,9 @@ class Connection implements ResetInterface
 
             $this->driverConnection->commit();
         } catch (\Throwable $e) {
-            $this->driverConnection->rollBack();
+            if ($this->driverConnection->isTransactionActive()) {
+                $this->driverConnection->rollBack();
+            }
 
             // handle setup after transaction is no longer open
             if ($this->autoSetup && $e instanceof TableNotFoundException) {
@@ -482,46 +518,89 @@ class Connection implements ResetInterface
 
     private function getSchema(): Schema
     {
-        $schema = new Schema([], [], $this->driverConnection->createSchemaManager()->createSchemaConfig());
-        $this->addTableToSchema($schema);
-
-        return $schema;
+        return $this->addTableToSchema(new Schema([], [], $this->driverConnection->createSchemaManager()->createSchemaConfig()));
     }
 
-    private function addTableToSchema(Schema $schema): void
+    private function addTableToSchema(Schema $schema): Schema
     {
-        $table = $schema->createTable($this->configuration['table_name']);
-        // add an internal option to mark that we created this & the non-namespaced table name
-        $table->addOption(self::TABLE_OPTION_NAME, $this->configuration['table_name']);
-        $idColumn = $table->addColumn('id', Types::BIGINT)
-            ->setAutoincrement(true)
-            ->setNotnull(true);
-        $table->addColumn('body', Types::TEXT)
-            ->setNotnull(true);
-        $table->addColumn('headers', Types::TEXT)
-            ->setNotnull(true);
-        $table->addColumn('queue_name', Types::STRING)
-            ->setLength(190) // MySQL 5.6 only supports 191 characters on an indexed column in utf8mb4 mode
-            ->setNotnull(true);
-        $table->addColumn('created_at', Types::DATETIME_IMMUTABLE)
-            ->setNotnull(true);
-        $table->addColumn('available_at', Types::DATETIME_IMMUTABLE)
-            ->setNotnull(true);
-        $table->addColumn('delivered_at', Types::DATETIME_IMMUTABLE)
-            ->setNotnull(false);
-        $table->addPrimaryKeyConstraint(new PrimaryKeyConstraint(null, [new UnqualifiedName(Identifier::unquoted('id'))], true));
-        $table->addIndex(['queue_name', 'available_at', 'delivered_at', 'id']);
+        $oracleSequenceName = null;
+        $idOptions = ['autoincrement' => true, 'notnull' => true];
 
         // We need to create a sequence for Oracle and set the id column to get the correct nextval
         if ($this->driverConnection->getDatabasePlatform() instanceof OraclePlatform) {
             $serverVersion = $this->driverConnection->executeQuery("SELECT version FROM product_component_version WHERE product LIKE 'Oracle Database%'")->fetchOne();
             if (version_compare($serverVersion, '12.1.0', '>=')) {
-                $idColumn->setAutoincrement(false); // disable the creation of SEQUENCE and TRIGGER
-                $idColumn->setDefault($this->configuration['table_name'].self::ORACLE_SEQUENCES_SUFFIX.'.nextval');
-
-                $schema->createSequence($this->configuration['table_name'].self::ORACLE_SEQUENCES_SUFFIX);
+                $oracleSequenceName = $this->configuration['table_name'].self::ORACLE_SEQUENCES_SUFFIX;
+                // disable the creation of SEQUENCE and TRIGGER, use the sequence's nextval as default instead
+                $idOptions = ['autoincrement' => false, 'notnull' => true, 'default' => $oracleSequenceName.'.nextval'];
             }
         }
+
+        if (method_exists($schema, 'edit')) {
+            $editor = $schema->edit()->addTable($this->buildSchemaTable($oracleSequenceName));
+            if (null !== $oracleSequenceName) {
+                $editor->addSequence(new Sequence($oracleSequenceName));
+            }
+
+            return $editor->create();
+        }
+
+        $this->configureSchemaTable($schema->createTable($this->configuration['table_name']), $idOptions);
+
+        if (null !== $oracleSequenceName) {
+            $schema->createSequence($oracleSequenceName);
+        }
+
+        return $schema;
+    }
+
+    private function buildSchemaTable(?string $oracleSequenceName): Table
+    {
+        $idEditor = Column::editor()->setUnquotedName('id')->setTypeName(Types::BIGINT)->setNotNull(true);
+
+        if (null !== $oracleSequenceName) {
+            // disable the creation of SEQUENCE and TRIGGER, use the sequence's nextval as default instead
+            $idEditor->setAutoincrement(false)->setDefaultValue($oracleSequenceName.'.nextval');
+        } else {
+            $idEditor->setAutoincrement(true);
+        }
+
+        return Table::editor()
+            ->setUnquotedName($this->configuration['table_name'])
+            // add an internal option to mark that we created this & the non-namespaced table name
+            ->setOptions([self::TABLE_OPTION_NAME => $this->configuration['table_name']])
+            ->addColumn($idEditor->create())
+            ->addColumn(Column::editor()->setUnquotedName('body')->setTypeName(Types::TEXT)->setNotNull(true)->create())
+            ->addColumn(Column::editor()->setUnquotedName('headers')->setTypeName(Types::TEXT)->setNotNull(true)->create())
+            // MySQL 5.6 only supports 191 characters on an indexed column in utf8mb4 mode
+            ->addColumn(Column::editor()->setUnquotedName('queue_name')->setTypeName(Types::STRING)->setLength(190)->setNotNull(true)->create())
+            ->addColumn(Column::editor()->setUnquotedName('created_at')->setTypeName(Types::DATETIME_IMMUTABLE)->setNotNull(true)->create())
+            ->addColumn(Column::editor()->setUnquotedName('available_at')->setTypeName(Types::DATETIME_IMMUTABLE)->setNotNull(true)->create())
+            ->addColumn(Column::editor()->setUnquotedName('delivered_at')->setTypeName(Types::DATETIME_IMMUTABLE)->setNotNull(false)->create())
+            ->addPrimaryKeyConstraint(new PrimaryKeyConstraint(null, [new UnqualifiedName(Identifier::unquoted('id'))], true))
+            ->addIndex(Index::editor()->setUnquotedColumnNames('queue_name', 'available_at', 'delivered_at', 'id'))
+            ->create();
+    }
+
+    /**
+     * To be removed when doctrine/dbal minimum is bumped to ^4.5.
+     *
+     * @param array<string, mixed> $idOptions
+     */
+    private function configureSchemaTable(Table $table, array $idOptions): void
+    {
+        // add an internal option to mark that we created this & the non-namespaced table name
+        $table->addOption(self::TABLE_OPTION_NAME, $this->configuration['table_name']);
+        $table->addColumn('id', Types::BIGINT, $idOptions);
+        $table->addColumn('body', Types::TEXT, ['notnull' => true]);
+        $table->addColumn('headers', Types::TEXT, ['notnull' => true]);
+        // MySQL 5.6 only supports 191 characters on an indexed column in utf8mb4 mode
+        $table->addColumn('queue_name', Types::STRING, ['length' => 190, 'notnull' => true]);
+        $table->addColumn('created_at', Types::DATETIME_IMMUTABLE, ['notnull' => true]);
+        $table->addColumn('available_at', Types::DATETIME_IMMUTABLE, ['notnull' => true]);
+        $table->addColumn('delivered_at', Types::DATETIME_IMMUTABLE, ['notnull' => false]);
+        $table->addPrimaryKeyConstraint(new PrimaryKeyConstraint(null, [new UnqualifiedName(Identifier::unquoted('id'))], true));
+        $table->addIndex(['queue_name', 'available_at', 'delivered_at', 'id']);
     }
 
     private function decodeEnvelopeHeaders(array $doctrineEnvelope): array

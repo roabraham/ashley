@@ -13,6 +13,7 @@ use const PHP_VERSION;
 use function array_unshift;
 use function extension_loaded;
 use function version_compare;
+use SebastianBergmann\Exporter\Exporter;
 
 /**
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/comparator
@@ -32,7 +33,9 @@ final class Factory
     private array $defaultComparators = [];
 
     /** @var positive-int */
-    private int $contextLines = 3;
+    private int $contextLines               = 3;
+    private bool $closureComparisonOccurred = false;
+    private Exporter $exporter;
 
     public static function getInstance(): self
     {
@@ -45,6 +48,8 @@ final class Factory
 
     public function __construct()
     {
+        $this->exporter = new Exporter;
+
         $this->registerDefaultComparators();
     }
 
@@ -62,6 +67,34 @@ final class Factory
     public function setContextLines(int $contextLines): void
     {
         $this->contextLines = $contextLines;
+    }
+
+    public function exporter(): Exporter
+    {
+        return $this->exporter;
+    }
+
+    public function setExporter(Exporter $exporter): void
+    {
+        $this->exporter = $exporter;
+    }
+
+    /**
+     * @internal this method is called by ClosureComparator and is not part of the consumer-facing API
+     */
+    public function recordClosureComparison(): void
+    {
+        $this->closureComparisonOccurred = true;
+    }
+
+    public function closureComparisonOccurred(): bool
+    {
+        return $this->closureComparisonOccurred;
+    }
+
+    public function resetClosureComparisonTracking(): void
+    {
+        $this->closureComparisonOccurred = false;
     }
 
     public function getComparatorFor(mixed $expected, mixed $actual): Comparator

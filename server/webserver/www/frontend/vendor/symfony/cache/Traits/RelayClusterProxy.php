@@ -13,11 +13,15 @@ namespace Symfony\Component\Cache\Traits;
 
 use Symfony\Component\Cache\Traits\Relay\RelayCluster20Trait;
 use Symfony\Component\Cache\Traits\Relay\RelayCluster21Trait;
+use Symfony\Component\Cache\Traits\Relay\RelayCluster30Trait;
+use Symfony\Component\Cache\Traits\Relay\RelayCluster40Trait;
+use Symfony\Component\Cache\Traits\Relay\RelayCluster50Trait;
+use Symfony\Component\Cache\Traits\Relay\RelayCluster502Trait;
+use Symfony\Component\Cache\Traits\Relay\RelayCluster61Trait;
 use Symfony\Component\VarExporter\LazyObjectInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
 // Help opcache.preload discover always-needed symbols
-class_exists(\Symfony\Component\VarExporter\Internal\Hydrator::class);
 class_exists(\Symfony\Component\VarExporter\Internal\LazyObjectRegistry::class);
 class_exists(\Symfony\Component\VarExporter\Internal\LazyObjectState::class);
 
@@ -31,6 +35,11 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
     }
     use RelayCluster20Trait;
     use RelayCluster21Trait;
+    use RelayCluster30Trait;
+    use RelayCluster40Trait;
+    use RelayCluster50Trait;
+    use RelayCluster502Trait;
+    use RelayCluster61Trait;
 
     public function __construct($name, $seeds = null, $connect_timeout = 0, $command_timeout = 0, $persistent = false, #[\SensitiveParameter] $auth = null, $context = null)
     {
@@ -290,11 +299,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
     public function expire($key, $seconds, $mode = null): \Relay\Cluster|bool
     {
         return $this->initializeLazyObject()->expire(...\func_get_args());
-    }
-
-    public function expireat($key, $timestamp): \Relay\Cluster|bool
-    {
-        return $this->initializeLazyObject()->expireat(...\func_get_args());
     }
 
     public function expiretime($key): \Relay\Cluster|false|int
@@ -642,11 +646,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
         return $this->initializeLazyObject()->lmpop(...\func_get_args());
     }
 
-    public function lpop($key, $count = 1): mixed
-    {
-        return $this->initializeLazyObject()->lpop(...\func_get_args());
-    }
-
     public function lpos($key, $value, $options = null): mixed
     {
         return $this->initializeLazyObject()->lpos(...\func_get_args());
@@ -720,16 +719,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
     public function persist($key): \Relay\Cluster|bool
     {
         return $this->initializeLazyObject()->persist(...\func_get_args());
-    }
-
-    public function pexpire($key, $milliseconds): \Relay\Cluster|bool
-    {
-        return $this->initializeLazyObject()->pexpire(...\func_get_args());
-    }
-
-    public function pexpireat($key, $timestamp_ms): \Relay\Cluster|bool
-    {
-        return $this->initializeLazyObject()->pexpireat(...\func_get_args());
     }
 
     public function pexpiretime($key): \Relay\Cluster|false|int
@@ -815,11 +804,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
     public function role($key_or_address): \Relay\Cluster|array|false
     {
         return $this->initializeLazyObject()->role(...\func_get_args());
-    }
-
-    public function rpop($key, $count = 1): mixed
-    {
-        return $this->initializeLazyObject()->rpop(...\func_get_args());
     }
 
     public function rpoplpush($srckey, $dstkey): mixed
@@ -942,26 +926,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
         return $this->initializeLazyObject()->smove(...\func_get_args());
     }
 
-    public function sort($key, $options = []): \Relay\Cluster|array|false|int
-    {
-        return $this->initializeLazyObject()->sort(...\func_get_args());
-    }
-
-    public function sort_ro($key, $options = []): \Relay\Cluster|array|false|int
-    {
-        return $this->initializeLazyObject()->sort_ro(...\func_get_args());
-    }
-
-    public function spop($key, $count = 1): mixed
-    {
-        return $this->initializeLazyObject()->spop(...\func_get_args());
-    }
-
-    public function srandmember($key, $count = 1): mixed
-    {
-        return $this->initializeLazyObject()->srandmember(...\func_get_args());
-    }
-
     public function srem($key, $member, ...$members): \Relay\Cluster|false|int
     {
         return $this->initializeLazyObject()->srem(...\func_get_args());
@@ -1072,17 +1036,12 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
         return $this->initializeLazyObject()->vismember(...\func_get_args());
     }
 
-    public function vlinks($key, $element, $withscores): \Relay\Cluster|array|false
-    {
-        return $this->initializeLazyObject()->vlinks(...\func_get_args());
-    }
-
     public function vrandmember($key, $count = 0): \Relay\Cluster|array|false|string
     {
         return $this->initializeLazyObject()->vrandmember(...\func_get_args());
     }
 
-    public function vrange($key, $end, $start, $count = -1): \Relay\Cluster|array|bool
+    public function vrange($key, $min, $max, $count = -1): \Relay\Cluster|array|false
     {
         return $this->initializeLazyObject()->vrange(...\func_get_args());
     }
@@ -1177,11 +1136,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
         return $this->initializeLazyObject()->xread(...\func_get_args());
     }
 
-    public function xreadgroup($key, $consumer, $streams, $count = 1, $block = 1): \Relay\Cluster|array|bool|null
-    {
-        return $this->initializeLazyObject()->xreadgroup(...\func_get_args());
-    }
-
     public function xrevrange($key, $end, $start, $count = -1): \Relay\Cluster|array|bool
     {
         return $this->initializeLazyObject()->xrevrange(...\func_get_args());
@@ -1250,16 +1204,6 @@ class RelayClusterProxy extends \Relay\Cluster implements ResetInterface, LazyOb
     public function zmscore($key, ...$members): \Relay\Cluster|array|false
     {
         return $this->initializeLazyObject()->zmscore(...\func_get_args());
-    }
-
-    public function zpopmax($key, $count = 1): \Relay\Cluster|array|false
-    {
-        return $this->initializeLazyObject()->zpopmax(...\func_get_args());
-    }
-
-    public function zpopmin($key, $count = 1): \Relay\Cluster|array|false
-    {
-        return $this->initializeLazyObject()->zpopmin(...\func_get_args());
     }
 
     public function zrandmember($key, $options = null): mixed

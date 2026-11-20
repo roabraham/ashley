@@ -9,6 +9,7 @@
  */
 namespace PHPUnit\TextUI\Configuration;
 
+use function assert;
 use Iterator;
 
 /**
@@ -28,6 +29,9 @@ final class VariableCollectionIterator implements Iterator
      */
     private int $position = 0;
 
+    /**
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
+     */
     public function __construct(VariableCollection $variables)
     {
         $this->variables = $variables->asArray();
@@ -53,6 +57,8 @@ final class VariableCollectionIterator implements Iterator
 
     public function current(): Variable
     {
+        assert(isset($this->variables[$this->position]));
+
         return $this->variables[$this->position];
     }
 

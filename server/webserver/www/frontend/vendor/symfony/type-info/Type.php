@@ -25,6 +25,8 @@ abstract class Type implements \Stringable
     /**
      * Tells if the type is satisfied by the $specification callable.
      *
+     * @param-immediately-invoked-callable $specification
+     *
      * @param callable(self): bool $specification
      */
     public function isSatisfiedBy(callable $specification): bool
@@ -84,7 +86,7 @@ abstract class Type implements \Stringable
     }
 
     /**
-     * Traverses the whole type tree.
+     * Traverses the type and its direct composed or wrapped parts.
      *
      * @return iterable<self>
      */

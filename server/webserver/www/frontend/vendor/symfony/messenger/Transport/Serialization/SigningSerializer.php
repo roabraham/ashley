@@ -13,12 +13,21 @@ namespace Symfony\Component\Messenger\Transport\Serialization;
 
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\InvalidMessageSignatureException;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>
  */
 final class SigningSerializer implements SerializerInterface
 {
+    private const STAMP_HEADER_PREFIX = 'X-Message-Stamp-';
+
+    // Tells apart a signature that covers the headers from an older one that covers the body alone.
+    // HMACs are written in lowercase hexadecimal, so no older signature can ever start with this marker.
+    // The marker also derives the key of the newer scheme, so that a signature stripped of it cannot
+    // be replayed as a body-only signature over its own payload.
+    private const SIGNATURE_MARKER = 'v2:';
+
     /**
      * @param list<class-string> $signedMessageTypes
      */
@@ -33,10 +42,21 @@ final class SigningSerializer implements SerializerInterface
     public function encode(Envelope $envelope): array
     {
         $encoded = $this->inner->encode($envelope);
-        $type = $envelope->getMessage()::class;
 
-        if ($this->shouldSign($type)) {
-            $encoded['headers']['Body-Sign'] = hash_hmac($this->algorithm, $encoded['body'] ?? '', $this->signingKey);
+        if (!$this->signedMessageTypes) {
+            return $encoded;
+        }
+
+        if (($message = $envelope->getMessage()) instanceof MessageDecodingFailedException) {
+            // the inner serializer can send the failed envelope again as it is: sign it only when it was signed with this key
+            unset($encoded['headers']['Body-Sign'], $encoded['headers']['Sign-Algo']);
+            $sign = $this->hasValidSignature($message->encodedEnvelope);
+        } else {
+            $sign = $this->shouldSign($message::class);
+        }
+
+        if ($sign) {
+            $encoded['headers']['Body-Sign'] = self::SIGNATURE_MARKER.hash_hmac($this->algorithm, self::getSignedPayload($encoded), $this->getSigningKey(false));
             $encoded['headers']['Sign-Algo'] = $this->algorithm;
         }
 
@@ -45,39 +65,71 @@ final class SigningSerializer implements SerializerInterface
 
     public function decode(array $encodedEnvelope): Envelope
     {
-        $headers = $encodedEnvelope['headers'] ?? [];
-        $sign = $headers['Body-Sign'] ?? null;
-
-        if ($sign && hash_equals(hash_hmac($this->algorithm, $encodedEnvelope['body'] ?? '', $this->signingKey), $sign)) {
-            // A valid signature authenticates the message whatever its type: decode it without peeking.
-            // The algorithm is implied by the HMAC itself, so the "Sign-Algo" header isn't consulted here.
-            unset($encodedEnvelope['headers']['Body-Sign'], $encodedEnvelope['headers']['Sign-Algo']);
-
+        // no message type requires signing: act as a pass-through for the inner serializer
+        if (!$this->signedMessageTypes) {
             return $this->inner->decode($encodedEnvelope);
         }
 
-        $envelope = null;
+        $headers = $encodedEnvelope['headers'] ?? [];
+        $sign = $headers['Body-Sign'] ?? null;
+        $sign = \is_string($sign) ? $sign : null;
 
-        if (!$this->inner instanceof MessageTypeAwareSerializerInterface) {
-            $envelope = $this->inner->decode($encodedEnvelope);
-            $type = $envelope->getMessage()::class;
-        } elseif (null === $type = $this->inner->getMessageType($encodedEnvelope)) {
-            throw new InvalidMessageSignatureException('The message could not be verified and its type could not be determined; refusing to decode it.');
+        try {
+            if ($this->hasValidSignature($encodedEnvelope)) {
+                // A valid signature authenticates the message whatever its type: decode it without peeking.
+                // The algorithm is implied by the HMAC itself, so the "Sign-Algo" header isn't consulted here.
+                $verifiedEnvelope = $encodedEnvelope;
+                unset($verifiedEnvelope['headers']['Body-Sign'], $verifiedEnvelope['headers']['Sign-Algo']);
+                $envelope = $this->inner->decode($verifiedEnvelope);
+                $failure = $envelope->getMessage();
+
+                if (!$failure instanceof MessageDecodingFailedException || $this->hasValidSignature($failure->encodedEnvelope)) {
+                    return $envelope;
+                }
+
+                // the failed envelope is decoded again later, so it must keep its signature
+                return MessageDecodingFailedException::wrap($encodedEnvelope, $failure->getMessage(), $failure->getCode(), $failure->getPrevious())->with(...array_merge(...array_values($envelope->all())));
+            }
+
+            $envelope = null;
+
+            if (!$this->inner instanceof MessageTypeAwareSerializerInterface) {
+                $envelope = $this->inner->decode($encodedEnvelope);
+                $type = $envelope->getMessage()::class;
+            } elseif (null === $type = $this->inner->getMessageType($encodedEnvelope)) {
+                throw new InvalidMessageSignatureException('The message could not be verified and its type could not be determined; refusing to decode it.');
+            }
+
+            if (!$this->shouldSign($type)) {
+                $envelope ??= $this->inner->decode($encodedEnvelope);
+                $failure = $envelope->getMessage();
+
+                // encode() signs a failure that carries a signed envelope. An unsigned one is forged: it would attach unverified stamps to that envelope.
+                if ($failure instanceof MessageDecodingFailedException && $this->hasValidSignature($failure->encodedEnvelope)) {
+                    throw new InvalidMessageSignatureException('The message is an unsigned decoding failure that carries a signed envelope; refusing to decode it.');
+                }
+
+                // the class of the decoded message is checked too, as it can differ from the type read before decoding
+                if (!$this->shouldSign($type = $envelope->getMessage()::class)) {
+                    return $envelope;
+                }
+            }
+
+            if (!$sign) {
+                throw new InvalidMessageSignatureException(\sprintf('Message "%s" requires a signature but none was found.', $type));
+            }
+
+            if (\is_string($algo = $headers['Sign-Algo'] ?? $this->algorithm) && $this->algorithm !== $algo) {
+                throw new InvalidMessageSignatureException(\sprintf('Expected "%s" signature algorithm for message "%s", "%s" given.', $this->algorithm, $type, $algo));
+            }
+
+            throw new InvalidMessageSignatureException(\sprintf('Invalid signature for message "%s".', $type));
+        } catch (InvalidMessageSignatureException $e) {
+            return MessageDecodingFailedException::wrap($encodedEnvelope, $e->getMessage(), (int) $e->getCode(), $e);
+        } catch (\Throwable $e) {
+            // returning what the inner serializer throws would lose the stamps that count its retries
+            throw $e instanceof MessageDecodingFailedException ? $e : new MessageDecodingFailedException($e->getMessage(), (int) $e->getCode(), $e);
         }
-
-        if (!$this->shouldSign($type)) {
-            return $envelope ?? $this->inner->decode($encodedEnvelope);
-        }
-
-        if (!$sign) {
-            throw new InvalidMessageSignatureException(\sprintf('Message "%s" requires a signature but none was found.', $type));
-        }
-
-        if ($this->algorithm !== $algo = $headers['Sign-Algo'] ?? $this->algorithm) {
-            throw new InvalidMessageSignatureException(\sprintf('Expected "%s" signature algorithm for message "%s", "%s" given.', $this->algorithm, $type, $algo));
-        }
-
-        throw new InvalidMessageSignatureException(\sprintf('Invalid signature for message "%s".', $type));
     }
 
     private function shouldSign(string $type): bool
@@ -89,5 +141,48 @@ final class SigningSerializer implements SerializerInterface
         }
 
         return false;
+    }
+
+    private function hasValidSignature(array $encodedEnvelope): bool
+    {
+        $sign = $encodedEnvelope['headers']['Body-Sign'] ?? null;
+        $body = $encodedEnvelope['body'] ?? '';
+
+        if (!\is_string($sign) || !\is_string($body)) {
+            return false;
+        }
+
+        // signatures written before the headers were covered carry no marker and authenticate the body alone
+        $bodyOnly = !str_starts_with($sign, self::SIGNATURE_MARKER);
+        $payload = $bodyOnly ? $body : self::getSignedPayload($encodedEnvelope);
+
+        return hash_equals(($bodyOnly ? '' : self::SIGNATURE_MARKER).hash_hmac($this->algorithm, $payload, $this->getSigningKey($bodyOnly)), $sign);
+    }
+
+    private function getSigningKey(bool $bodyOnly): string
+    {
+        return $bodyOnly ? $this->signingKey : hash_hmac($this->algorithm, self::SIGNATURE_MARKER, $this->signingKey);
+    }
+
+    /**
+     * Returns the payload the signature covers: the body, plus the headers that
+     * decide how the body is turned into an envelope. Transports add headers of
+     * their own, so signing every header would break as soon as one of them does.
+     */
+    private static function getSignedPayload(array $encodedEnvelope): string
+    {
+        $headers = [];
+
+        foreach ($encodedEnvelope['headers'] ?? [] as $name => $value) {
+            if ('type' === $name || str_starts_with($name, self::STAMP_HEADER_PREFIX)) {
+                $headers[$name] = $value;
+            }
+        }
+
+        // transports are free to reorder headers, so the order must not matter
+        ksort($headers, \SORT_STRING);
+
+        // serialize() gives an unambiguous encoding of the pair; it is never read back
+        return serialize([$encodedEnvelope['body'] ?? '', $headers]);
     }
 }

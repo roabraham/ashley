@@ -1,0 +1,86 @@
+<?php
+
+/*
+ * This file is part of the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace Symfony\Component\Messenger\Middleware;
+
+use Psr\Container\ContainerInterface;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\LogicException;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
+use Symfony\Component\Messenger\Exception\UnrecoverableExceptionInterface;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Messenger\Message\DefaultStampsProviderInterface;
+use Symfony\Component\Messenger\Stamp\ReceivedStamp;
+use Symfony\Component\Messenger\Stamp\SentToFailureTransportStamp;
+use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+
+/**
+ * Replays the transport serializer when a message could not be decoded initially.
+ *
+ * @author Nicolas Grekas <p@tchwork.com>
+ */
+final class DecodeFailedMessageMiddleware implements MiddlewareInterface
+{
+    public function __construct(
+        private ContainerInterface $serializerLocator,
+    ) {
+    }
+
+    public function handle(Envelope $envelope, StackInterface $stack): Envelope
+    {
+        $message = $envelope->getMessage();
+
+        if (!$message instanceof MessageDecodingFailedException) {
+            return $stack->next()->handle($envelope, $stack);
+        }
+
+        // When retrying from the failure transport, use the original transport name
+        // so we can look up the correct serializer; fall back to the current ReceivedStamp.
+        $transportName = $envelope->last(SentToFailureTransportStamp::class)?->getOriginalReceiverName()
+            ?? $envelope->last(ReceivedStamp::class)?->getTransportName()
+            ?? throw new LogicException('A ReceivedStamp is required to decode a serialized envelope message.');
+
+        if (!$this->serializerLocator->has($transportName)) {
+            throw new LogicException(\sprintf('No serializer is configured for the "%s" transport.', $transportName));
+        }
+
+        $serializer = $this->serializerLocator->get($transportName);
+        if (!$serializer instanceof SerializerInterface) {
+            throw new LogicException(\sprintf('The serializer configured for the "%s" transport must implement "%s".', $transportName, SerializerInterface::class));
+        }
+
+        try {
+            $decodedEnvelope = $serializer->decode($message->encodedEnvelope);
+        } catch (MessageDecodingFailedException $e) {
+            // the stamps of a thrown failure are lost and its retries cannot be counted, so it should not be retried
+            throw $e->getPrevious() instanceof UnrecoverableExceptionInterface ? $e->getPrevious() : new UnrecoverableMessageHandlingException($e->getMessage(), $e->getCode(), $e);
+        }
+
+        if (($failure = $decodedEnvelope->getMessage()) instanceof MessageDecodingFailedException) {
+            // retry listeners look at the thrown exception only: surface an unrecoverable cause so that the message skips retries
+            throw $failure->getPrevious() instanceof UnrecoverableExceptionInterface ? $failure->getPrevious() : $failure;
+        }
+
+        // the failed envelope holds the stamps its own decoding kept and the ones added since: they replace the decoded stamps of the same class
+        $envelope = new Envelope($decodedEnvelope->getMessage(), array_merge(...array_values($envelope->all() + $decodedEnvelope->all())));
+
+        // the default stamps middleware saw the failure, not the decoded message
+        if (($message = $envelope->getMessage()) instanceof DefaultStampsProviderInterface) {
+            foreach ($message->getDefaultStamps() as $stamp) {
+                if (null === $envelope->last($stamp::class)) {
+                    $envelope = $envelope->with($stamp);
+                }
+            }
+        }
+
+        return $stack->next()->handle($envelope, $stack);
+    }
+}

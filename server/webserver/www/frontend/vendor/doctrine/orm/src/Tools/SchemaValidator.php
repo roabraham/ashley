@@ -19,6 +19,7 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Internal\TypeProviderLocator;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\FieldMapping;
 use ReflectionEnum;
@@ -59,6 +60,7 @@ class SchemaValidator
         GuidType::class => ['string'],
         IntegerType::class => ['int'],
         JsonType::class => ['array'],
+        /** @phpstan-ignore classConstant.deprecatedClass (to be removed) */
         SimpleArrayType::class => ['array'],
         SmallIntType::class => ['int'],
         StringType::class => ['string'],
@@ -107,11 +109,12 @@ class SchemaValidator
      */
     public function validateClass(ClassMetadata $class): array
     {
-        $ce  = [];
-        $cmf = $this->em->getMetadataFactory();
+        $ce           = [];
+        $cmf          = $this->em->getMetadataFactory();
+        $typeProvider = TypeProviderLocator::fromConnection($this->em->getConnection());
 
         foreach ($class->fieldMappings as $fieldName => $mapping) {
-            if (! Type::hasType($mapping->type)) {
+            if (! $typeProvider->has($mapping->type)) {
                 $ce[] = "The field '" . $class->name . '#' . $fieldName . "' uses a non-existent type '" . $mapping->type . "'.";
             }
         }
@@ -133,6 +136,11 @@ class SchemaValidator
                 $ce[] = "The target entity '" . $assoc->targetEntity . "' specified on " . $class->name . '#' . $fieldName . ' is a mapped superclass. This is not possible since there is no table that a foreign key could refer to.';
 
                 return $ce;
+            }
+
+            if ($assoc->isManyToOne() && count($class->identifier) === 1 && $class->identifier[0] === $fieldName) {
+                $ce[] = "The association '" . $class->name . '#' . $fieldName . "' is a many-to-one association and is the sole identifier of the entity. " .
+                        'This effectively makes the association one-to-one; use a one-to-one association instead or add another identifier field.';
             }
 
             if (isset($assoc->id) && $targetMetadata->containsForeignIdentifier) {
@@ -193,6 +201,12 @@ class SchemaValidator
                     } elseif ($assoc->isManyToMany() && ! $targetAssoc->isManyToMany()) {
                         $ce[] = 'If association ' . $class->name . '#' . $fieldName . ' is many-to-many, then the inversed ' .
                                 'side ' . $targetMetadata->name . '#' . $assoc->inversedBy . ' has to be many-to-many as well.';
+                    }
+
+                    if (! is_a($targetAssoc->targetEntity, $assoc->sourceEntity, true)) {
+                        $ce[] = 'The association ' . $class->name . '#' . $fieldName . ' refers to the inverse side ' .
+                                $assoc->targetEntity . '#' . $assoc->inversedBy . ' which targets a different entity (' .
+                                $targetAssoc->targetEntity . ').';
                     }
                 }
             }
@@ -324,15 +338,17 @@ class SchemaValidator
     /** @return list<string> containing the found issues */
     private function validatePropertiesTypes(ClassMetadata $class): array
     {
+        $typeProvider = TypeProviderLocator::fromConnection($this->em->getConnection());
+
         return array_values(
             array_filter(
                 array_map(
-                    function (FieldMapping $fieldMapping) use ($class): string|null {
+                    function (FieldMapping $fieldMapping) use ($class, $typeProvider): string|null {
                         $fieldName    = $fieldMapping->fieldName;
                         $propertyType = $class->propertyAccessors[$fieldName]->getUnderlyingReflector()->getType();
 
                         // If the field type is not a built-in type, we cannot check it
-                        if (! Type::hasType($fieldMapping->type)) {
+                        if (! $typeProvider->has($fieldMapping->type)) {
                             return null;
                         }
 
@@ -341,7 +357,7 @@ class SchemaValidator
                             return null;
                         }
 
-                        $metadataFieldType = $this->findBuiltInType(Type::getType($fieldMapping->type));
+                        $metadataFieldType = $this->findBuiltInType($typeProvider->get($fieldMapping->type));
 
                         //If the metadata field type is not a mapped built-in type, we cannot check it
                         if ($metadataFieldType === null) {

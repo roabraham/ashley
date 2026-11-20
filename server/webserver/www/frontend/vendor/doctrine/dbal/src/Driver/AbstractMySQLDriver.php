@@ -13,6 +13,7 @@ use Doctrine\DBAL\Platforms\MariaDB1010Platform;
 use Doctrine\DBAL\Platforms\MariaDB1052Platform;
 use Doctrine\DBAL\Platforms\MariaDB1060Platform;
 use Doctrine\DBAL\Platforms\MariaDB110700Platform;
+use Doctrine\DBAL\Platforms\MariaDB120300Platform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\MySQL84Platform;
@@ -39,9 +40,23 @@ abstract class AbstractMySQLDriver implements Driver
         $version = $versionProvider->getServerVersion();
         if (stripos($version, 'mariadb') !== false) {
             $mariaDbVersion = $this->getMariaDbMysqlVersionNumber($version);
+            if (version_compare($mariaDbVersion, '12.3.0', '>=')) {
+                return new MariaDB120300Platform();
+            }
+
             if (version_compare($mariaDbVersion, '11.7.0', '>=')) {
                 return new MariaDB110700Platform();
             }
+
+            if (version_compare($mariaDbVersion, '10.11.0', '>=')) {
+                return new MariaDB1010Platform();
+            }
+
+            Deprecation::trigger(
+                'doctrine/dbal',
+                'https://github.com/doctrine/dbal/pull/7581',
+                'Support for MariaDB < 10.11.0 is deprecated and will be removed in DBAL 5',
+            );
 
             if (version_compare($mariaDbVersion, '10.10.0', '>=')) {
                 return new MariaDB1010Platform();
@@ -50,12 +65,6 @@ abstract class AbstractMySQLDriver implements Driver
             if (version_compare($mariaDbVersion, '10.6.0', '>=')) {
                 return new MariaDB1060Platform();
             }
-
-            Deprecation::trigger(
-                'doctrine/dbal',
-                'https://github.com/doctrine/dbal/pull/6343',
-                'Support for MariaDB < 10.6.0 is deprecated and will be removed in DBAL 5',
-            );
 
             if (version_compare($mariaDbVersion, '10.5.2', '>=')) {
                 return new MariaDB1052Platform();
@@ -68,15 +77,15 @@ abstract class AbstractMySQLDriver implements Driver
             return new MySQL84Platform();
         }
 
+        Deprecation::trigger(
+            'doctrine/dbal',
+            'https://github.com/doctrine/dbal/pull/7581',
+            'Support for MySQL < 8.4 is deprecated and will be removed in DBAL 5',
+        );
+
         if (version_compare($version, '8.0.0', '>=')) {
             return new MySQL80Platform();
         }
-
-        Deprecation::trigger(
-            'doctrine/dbal',
-            'https://github.com/doctrine/dbal/pull/6343',
-            'Support for MySQL < 8 is deprecated and will be removed in DBAL 5',
-        );
 
         return new MySQLPlatform();
     }

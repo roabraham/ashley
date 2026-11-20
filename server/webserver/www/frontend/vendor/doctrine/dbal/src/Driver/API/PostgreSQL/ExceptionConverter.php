@@ -47,6 +47,7 @@ final class ExceptionConverter implements ExceptionConverterInterface
             case '23502':
                 return new NotNullConstraintViolationException($exception, $query);
 
+            case '23001':
             case '23503':
                 return new ForeignKeyConstraintViolationException($exception, $query);
 
@@ -78,7 +79,10 @@ final class ExceptionConverter implements ExceptionConverterInterface
                 return new ConnectionException($exception, $query);
         }
 
-        if (str_contains($exception->getMessage(), 'terminating connection')) {
+        if (
+            str_contains($exception->getMessage(), 'terminating connection')
+            || str_contains($exception->getMessage(), 'server closed the connection')
+        ) {
             return new ConnectionLost($exception, $query);
         }
 

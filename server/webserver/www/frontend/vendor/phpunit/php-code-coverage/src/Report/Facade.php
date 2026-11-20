@@ -16,6 +16,8 @@ use SebastianBergmann\CodeCoverage\Node\Directory;
 use SebastianBergmann\CodeCoverage\Report\Html\Colors;
 use SebastianBergmann\CodeCoverage\Report\Html\CustomCssFile;
 use SebastianBergmann\CodeCoverage\Report\Html\Facade as HtmlFacade;
+use SebastianBergmann\CodeCoverage\Report\Html\Views;
+use SebastianBergmann\CodeCoverage\Report\Jsonl\Facade as JsonlFacade;
 use SebastianBergmann\CodeCoverage\Report\Xml\Facade as XmlFacade;
 use SebastianBergmann\CodeCoverage\Serialization\Serializer;
 use SebastianBergmann\CodeCoverage\StaticAnalysis\FileAnalyser;
@@ -33,7 +35,7 @@ final readonly class Facade
     private Directory $report;
 
     /**
-     * @var array<string, array{size: string, status: string, time: float}>
+     * @var array<non-empty-string, array{size: string, status: string, time: float}>
      */
     private array $testResults;
 
@@ -57,7 +59,7 @@ final readonly class Facade
     }
 
     /**
-     * @param array<string, array{size: string, status: string, time: float}> $testResults
+     * @param array<non-empty-string, array{size: string, status: string, time: float}> $testResults
      */
     private function __construct(Directory $report, array $testResults)
     {
@@ -68,9 +70,9 @@ final readonly class Facade
     /**
      * @param non-empty-string $target
      */
-    public function renderHtml(string $target, string $generator = '', ?Colors $colors = null, ?Thresholds $thresholds = null, ?CustomCssFile $customCssFile = null): void
+    public function renderHtml(string $target, string $generator = '', ?Colors $colors = null, ?Thresholds $thresholds = null, ?CustomCssFile $customCssFile = null, Views $views = Views::FileViewAndClassView): void
     {
-        new HtmlFacade($generator, $colors, $thresholds, $customCssFile)->process(
+        new HtmlFacade($generator, $colors, $thresholds, $customCssFile, $views)->process(
             $this->report,
             $target,
         );
@@ -91,6 +93,17 @@ final readonly class Facade
             $coverageVersion,
             $driverExtensionName,
             $driverExtensionVersion,
+        );
+    }
+
+    /**
+     * @param non-empty-string $target
+     */
+    public function renderJsonl(string $target): void
+    {
+        (new JsonlFacade)->process(
+            $this->report,
+            $target,
         );
     }
 
@@ -172,13 +185,7 @@ final readonly class Facade
         );
 
         if ($target !== null) {
-            Filesystem::write(
-                $target,
-                new Text($thresholds, $showUncoveredFiles, $showOnlySummary)->process(
-                    $this->report,
-                    $showColors,
-                ),
-            );
+            Filesystem::write($target, $buffer);
         }
 
         return $buffer;

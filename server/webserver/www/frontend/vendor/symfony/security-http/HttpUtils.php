@@ -13,11 +13,14 @@ namespace Symfony\Component\Security\Http;
 
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Exception\ExceptionInterface;
 use Symfony\Component\Routing\Exception\MethodNotAllowedException;
 use Symfony\Component\Routing\Exception\ResourceNotFoundException;
+use Symfony\Component\Routing\Generator\ConfigurableRequirementsInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\Matcher\RequestMatcherInterface;
 use Symfony\Component\Routing\Matcher\UrlMatcherInterface;
+use Symfony\Component\Routing\Router;
 
 /**
  * Encapsulates the logic needed to create sub-requests, redirect the user, and match URLs.
@@ -130,7 +133,7 @@ class HttpUtils
         if ('/' !== $path[0]) {
             // Shortcut if request has already been matched before
             if ($request->attributes->has('_route')) {
-                return $path === $request->attributes->get('_route');
+                return $path === $request->attributes->get('_route') || $this->generatesRequestPath($request, $path, $request->attributes->get('_route_params', []));
             }
 
             try {
@@ -141,7 +144,7 @@ class HttpUtils
                     $parameters = $this->urlMatcher->match($request->getPathInfo());
                 }
 
-                return isset($parameters['_route']) && $path === $parameters['_route'];
+                return isset($parameters['_route']) && ($path === $parameters['_route'] || $this->generatesRequestPath($request, $path, $parameters));
             } catch (MethodNotAllowedException|ResourceNotFoundException) {
                 return false;
             }
@@ -173,7 +176,17 @@ class HttpUtils
             throw new \LogicException('You must provide a UrlGeneratorInterface instance to be able to use routes.');
         }
 
-        $url = $this->urlGenerator->generate($path, $request->attributes->all(), UrlGeneratorInterface::ABSOLUTE_URL);
+        // only scalars and stringables can fill path variables, the query string is removed below
+        $parameters = [];
+        foreach ($request->attributes->all() as $key => $value) {
+            if ($value instanceof \Stringable) {
+                $parameters[$key] = (string) $value;
+            } elseif (!\is_array($value) && !\is_object($value)) {
+                $parameters[$key] = $value;
+            }
+        }
+
+        $url = $this->urlGenerator->generate($path, $parameters, UrlGeneratorInterface::ABSOLUTE_URL);
 
         // unnecessary query string parameters must be removed from URL
         // (ie. query parameters that are presents in $attributes)
@@ -189,5 +202,35 @@ class HttpUtils
         }
 
         return $url;
+    }
+
+    /**
+     * Tells whether generating the given route leads to the path of the current request.
+     *
+     * This makes route aliases work, since matching a request always yields the canonical route name.
+     */
+    private function generatesRequestPath(Request $request, string $route, array $parameters): bool
+    {
+        if (null === $this->urlGenerator) {
+            return false;
+        }
+
+        unset($parameters['_route'], $parameters['_controller']);
+
+        // a parameter that doesn't match the requirements of the route should fail the check instead of logging an error
+        $generator = $this->urlGenerator instanceof Router ? $this->urlGenerator->getGenerator() : $this->urlGenerator;
+        $generator = $generator instanceof ConfigurableRequirementsInterface ? $generator : null;
+        $strictRequirements = $generator?->isStrictRequirements();
+        $generator?->setStrictRequirements(true);
+
+        try {
+            $url = $this->urlGenerator->generate($route, $parameters);
+        } catch (ExceptionInterface) {
+            return false;
+        } finally {
+            $generator?->setStrictRequirements($strictRequirements);
+        }
+
+        return $url === $request->getBaseUrl().$request->getPathInfo();
     }
 }

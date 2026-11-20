@@ -25,23 +25,31 @@ use PHPUnit\Framework\MockObject\NoMoreParameterSetsConfiguredException;
 final class OrderedParameterSets implements ParametersRule
 {
     /**
-     * @var list<Parameters>
+     * @var list<IndexedParameters|Parameters>
      */
     private array $stack = [];
 
     /**
-     * @var list<Parameters>
+     * @var list<IndexedParameters|Parameters>
      */
     private array $applied = [];
     private int $numberOfConfiguredParameterSets;
 
     /**
-     * @param list<Parameters> $stack
+     * @param list<mixed> $stack
      */
     public function __construct(array $stack)
     {
         foreach ($stack as $parameters) {
-            $this->stack[] = new Parameters(is_array($parameters) ? $parameters : [$parameters]);
+            if (!$parameters instanceof IndexedParameters) {
+                if (is_array($parameters)) {
+                    $parameters = new Parameters($parameters);
+                } else {
+                    $parameters = new Parameters([$parameters]);
+                }
+            }
+
+            $this->stack[] = $parameters;
         }
 
         $this->numberOfConfiguredParameterSets = count($stack);

@@ -9,8 +9,12 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\TypeProvider;
+use Doctrine\DBAL\Types\TypeRegistry;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\Deprecations\Deprecation;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Internal\TypeProviderLocator;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\QuoteStrategy;
 use Doctrine\ORM\OptimisticLockException;
@@ -19,6 +23,7 @@ use Doctrine\ORM\Utility\HierarchyDiscriminatorResolver;
 use Doctrine\ORM\Utility\PersisterHelper;
 use InvalidArgumentException;
 use LogicException;
+use SortDirection;
 
 use function array_diff;
 use function array_filter;
@@ -57,6 +62,9 @@ class SqlWalker
     public const HINT_PARTIAL = 'doctrine.partial';
 
     private readonly ResultSetMapping $rsm;
+
+    /** Whether the selected entity fields use their raw columns, without PHP value conversion. */
+    private bool $useRawColumns = false;
 
     /**
      * Counter for generating unique column aliases.
@@ -99,7 +107,7 @@ class SqlWalker
     /**
      * Map from Table-Alias + Column-Name to OrderBy-Direction.
      *
-     * @var array<string, string>
+     * @var array<string, SortDirection|string>
      */
     private array $orderedColumnsMap = [];
 
@@ -113,7 +121,7 @@ class SqlWalker
     /**
      * A list of classes that appear in non-scalar SelectExpressions.
      *
-     * @phpstan-var array<string, array{class: ClassMetadata, dqlAlias: string, resultAlias: string|null}>
+     * @phpstan-var array<string, array{class: ClassMetadata, dqlAlias: string, resultAlias: string|null, partial: bool}>
      */
     private array $selectedClasses = [];
 
@@ -140,6 +148,8 @@ class SqlWalker
      */
     private readonly QuoteStrategy $quoteStrategy;
 
+    private readonly TypeProvider|TypeRegistry $typeProvider;
+
     /** @phpstan-param array<string, QueryComponent> $queryComponents The query components (symbol table). */
     public function __construct(
         private readonly Query $query,
@@ -151,6 +161,7 @@ class SqlWalker
         $this->conn          = $this->em->getConnection();
         $this->platform      = $this->conn->getDatabasePlatform();
         $this->quoteStrategy = $this->em->getConfiguration()->getQuoteStrategy();
+        $this->typeProvider  = TypeProviderLocator::fromConnection($this->conn);
     }
 
     /**
@@ -386,7 +397,11 @@ class SqlWalker
                 }
 
                 $this->orderedColumnsMap[$orderedColumn] = $orientation;
-                $orderedColumns[]                        = $orderedColumn . ' ' . $orientation;
+                if ($orientation instanceof SortDirection) {
+                    $orientation = ($orientation === SortDirection::Ascending ? 'ASC' : 'DESC');
+                }
+
+                $orderedColumns[] = $orderedColumn . ' ' . $orientation;
             }
         }
 
@@ -688,10 +703,15 @@ class SqlWalker
             $class       = $selectedClass['class'];
             $dqlAlias    = $selectedClass['dqlAlias'];
             $resultAlias = $selectedClass['resultAlias'];
+            $isPartial   = $selectedClass['partial'];
 
             // Register as entity or joined entity result
             if (! isset($this->queryComponents[$dqlAlias]['relation'])) {
                 $this->rsm->addEntityResult($class->name, $dqlAlias, $resultAlias);
+
+                if ($isPartial) {
+                    $this->rsm->markPartialEntityResult($dqlAlias);
+                }
             } else {
                 assert(isset($this->queryComponents[$dqlAlias]['parent']));
 
@@ -700,6 +720,7 @@ class SqlWalker
                     $dqlAlias,
                     $this->queryComponents[$dqlAlias]['parent'],
                     $this->queryComponents[$dqlAlias]['relation']->fieldName,
+                    $isPartial,
                 );
             }
 
@@ -1292,7 +1313,7 @@ class SqlWalker
                 $columnAlias   = $this->getSQLColumnAlias($fieldMapping->columnName);
                 $col           = $sqlTableAlias . '.' . $columnName;
 
-                $type = Type::getType($fieldMapping->type);
+                $type = $this->typeProvider->get($fieldMapping->type);
                 $col  = $type->convertToPHPValueSQL($col, $this->conn->getDatabasePlatform());
 
                 $sql .= $col . ' AS ' . $columnAlias;
@@ -1323,8 +1344,15 @@ class SqlWalker
             case $expr instanceof AST\SimpleCaseExpression:
                 $columnAlias = $this->getSQLColumnAlias('sclr');
                 $resultAlias = $selectExpression->fieldIdentificationVariable ?: $this->scalarResultCounter++;
+                $exprSql     = $expr->dispatch($this);
 
-                $sql .= $expr->dispatch($this) . ' AS ' . $columnAlias;
+                // the result is selected like a column of its type, e.g. a geometry returned by a spatial function
+                if (! $hidden && $expr instanceof Query\AST\ExpressionWithReturnType) {
+                    $exprSql = $this->typeProvider->get($expr->getReturnTypeName())
+                        ->convertToPHPValueSQL($exprSql, $this->platform);
+                }
+
+                $sql .= $exprSql . ' AS ' . $columnAlias;
 
                 $this->scalarResultAliasMap[$resultAlias] = $columnAlias;
 
@@ -1332,15 +1360,32 @@ class SqlWalker
                     break;
                 }
 
-                if (! $expr instanceof Query\AST\TypedExpression) {
-                    // Conceptually we could resolve field type here by traverse through AST to retrieve field type,
-                    // but this is not a feasible solution; assume 'string'.
-                    $this->rsm->addScalarResult($columnAlias, $resultAlias, 'string');
+                if ($expr instanceof Query\AST\ExpressionWithReturnType) {
+                    $this->rsm->addScalarResult($columnAlias, $resultAlias, $expr->getReturnTypeName());
 
                     break;
                 }
 
-                $this->rsm->addScalarResult($columnAlias, $resultAlias, Type::getTypeRegistry()->lookupName($expr->getReturnType()));
+                if ($expr instanceof Query\AST\TypedExpression) {
+                    Deprecation::trigger(
+                        'doctrine/orm',
+                        'https://github.com/doctrine/orm/pull/12543',
+                        'Implementing %s is deprecated, implement %s instead.',
+                        Query\AST\TypedExpression::class, // @phpstan-ignore classConstant.deprecatedInterface
+                        Query\AST\ExpressionWithReturnType::class,
+                    );
+
+                    // TypedExpression only exposes a Type instance, so the name has to be looked up.
+                    // This branch and Type::lookupName() are both deprecated and go away together.
+                    // @phpstan-ignore method.deprecatedInterface, staticMethod.deprecated
+                    $this->rsm->addScalarResult($columnAlias, $resultAlias, Type::lookupName($expr->getReturnType()));
+
+                    break;
+                }
+
+                // Conceptually we could resolve field type here by traverse through AST to retrieve field type,
+                // but this is not a feasible solution; assume 'string'.
+                $this->rsm->addScalarResult($columnAlias, $resultAlias, Types::STRING);
 
                 break;
 
@@ -1354,7 +1399,7 @@ class SqlWalker
 
                 if (! $hidden) {
                     // We cannot resolve field type here; assume 'string'.
-                    $this->rsm->addScalarResult($columnAlias, $resultAlias, 'string');
+                    $this->rsm->addScalarResult($columnAlias, $resultAlias, Types::STRING);
                 }
 
                 break;
@@ -1382,6 +1427,36 @@ class SqlWalker
     }
 
     /**
+     * Runs the given callback with the raw columns of the selected entity fields,
+     * without applying the PHP value conversion of their mapping types.
+     *
+     * The paginator uses it to generate its identifier subquery, which is never
+     * hydrated, so its ORDER BY must use the stored column.
+     *
+     * @internal
+     *
+     * @param callable(): T $callback
+     *
+     * @return T
+     *
+     * @template T
+     */
+    protected function withRawColumns(callable $callback): mixed
+    {
+        if ($this->useRawColumns) {
+            throw new LogicException('Raw columns are already used.');
+        }
+
+        $this->useRawColumns = true;
+
+        try {
+            return $callback();
+        } finally {
+            $this->useRawColumns = false;
+        }
+    }
+
+    /**
      * Walks down an Object Expression AST node and return Sql Parts
      *
      * @param mixed[] $partialFieldSet
@@ -1397,6 +1472,7 @@ class SqlWalker
                 'class'       => $class,
                 'dqlAlias'    => $dqlAlias,
                 'resultAlias' => $resultAlias,
+                'partial'     => $partialFieldSet !== [],
             ];
         }
 
@@ -1418,8 +1494,10 @@ class SqlWalker
 
             $col = $sqlTableAlias . '.' . $quotedColumnName;
 
-            $type = Type::getType($mapping->type);
-            $col  = $type->convertToPHPValueSQL($col, $this->platform);
+            if (! $this->useRawColumns) {
+                $type = $this->typeProvider->get($mapping->type);
+                $col  = $type->convertToPHPValueSQL($col, $this->platform);
+            }
 
             $sqlParts[] = $col . ' AS ' . $columnAlias;
 
@@ -1453,8 +1531,10 @@ class SqlWalker
 
                     $col = $sqlTableAlias . '.' . $quotedColumnName;
 
-                    $type = Type::getType($mapping->type);
-                    $col  = $type->convertToPHPValueSQL($col, $this->platform);
+                    if (! $this->useRawColumns) {
+                        $type = $this->typeProvider->get($mapping->type);
+                        $col  = $type->convertToPHPValueSQL($col, $this->platform);
+                    }
 
                     $sqlParts[] = $col . ' AS ' . $columnAlias;
 
@@ -1558,7 +1638,7 @@ class SqlWalker
                     $fieldType    = $fieldMapping->type;
                     $col          = trim($e->dispatch($this));
 
-                    $type = Type::getType($fieldType);
+                    $type = $this->typeProvider->get($fieldType);
                     $col  = $type->convertToPHPValueSQL($col, $this->platform);
 
                     $sqlSelectExpressions[] = $col . ' AS ' . $columnAlias;
@@ -2094,6 +2174,7 @@ class SqlWalker
             AST\Literal::STRING => $this->conn->quote($literal->value),
             AST\Literal::BOOLEAN => (string) $this->conn->getDatabasePlatform()->convertBooleans(strtolower($literal->value) === 'true'),
             AST\Literal::NUMERIC => (string) $literal->value,
+            AST\Literal::NULL => 'NULL',
             default => throw QueryException::invalidLiteral($literal),
         };
     }
@@ -2191,8 +2272,8 @@ class SqlWalker
 
         if ($parameter) {
             $type = $parameter->getType();
-            if (is_string($type) && Type::hasType($type)) {
-                return Type::getType($type)->convertToDatabaseValueSQL('?', $this->platform);
+            if (is_string($type) && $this->typeProvider->has($type)) {
+                return $this->typeProvider->get($type)->convertToDatabaseValueSQL('?', $this->platform);
             }
         }
 

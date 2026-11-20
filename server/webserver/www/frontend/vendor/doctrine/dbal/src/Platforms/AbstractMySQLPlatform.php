@@ -366,7 +366,7 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
         $queryParts = [];
 
         foreach ($diff->getAddedColumns() as $column) {
-            $columnProperties = array_merge($column->toArray(), [
+            $columnProperties = array_merge($column->toArray(true), [
                 'comment' => $column->getComment(),
             ]);
 
@@ -383,7 +383,7 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
         foreach ($diff->getChangedColumns() as $columnDiff) {
             $newColumn = $columnDiff->getNewColumn();
 
-            $newColumnProperties = array_merge($newColumn->toArray(), [
+            $newColumnProperties = array_merge($newColumn->toArray(true), [
                 'comment' => $newColumn->getComment(),
             ]);
 
@@ -395,7 +395,6 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
 
         $droppedIndexes = $this->indexIndexesByLowerCaseName($diff->getDroppedIndexes());
         $addedIndexes   = $this->indexIndexesByLowerCaseName($diff->getAddedIndexes());
-        $diffModified   = false;
 
         $noLongerPrimaryKeyColumns = [];
 
@@ -468,7 +467,7 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
             $sql = array_merge($sql, $this->getPreAlterTableAlterPrimaryKeySQL($diff, $droppedIndex));
 
             foreach ($diff->getAddedIndexes() as $addedIndex) {
-                if ($droppedIndex->getColumns() !== $addedIndex->getColumns()) {
+                if ($droppedIndex->getUnquotedColumns() !== $addedIndex->getUnquotedColumns()) {
                     continue;
                 }
 
@@ -537,7 +536,7 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
             $column->setAutoincrement(false);
 
             $sql[] = 'ALTER TABLE ' . $tableNameSQL . ' MODIFY ' .
-                $this->getColumnDeclarationSQL($column->getQuotedName($this), $column->toArray());
+                $this->getColumnDeclarationSQL($column->getQuotedName($this), $column->toArray(true));
 
             // original autoincrement information might be needed later on by other parts of the table alteration
             $column->setAutoincrement(true);
@@ -564,11 +563,9 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
         $primaryKeyColumns = [];
 
         foreach ($primaryKey->getColumns() as $columnName) {
-            if (! $table->hasColumn($columnName)) {
-                continue;
+            if ($table->hasColumn($columnName)) {
+                $primaryKeyColumns[] = $table->getColumn($columnName);
             }
-
-            $primaryKeyColumns[] = $table->getColumn($columnName);
         }
 
         if (count($primaryKeyColumns) === 0) {
@@ -596,7 +593,7 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
                 $column->setAutoincrement(false);
 
                 $sql[] = 'ALTER TABLE ' . $tableNameSQL . ' MODIFY ' .
-                    $this->getColumnDeclarationSQL($column->getQuotedName($this), $column->toArray());
+                    $this->getColumnDeclarationSQL($column->getQuotedName($this), $column->toArray(true));
 
                 // Restore the autoincrement attribute as it might be needed later on
                 // by other parts of the table alteration.
@@ -764,8 +761,8 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
             'binary'     => Types::BINARY,
             'blob'       => Types::BLOB,
             'char'       => Types::STRING,
-            'date'       => Types::DATE_MUTABLE,
-            'datetime'   => Types::DATETIME_MUTABLE,
+            'date'       => Types::DATE_IMMUTABLE,
+            'datetime'   => Types::DATETIME_IMMUTABLE,
             'decimal'    => Types::DECIMAL,
             'double'     => Types::FLOAT,
             'enum'       => Types::ENUM,
@@ -784,14 +781,14 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
             'smallint'   => Types::SMALLINT,
             'string'     => Types::STRING,
             'text'       => Types::TEXT,
-            'time'       => Types::TIME_MUTABLE,
-            'timestamp'  => Types::DATETIME_MUTABLE,
+            'time'       => Types::TIME_IMMUTABLE,
+            'timestamp'  => Types::DATETIME_IMMUTABLE,
             'tinyblob'   => Types::BLOB,
             'tinyint'    => Types::BOOLEAN,
             'tinytext'   => Types::TEXT,
             'varbinary'  => Types::BINARY,
             'varchar'    => Types::STRING,
-            'year'       => Types::DATE_MUTABLE,
+            'year'       => Types::DATE_IMMUTABLE,
         ];
     }
 

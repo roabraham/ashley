@@ -16,6 +16,7 @@ use Doctrine\DBAL\Schema\Name\OptionallyQualifiedName;
 use Doctrine\DBAL\Schema\Name\Parsers;
 use Doctrine\DBAL\Schema\Name\UnqualifiedName;
 use Doctrine\DBAL\Types\Exception\TypesException;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\Deprecations\Deprecation;
 use Throwable;
 
@@ -256,7 +257,7 @@ abstract class AbstractSchemaManager
                 continue;
             }
 
-            $tables[] = new Table(
+            $table = new Table(
                 $tableName,
                 $this->_getPortableTableColumnList($tableName, $database, $tableColumns),
                 $this->_getPortableTableIndexesList($indexColumnsByTable[$tableName] ?? [], $tableName),
@@ -264,7 +265,12 @@ abstract class AbstractSchemaManager
                 $this->_getPortableTableForeignKeysList($foreignKeyColumnsByTable[$tableName] ?? []),
                 $tableOptionsByTable[$tableName] ?? [],
                 $configuration,
+                null,
+                [],
             );
+            $table->setTypeProvider($this->connection->getConfiguration()->getTypeProvider());
+
+            $tables[] = $table;
         }
 
         return $tables;
@@ -324,10 +330,8 @@ abstract class AbstractSchemaManager
 
     private function validateTableName(string $input, string $methodName): void
     {
-        $parser = Parsers::getOptionallyQualifiedNameParser();
-
         try {
-            $tableName = $parser->parse($input);
+            $tableName = Parsers::parseOptionallyQualifiedName($input);
         } catch (Throwable $e) {
             Deprecation::trigger(
                 'doctrine/dbal',
@@ -340,18 +344,16 @@ abstract class AbstractSchemaManager
             return;
         }
 
-        if ($tableName->getQualifier() === null || $this->platform->supportsSchemas()) {
-            return;
+        if ($tableName->getQualifier() !== null && ! $this->platform->supportsSchemas()) {
+            Deprecation::trigger(
+                'doctrine/dbal',
+                'https://github.com/doctrine/dbal/pull/6768',
+                'Relying on %s() not parsing an unquoted table name containing a dot while working with %s is'
+                    . ' deprecated. Pass a quoted name instead.',
+                $methodName,
+                $this->platform::class,
+            );
         }
-
-        Deprecation::trigger(
-            'doctrine/dbal',
-            'https://github.com/doctrine/dbal/pull/6768',
-            'Relying on %s() not parsing an unquoted table name containing a dot while working with %s is'
-                . ' deprecated. Pass a quoted name instead.',
-            $methodName,
-            $this->platform::class,
-        );
     }
 
     /**
@@ -487,14 +489,20 @@ abstract class AbstractSchemaManager
             throw TableDoesNotExist::new($name);
         }
 
-        return new Table(
+        $table = new Table(
             $name,
             $columns,
             $this->listTableIndexes($name),
             [],
             $this->listTableForeignKeys($name),
             $this->getTableOptions($name),
+            null,
+            null,
+            [],
         );
+        $table->setTypeProvider($this->connection->getConfiguration()->getTypeProvider());
+
+        return $table;
     }
 
     /**
@@ -596,11 +604,9 @@ abstract class AbstractSchemaManager
         $tableNames = [];
 
         foreach ($this->createSchemaProvider()->getAllTableNames() as $tableName) {
-            if (! $this->testTableName($tableName, $filter)) {
-                continue;
+            if ($this->testTableName($tableName, $filter)) {
+                $tableNames[] = $tableName;
             }
-
-            $tableNames[] = $tableName;
         }
 
         return $tableNames;
@@ -619,11 +625,9 @@ abstract class AbstractSchemaManager
         $tables = [];
 
         foreach ($this->createSchemaProvider()->getAllTables() as $table) {
-            if (! $this->testTableName($table->getObjectName(), $filter)) {
-                continue;
+            if ($this->testTableName($table->getObjectName(), $filter)) {
+                $tables[] = $table;
             }
-
-            $tables[] = $table;
         }
 
         return $tables;
@@ -669,6 +673,7 @@ abstract class AbstractSchemaManager
             ->setColumns(...$columns)
             ->setPrimaryKeyConstraint($this->introspectTablePrimaryKeyConstraint($tableName))
             ->setIndexes(...$this->introspectTableIndexes($tableName))
+            ->setUniqueConstraints(...$this->introspectTableUniqueConstraints($tableName))
             ->setForeignKeyConstraints(...$this->introspectTableForeignKeyConstraints($tableName))
             ->setOptions($options)
             ->create();
@@ -845,6 +850,72 @@ abstract class AbstractSchemaManager
             ): ?PrimaryKeyConstraint {
                 return $schemaProvider->getPrimaryKeyConstraintForTable($schemaName, $tableName);
             },
+        );
+    }
+
+    /**
+     * Introspects the unique constraints of a given table and returns their definitions. If the name is unqualified,
+     * and the underlying database platform supports schemas, the current schema is used.
+     *
+     * Returns an empty value if the table does not exist.
+     *
+     * @return list<UniqueConstraint>
+     *
+     * @throws Exception
+     */
+    public function introspectTableUniqueConstraints(OptionallyQualifiedName $tableName): array
+    {
+        return $this->introspectTableObjects(
+            $tableName,
+            static function (SchemaProvider $schemaProvider, ?string $schemaName, string $tableName): array {
+                return $schemaProvider->getUniqueConstraintsForTable($schemaName, $tableName);
+            },
+        );
+    }
+
+    /**
+     * Introspects the unique constraints of the table with the given unquoted name and schema name and returns their
+     * definitions. If the name is unqualified, and the underlying database platform supports schemas, the current
+     * schema is used.
+     *
+     * Returns an empty value if the table does not exist.
+     *
+     * @param non-empty-string  $tableName
+     * @param ?non-empty-string $schemaName
+     *
+     * @return list<UniqueConstraint>
+     *
+     * @throws Exception
+     */
+    public function introspectTableUniqueConstraintsByUnquotedName(
+        string $tableName,
+        ?string $schemaName = null,
+    ): array {
+        return $this->introspectTableUniqueConstraints(
+            OptionallyQualifiedName::unquoted($tableName, $schemaName),
+        );
+    }
+
+    /**
+     * Introspects the unique constraints of the table with the given quoted name and schema name and returns their
+     * definitions. If the name is unqualified, and the underlying database platform supports schemas, the current
+     * schema is used.
+     *
+     * Returns an empty value if the table does not exist.
+     *
+     * @param non-empty-string  $tableName
+     * @param ?non-empty-string $schemaName
+     *
+     * @return list<UniqueConstraint>
+     *
+     * @throws Exception
+     */
+    public function introspectTableUniqueConstraintsByQuotedName(
+        string $tableName,
+        ?string $schemaName = null,
+    ): array {
+        return $this->introspectTableUniqueConstraints(
+            OptionallyQualifiedName::quoted($tableName, $schemaName),
         );
     }
 
@@ -1444,6 +1515,7 @@ abstract class AbstractSchemaManager
         }
 
         $schemaConfig->setDefaultTableOptions($params['defaultTableOptions']);
+        $schemaConfig->setTypeProvider($this->connection->getConfiguration()->getTypeProvider());
 
         return $schemaConfig;
     }

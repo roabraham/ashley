@@ -1,6 +1,19 @@
 CHANGELOG
 =========
 
+8.1
+---
+
+ * Add support for submitting forms with unchecked checkboxes in request handlers
+ * Add `ResetFlowType` button in `NavigatorFlowType` that you can display with `with_reset` option
+ * Allow injecting a `ViolationMapperInterface` into `FormTypeValidatorExtension`
+ * Deprecate passing boolean as the second argument of `ValidatorExtension` and `FormTypeValidatorExtension`'s constructors; pass a `ViolationMapperInterface` instead
+ * Add argument `$violationMapper` to `ValidatorExtensionTrait` and `TypeTestCase`'s `getExtensions()` methods
+ * Add default `min`/`max` attributes to `BirthdayType` when `widget` is `single_text`
+ * Add `labels` option to `DateType` to customize the year, month and day sub-field labels
+ * Use `translation_domain` instead of `choice_translation_domain` for the expanded `ChoiceType` placeholder
+ * Render the placeholder option of required collapsed `ChoiceType` fields with the `hidden` attribute by default; set the `placeholder_attr` option to `[]` to restore the previous rendering
+
 8.0
 ---
 

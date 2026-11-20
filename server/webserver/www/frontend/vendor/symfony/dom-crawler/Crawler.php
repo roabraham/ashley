@@ -138,7 +138,7 @@ class Crawler implements \Countable, \IteratorAggregate
 
         // http://www.w3.org/TR/encoding/#encodings
         // http://www.w3.org/TR/REC-xml/#NT-EncName
-        $content = preg_replace_callback('/(charset *= *["\']?)([a-zA-Z\-0-9_:.]+)/i', function ($m) use (&$charset) {
+        $content = preg_replace_callback('/(<meta[^>]+charset *= *["\']?)([a-zA-Z\-0-9_:.]+)/i', function ($m) use (&$charset) {
             if ('charset=' === $this->convertToHtmlEntities('charset=', $m[2])) {
                 $charset = $m[2];
             }
@@ -171,7 +171,7 @@ class Crawler implements \Countable, \IteratorAggregate
         $base = $this->filterRelativeXPath('descendant-or-self::base')->extract(['href']);
 
         $baseHref = current($base);
-        if (\count($base) && $baseHref) {
+        if ($base && $baseHref) {
             if ($this->baseHref) {
                 $linkNode = $dom->createElement('a');
                 $linkNode->setAttribute('href', $baseHref);
@@ -193,7 +193,9 @@ class Crawler implements \Countable, \IteratorAggregate
      * and then, get the errors via libxml_get_errors(). Be
      * sure to clear errors with libxml_clear_errors() afterward.
      *
-     * @param int $options Bitwise OR of the libxml option constants
+     * @param int $options Bitwise OR of the libxml option constants;
+     *                     `LIBXML_NONET` is always added to the options to prevent
+     *                     network requests for external entities.
      *                     LIBXML_PARSEHUGE is dangerous, see
      *                     http://symfony.com/blog/security-release-symfony-2-0-17-released
      */
@@ -209,7 +211,7 @@ class Crawler implements \Countable, \IteratorAggregate
         $dom = new \DOMDocument('1.0', $charset);
 
         if ('' !== trim($content)) {
-            @$dom->loadXML($content, $options);
+            @$dom->loadXML($content, $options | \LIBXML_NONET);
         }
 
         libxml_use_internal_errors($internalErrors);
@@ -260,8 +262,8 @@ class Crawler implements \Countable, \IteratorAggregate
      */
     public function addNode(\DOMNode $node): void
     {
-        if ($node instanceof \DOMDocument) {
-            $node = $node->documentElement;
+        if ($node instanceof \DOMDocument && !$node = $node->documentElement) {
+            return;
         }
 
         if (null !== $this->document && $this->document !== $node->ownerDocument) {
@@ -302,6 +304,8 @@ class Crawler implements \Countable, \IteratorAggregate
      *
      * @template R of mixed
      *
+     * @param-immediately-invoked-callable $closure
+     *
      * @param \Closure(static, int):R $closure
      *
      * @return list<R> An array of values returned by the anonymous function
@@ -328,6 +332,8 @@ class Crawler implements \Countable, \IteratorAggregate
      * Reduces the list of nodes by calling an anonymous function.
      *
      * To remove a node from the list, the anonymous function must return false.
+     *
+     * @param-immediately-invoked-callable $closure
      *
      * @param \Closure(static, int):bool $closure
      */
@@ -379,10 +385,15 @@ class Crawler implements \Countable, \IteratorAggregate
             return false;
         }
 
-        $converter = $this->createCssSelectorConverter();
-        $xpath = $converter->toXPath($selector, 'self::');
+        $node = $this->getNode(0);
 
-        return 0 !== $this->filterRelativeXPath($xpath)->count();
+        foreach ($this->matchingNodes($selector, $this->rootNode($node)) as $candidate) {
+            if ($candidate->isSameNode($node)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -399,14 +410,16 @@ class Crawler implements \Countable, \IteratorAggregate
         }
 
         $domNode = $this->getNode(0);
+        $matching = $this->matchingNodes($selector, $this->rootNode($domNode));
 
         while (null !== $domNode && \XML_ELEMENT_NODE === $domNode->nodeType) {
-            $node = $this->createSubCrawler($domNode);
-            if ($node->matches($selector)) {
-                return $node;
+            foreach ($matching as $candidate) {
+                if ($candidate->isSameNode($domNode)) {
+                    return $this->createSubCrawler($domNode);
+                }
             }
 
-            $domNode = $node->getNode(0)->parentNode;
+            $domNode = $domNode->parentNode;
         }
 
         return null;
@@ -476,10 +489,24 @@ class Crawler implements \Countable, \IteratorAggregate
         }
 
         if (null !== $selector) {
-            $converter = $this->createCssSelectorConverter();
-            $xpath = $converter->toXPath($selector, 'child::');
+            $parents = [];
+            $roots = [];
+            foreach ($this->nodes as $node) {
+                $parents[spl_object_id($node)] = true;
+                $roots[spl_object_id($root = $this->rootNode($node))] = $root;
+            }
 
-            return $this->filterRelativeXPath($xpath);
+            $crawler = $this->createSubCrawler(null);
+
+            foreach ($roots as $root) {
+                foreach ($this->matchingNodes($selector, $root) as $candidate) {
+                    if (null !== $candidate->parentNode && isset($parents[spl_object_id($candidate->parentNode)])) {
+                        $crawler->add($candidate);
+                    }
+                }
+            }
+
+            return $crawler;
         }
 
         $node = $this->getNode(0)->firstChild;
@@ -1155,6 +1182,40 @@ class Crawler implements \Countable, \IteratorAggregate
         }
 
         return new CssSelectorConverter($this->isHtml);
+    }
+
+    /**
+     * Returns every node matching the selector in the tree the given node belongs to.
+     *
+     * The whole tree is searched because a selector can constrain the ancestors or
+     * the siblings of the node it selects. The root is the topmost ancestor rather
+     * than the document, so that a node detached from the document still matches.
+     *
+     * @return \DOMNode[]
+     */
+    private function matchingNodes(string $selector, \DOMNode $root): array
+    {
+        if (null === $this->document) {
+            return [];
+        }
+
+        $converter = $this->createCssSelectorConverter();
+        $xpath = $converter->toXPath($selector);
+        $domxpath = $this->createDOMXPath($this->document, $this->findNamespacePrefixes($xpath));
+
+        return iterator_to_array($domxpath->query($xpath, $root), false);
+    }
+
+    /**
+     * Returns the topmost ancestor of the node, which is the document unless the node is detached from it.
+     */
+    private function rootNode(\DOMNode $node): \DOMNode
+    {
+        while (null !== $parent = $node->parentNode) {
+            $node = $parent;
+        }
+
+        return $node;
     }
 
     private function copyFromHtml5ToDom(\Dom\Node $source, \DOMDocument $target): void

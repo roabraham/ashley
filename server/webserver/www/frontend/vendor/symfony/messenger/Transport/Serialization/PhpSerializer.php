@@ -12,7 +12,10 @@
 namespace Symfony\Component\Messenger\Transport\Serialization;
 
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\InvalidArgumentException;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
+use Symfony\Component\Messenger\Stamp\BusNameStamp;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Messenger\Stamp\MessageDecodingFailedStamp;
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
@@ -41,17 +44,43 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
 
     public function decode(array $encodedEnvelope): Envelope
     {
-        if (empty($encodedEnvelope['body'])) {
-            throw new MessageDecodingFailedException('Encoded envelope should have at least a "body", or maybe you should implement your own serializer.');
+        if (!\is_string($encodedEnvelope['body'] ?? null) || '' === $encodedEnvelope['body']) {
+            return MessageDecodingFailedException::wrap($encodedEnvelope, 'Encoded envelope should have at least a "body", or maybe you should implement your own serializer.');
         }
 
+        // Decoded strictly, as getMessageType() does, so that both read the same bytes: a lax
+        // decode silently drops characters the alphabet does not allow, leaving the type the
+        // signature is checked against to be read from a different payload than the one decoded.
         if (!str_ends_with($encodedEnvelope['body'], '}')) {
-            $encodedEnvelope['body'] = base64_decode($encodedEnvelope['body']);
+            if (false === $body = base64_decode($encodedEnvelope['body'], true)) {
+                return MessageDecodingFailedException::wrap($encodedEnvelope, 'Could not decode the envelope body: it is neither a serialized payload nor valid base64.');
+            }
+
+            $encodedEnvelope['body'] = $body;
         }
 
-        $serializeEnvelope = stripslashes($encodedEnvelope['body']);
+        if ('' === $serializeEnvelope = stripslashes($encodedEnvelope['body'])) {
+            return MessageDecodingFailedException::wrap($encodedEnvelope, 'Encoded envelope should have at least a "body", or maybe you should implement your own serializer.');
+        }
 
-        return $this->safelyUnserialize($serializeEnvelope);
+        try {
+            $envelope = $this->safelyUnserialize($serializeEnvelope);
+
+            if (!$envelope instanceof Envelope) {
+                return MessageDecodingFailedException::wrap($encodedEnvelope, 'Could not decode message into an Envelope.');
+            }
+
+            // encoding strips these stamps, so they never come from a transport
+            $envelope = $envelope->withoutStampsOfType(NonSendableStampInterface::class);
+
+            if ($envelope->getMessage() instanceof \__PHP_Incomplete_Class) {
+                $envelope = $envelope->with(new MessageDecodingFailedStamp());
+            }
+        } catch (\Throwable $e) {
+            return MessageDecodingFailedException::wrap($encodedEnvelope, 'Could not decode Envelope: '.$e->getMessage(), $e->getCode(), $e)->with(...self::decodeBusNameStamps($serializeEnvelope));
+        }
+
+        return $envelope;
     }
 
     public function getMessageType(array $encodedEnvelope): ?string
@@ -67,22 +96,29 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
         $body = stripslashes($body);
 
         // Fast path: when the body carries no Serializable (`C:`) payload, native
-        // unserialize() with allowed_classes restricted to Envelope is safe and fast.
-        // The carried message becomes a __PHP_Incomplete_Class with no constructor /
-        // __wakeup / __unserialize executed. This skips the in-PHP tokenizer below.
-        if (!str_contains($body, 'C:')) {
-            try {
-                $envelope = @unserialize($body, ['allowed_classes' => [Envelope::class]]);
+        // unserialize() with allowed_classes restricted to Envelope turns the carried
+        // message into a __PHP_Incomplete_Class with no constructor / __wakeup /
+        // __unserialize executed. This skips the in-PHP tokenizer below.
+        // allowed_classes does not cover enums: unserialize() autoloads the class of an
+        // enum case whatever the list. So once Envelope is loaded, autoloading is refused
+        // while unserialize() runs, and the enum cases are replaced below when it was needed.
+        // The capital-S string format, which serialize() never writes, can spell any property name with escapes: the tokenizer below refuses it.
+        // The "allowed_classes" allowlist is the SOLE line of defense here: this call
+        // intentionally runs without installing the unserialize_callback_func / error
+        // handler guards used by safelyUnserialize(). Any future change that widens
+        // "allowed_classes" beyond Envelope MUST re-introduce those guards.
+        if (!str_contains($body, 'C:') && !str_contains($body, 'S:') && false !== $type = self::unserializeMessageType($body)) {
+            return $type;
+        }
 
-                if (!$envelope instanceof Envelope) {
-                    return null;
-                }
-                $message = $envelope->getMessage();
-            } catch (\Throwable) {
-                return null;
-            }
-
-            return $message instanceof \__PHP_Incomplete_Class ? ((array) $message)['__PHP_Incomplete_Class_Name'] : $message::class;
+        // The message can be a reference to a value written before it, e.g. by a stamp that
+        // holds it. Native unserialize() resolves it the way decode() does, which the tokenizer
+        // below cannot: the values that a Serializable payload unserializes are numbered too.
+        // So unless the body really carries such a payload ("C:" can be part of a string), its
+        // enum cases are replaced by incomplete objects of their class, which take the same
+        // places, and unserialize() reads it without looking up any class.
+        if (null !== $bodyWithoutEnumCases = self::replaceEnumCases($body)) {
+            return self::unserializeMessageType($bodyWithoutEnumCases) ?: null;
         }
 
         // Slow path: parse the serialized envelope without invoking unserialize() so that
@@ -98,19 +134,24 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
         // PHP unserialize() accepts all three property-name encodings and routes any of
         // them to Envelope::$message, so the scanner must recognize all three forms too,
         // otherwise an attacker can hide the real message behind a non-canonical key.
+        // The declared length is read as an integer, the way unserialize() reads it, rather than
+        // compared as bytes: a length written with leading zeros denotes the very same property.
         $messageKeys = [
-            's:45:"'."\0".Envelope::class."\0".'message";',
-            's:10:"'."\0*\0".'message";',
-            's:7:"message";',
+            "\0".Envelope::class."\0message",
+            "\0*\0message",
+            'message',
         ];
         $messageType = null;
 
         for ($i = 0; $i < $count; ++$i) {
             $isMessageKey = false;
-            foreach ($messageKeys as $key) {
-                if (0 === substr_compare($body, $key, $offset, \strlen($key))) {
-                    $isMessageKey = true;
-                    break;
+
+            if (preg_match('/\Gs:(\d++):"/A', $body, $m, 0, $offset)) {
+                $nameLength = (int) $m[1];
+                $nameOffset = $offset + \strlen($m[0]);
+
+                if ('";' === substr($body, $nameOffset + $nameLength, 2)) {
+                    $isMessageKey = \in_array(substr($body, $nameOffset, $nameLength), $messageKeys, true);
                 }
             }
 
@@ -119,6 +160,7 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
             }
 
             if ($isMessageKey) {
+                // A reference (r: or R:) is not followed: the values that a Serializable payload unserializes are numbered too.
                 if (!preg_match('/\G[OCE]:(\d+):"/A', $body, $m, 0, $offset)) {
                     return null;
                 }
@@ -160,6 +202,11 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
     {
         $envelope = $envelope->withoutStampsOfType(NonSendableStampInterface::class);
 
+        // handler results are for synchronous callers: retries only need the names of the handlers that already ran
+        if ($handledStamps = $envelope->all(HandledStamp::class)) {
+            $envelope = $envelope->withoutAll(HandledStamp::class)->with(...array_map(static fn (HandledStamp $stamp) => new HandledStamp(null, $stamp->getHandlerName()), $handledStamps));
+        }
+
         $body = addslashes(serialize($envelope));
 
         if (!preg_match('//u', $body)) {
@@ -171,12 +218,8 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
         ];
     }
 
-    private function safelyUnserialize(string $contents): Envelope
+    private function safelyUnserialize(string $contents): mixed
     {
-        if ('' === $contents) {
-            throw new MessageDecodingFailedException('Could not decode an empty message using PHP serialization.');
-        }
-
         if ($this->acceptPhpIncompleteClass) {
             $prevUnserializeHandler = ini_set('unserialize_callback_func', null);
         } else {
@@ -191,28 +234,11 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
         });
 
         try {
-            /** @var Envelope */
-            $envelope = unserialize($contents);
-        } catch (\Throwable $e) {
-            if ($e instanceof MessageDecodingFailedException) {
-                throw $e;
-            }
-
-            throw new MessageDecodingFailedException('Could not decode Envelope: '.$e->getMessage(), 0, $e);
+            return unserialize($contents, ['allowed_classes' => true]);
         } finally {
             restore_error_handler();
             ini_set('unserialize_callback_func', $prevUnserializeHandler);
         }
-
-        if (!$envelope instanceof Envelope) {
-            throw new MessageDecodingFailedException('Could not decode message into an Envelope.');
-        }
-
-        if ($envelope->getMessage() instanceof \__PHP_Incomplete_Class) {
-            $envelope = $envelope->with(new MessageDecodingFailedStamp());
-        }
-
-        return $envelope;
     }
 
     /**
@@ -220,7 +246,82 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
      */
     public static function handleUnserializeCallback(string $class): never
     {
-        throw new MessageDecodingFailedException(\sprintf('Message class "%s" not found during decoding.', $class));
+        throw new InvalidArgumentException(\sprintf('Message class "%s" not found during decoding.', $class));
+    }
+
+    /**
+     * Reads the type of the message with native unserialize(), without autoloading any class.
+     *
+     * @return string|false|null false when unserialize() needed to autoload a class
+     */
+    private static function unserializeMessageType(string $body): string|false|null
+    {
+        class_exists(Envelope::class);
+        $autoloadAttempted = false;
+        $autoloadGuard = static function () use (&$autoloadAttempted): never {
+            $autoloadAttempted = true;
+
+            throw new \LogicException('Autoloading is not allowed while reading the message type.');
+        };
+        spl_autoload_register($autoloadGuard, true, true);
+
+        // An incomplete object stores the name of its class in a property that the payload can set too.
+        // Renaming that property in the payload, with the same length, keeps the name written in the object header.
+        $body = str_replace('__PHP_Incomplete_Class_Name', '__PHP_Incomplete_Class_Nam_', $body);
+
+        try {
+            $envelope = @unserialize($body, ['allowed_classes' => [Envelope::class]]);
+            $message = $envelope instanceof Envelope ? $envelope->getMessage() : null;
+        } catch (\Throwable) {
+            $message = null;
+        } finally {
+            spl_autoload_unregister($autoloadGuard);
+        }
+
+        return match (true) {
+            $autoloadAttempted => false,
+            null === $message => null,
+            $message instanceof \__PHP_Incomplete_Class => ((array) $message)['__PHP_Incomplete_Class_Name'],
+            default => $message::class,
+        };
+    }
+
+    /**
+     * Replaces the enum cases of a serialized value by incomplete objects of their class.
+     *
+     * Each one stays a single value, so the references of the body keep pointing to the same values.
+     * Returns null when the value carries a Serializable payload or is not a single serialized value.
+     */
+    private static function replaceEnumCases(string $body): ?string
+    {
+        $offset = 0;
+        $enumCasesAndSerializables = [];
+
+        if (!self::skipSerializedValue($body, $offset, 4096, $enumCasesAndSerializables) || isset($body[$offset])) {
+            return null;
+        }
+
+        $replaced = '';
+        $offset = 0;
+
+        foreach ($enumCasesAndSerializables as $start => $end) {
+            if ('C' === $body[$start]) {
+                return null;
+            }
+
+            // E:NN:"<FQCN>:<case>"; becomes O:NN:"<FQCN>":0:{}
+            $nameOffset = strpos($body, '"', $start) + 1;
+            $name = substr($body, $nameOffset, $end - 2 - $nameOffset);
+
+            if (!$colon = strpos($name, ':')) {
+                return null;
+            }
+
+            $replaced .= substr($body, $offset, $start - $offset).'O:'.$colon.':"'.substr($name, 0, $colon).'":0:{}';
+            $offset = $end;
+        }
+
+        return $replaced.substr($body, $offset);
     }
 
     /**
@@ -230,8 +331,10 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
      * $maxDepth mirrors PHP's `unserialize_max_depth` so an adversarial deeply-nested
      * payload can't burn CPU or blow the stack here when native unserialize() would
      * have rejected it.
+     *
+     * @param array<int, int>|null $enumCasesAndSerializables Receives the start and end offsets of the enum cases (E:) and Serializable payloads (C:)
      */
-    private static function skipSerializedValue(string $body, int &$offset, int $maxDepth = 4096): bool
+    private static function skipSerializedValue(string $body, int &$offset, int $maxDepth = 4096, ?array &$enumCasesAndSerializables = null): bool
     {
         // $remaining[$d] = number of values still to parse at nesting level $d
         // (one $count pair contributes 2 values: a key and a value).
@@ -297,6 +400,7 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
                 case 'O': // O:NN:"FQCN":NN:{<key>;<value>; ...}
                 case 'C': // C:NN:"FQCN":NN:{<opaque payload>}
                     $sep ??= ':';
+                    $start = $offset;
                     if (':' !== ($body[$offset + 1] ?? '')) {
                         return false;
                     }
@@ -310,6 +414,9 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
                     }
                     $offset += 2;
                     if (';' === $sep) {
+                        if ('E' === $kind) {
+                            $enumCasesAndSerializables[$start] = $offset;
+                        }
                         break;
                     }
 
@@ -331,12 +438,31 @@ class PhpSerializer implements SerializerInterface, MessageTypeAwareSerializerIn
                             return false;
                         }
                         ++$offset;
+                        $enumCasesAndSerializables[$start] = $offset;
                     }
                     break;
 
                 default:
                     return false;
             }
+        }
+    }
+
+    /**
+     * Reads the bus names of an envelope that failed to decode, so that the failure is routed to the bus of its message.
+     *
+     * Only Envelope and BusNameStamp are instantiated: the message and the other stamps come back as incomplete objects, without running any of their code.
+     *
+     * @return list<BusNameStamp>
+     */
+    private static function decodeBusNameStamps(string $serializedEnvelope): array
+    {
+        try {
+            $envelope = @unserialize($serializedEnvelope, ['allowed_classes' => [Envelope::class, BusNameStamp::class]]);
+
+            return $envelope instanceof Envelope ? array_values(array_filter($envelope->all(BusNameStamp::class), static fn ($stamp) => $stamp instanceof BusNameStamp)) : [];
+        } catch (\Throwable) {
+            return [];
         }
     }
 }

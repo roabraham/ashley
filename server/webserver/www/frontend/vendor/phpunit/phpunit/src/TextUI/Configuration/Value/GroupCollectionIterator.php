@@ -9,12 +9,15 @@
  */
 namespace PHPUnit\TextUI\Configuration;
 
+use function assert;
 use Iterator;
 
 /**
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
  *
  * @template-implements Iterator<non-negative-int, Group>
+ *
+ * @internal This class is not covered by the backward compatibility promise for PHPUnit
  */
 final class GroupCollectionIterator implements Iterator
 {
@@ -53,6 +56,8 @@ final class GroupCollectionIterator implements Iterator
 
     public function current(): Group
     {
+        assert(isset($this->groups[$this->position]));
+
         return $this->groups[$this->position];
     }
 

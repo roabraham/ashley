@@ -29,7 +29,7 @@ class TransportFactory implements TransportFactoryInterface
     ) {
     }
 
-    public function createTransport(#[\SensitiveParameter] string $dsn, array $options, SerializerInterface $serializer): TransportInterface
+    public function createTransport(#[\SensitiveParameter] string $dsn, #[\SensitiveParameter] array $options, SerializerInterface $serializer): TransportInterface
     {
         foreach ($this->factories as $factory) {
             if ($factory->supports($dsn, $options)) {
@@ -53,14 +53,10 @@ class TransportFactory implements TransportFactoryInterface
             $packageSuggestion = ' Run "composer require symfony/beanstalkd-messenger" to install Beanstalkd transport.';
         }
 
-        if ($dsn = $this->santitizeDsn($dsn)) {
-            throw new InvalidArgumentException(\sprintf('No transport supports Messenger DSN "%s".', $dsn).$packageSuggestion);
-        }
-
         throw new InvalidArgumentException('No transport supports the given Messenger DSN.'.$packageSuggestion);
     }
 
-    public function supports(#[\SensitiveParameter] string $dsn, array $options): bool
+    public function supports(#[\SensitiveParameter] string $dsn, #[\SensitiveParameter] array $options): bool
     {
         foreach ($this->factories as $factory) {
             if ($factory->supports($dsn, $options)) {
@@ -69,42 +65,5 @@ class TransportFactory implements TransportFactoryInterface
         }
 
         return false;
-    }
-
-    private function santitizeDsn(string $dsn): string
-    {
-        $parts = parse_url($dsn);
-        $dsn = '';
-
-        if (isset($parts['scheme'])) {
-            $dsn .= $parts['scheme'].'://';
-        }
-
-        if (isset($parts['user']) && !isset($parts['pass'])) {
-            $dsn .= '******';
-        } elseif (isset($parts['user'])) {
-            $dsn .= $parts['user'];
-        }
-
-        if (isset($parts['pass'])) {
-            $dsn .= ':******';
-        }
-
-        if (isset($parts['host'])) {
-            if (isset($parts['user'])) {
-                $dsn .= '@';
-            }
-            $dsn .= $parts['host'];
-        }
-
-        if (isset($parts['port'])) {
-            $dsn .= ':'.$parts['port'];
-        }
-
-        if (isset($parts['path'])) {
-            $dsn .= $parts['path'];
-        }
-
-        return $dsn;
     }
 }

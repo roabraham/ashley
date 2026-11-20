@@ -318,8 +318,10 @@ class AttributeDriver implements MappingDriver
             if ($columnAttribute !== null) {
                 $mapping = $this->columnToArray($property->name, $columnAttribute);
 
-                if ($this->reader->getPropertyAttribute($property, Mapping\Id::class)) {
-                    $mapping['id'] = true;
+                $idAttribute = $this->reader->getPropertyAttribute($property, Mapping\Id::class);
+                if ($idAttribute !== null) {
+                    $mapping['id']         = true;
+                    $mapping['idPosition'] = $idAttribute->position;
                 }
 
                 $generatedValueAttribute = $this->reader->getPropertyAttribute($property, Mapping\GeneratedValue::class);
@@ -347,6 +349,10 @@ class AttributeDriver implements MappingDriver
                         ],
                     );
                 } elseif ($customGeneratorAttribute !== null) {
+                    if ($generatedValueAttribute === null) {
+                        $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_CUSTOM);
+                    }
+
                     $metadata->setCustomGeneratorDefinition(
                         [
                             'class' => $customGeneratorAttribute->class,
@@ -358,8 +364,10 @@ class AttributeDriver implements MappingDriver
                     throw MappingException::invalidAttributeOnEmbeddable($metadata->name, Mapping\OneToOne::class);
                 }
 
-                if ($this->reader->getPropertyAttribute($property, Mapping\Id::class)) {
-                    $mapping['id'] = true;
+                $idAttribute = $this->reader->getPropertyAttribute($property, Mapping\Id::class);
+                if ($idAttribute !== null) {
+                    $mapping['id']         = true;
+                    $mapping['idPosition'] = $idAttribute->position;
                 }
 
                 $mapping['targetEntity']  = $oneToOneAttribute->targetEntity;
@@ -397,7 +405,8 @@ class AttributeDriver implements MappingDriver
                 $idAttribute = $this->reader->getPropertyAttribute($property, Mapping\Id::class);
 
                 if ($idAttribute !== null) {
-                    $mapping['id'] = true;
+                    $mapping['id']         = true;
+                    $mapping['idPosition'] = $idAttribute->position;
                 }
 
                 $mapping['joinColumns']  = $joinColumns;
@@ -422,6 +431,14 @@ class AttributeDriver implements MappingDriver
 
                     if ($joinTableAttribute->options) {
                         $joinTable['options'] = $joinTableAttribute->options;
+                    }
+
+                    if ($joinTableAttribute->foreignKeyName !== null) {
+                        $joinTable['foreignKeyName'] = $joinTableAttribute->foreignKeyName;
+                    }
+
+                    if ($joinTableAttribute->inverseForeignKeyName !== null) {
+                        $joinTable['inverseForeignKeyName'] = $joinTableAttribute->inverseForeignKeyName;
                     }
 
                     foreach ($joinTableAttribute->joinColumns as $joinColumn) {
@@ -683,6 +700,7 @@ class AttributeDriver implements MappingDriver
      *                   onDelete: mixed,
      *                   columnDefinition: string|null,
      *                   referencedColumnName: string,
+     *                   foreignKeyName: string|null,
      *                   options?: array<string, mixed>
      *               }
      */
@@ -696,6 +714,7 @@ class AttributeDriver implements MappingDriver
             'onDelete' => $joinColumn->onDelete,
             'columnDefinition' => $joinColumn->columnDefinition,
             'referencedColumnName' => $joinColumn->referencedColumnName,
+            'foreignKeyName' => $joinColumn->foreignKeyName,
         ];
 
         if ($joinColumn->options) {

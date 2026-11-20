@@ -2,6 +2,18 @@
 
 All notable changes in `sebastianbergmann/environment` are documented in this file using the [Keep a CHANGELOG](http://keepachangelog.com/) principles.
 
+## [9.3.3] - 2026-10-01
+
+### Changed
+
+* [#98](https://github.com/sebastianbergmann/environment/pull/98): `Runtime::getCurrentSettings()` no longer spawns a child process to determine the built-in default values of INI settings on PHP 8.6 and later
+
+## [9.3.2] - 2026-05-25
+
+### Fixed
+
+* [#99](https://github.com/sebastianbergmann/environment/issues/99): `Runtime::getCurrentSettings()` forwards empty-string overrides for php.ini-only extensions
+
 ## [9.3.1] - 2026-05-21
 
 ### Fixed
@@ -37,6 +49,12 @@ All notable changes in `sebastianbergmann/environment` are documented in this fi
 ### Removed
 
 * This component is no longer supported on PHP 8.3
+
+## [8.1.2] - 2026-05-25
+
+### Fixed
+
+* [#99](https://github.com/sebastianbergmann/environment/issues/99): `Runtime::getCurrentSettings()` forwards empty-string overrides for php.ini-only extensions
 
 ## [8.1.1] - 2026-05-21
 
@@ -293,13 +311,15 @@ All notable changes in `sebastianbergmann/environment` are documented in this fi
 
 * This component is no longer supported on PHP 5.6
 
+[9.3.3]: https://github.com/sebastianbergmann/environment/compare/9.3.2...9.3.3
+[9.3.2]: https://github.com/sebastianbergmann/environment/compare/9.3.1...9.3.2
 [9.3.1]: https://github.com/sebastianbergmann/environment/compare/9.3.0...9.3.1
 [9.3.0]: https://github.com/sebastianbergmann/environment/compare/9.2.0...9.3.0
 [9.2.0]: https://github.com/sebastianbergmann/environment/compare/9.1.0...9.2.0
 [9.1.0]: https://github.com/sebastianbergmann/environment/compare/9.0.1...9.1.0
 [9.0.1]: https://github.com/sebastianbergmann/environment/compare/9.0.0...9.0.1
 [9.0.0]: https://github.com/sebastianbergmann/environment/compare/8.1...9.0.0
-[8.1.1]: https://github.com/sebastianbergmann/environment/compare/8.1.0...8.1
+[8.1.2]: https://github.com/sebastianbergmann/environment/compare/8.1.1...8.1.2
 [8.1.1]: https://github.com/sebastianbergmann/environment/compare/8.1.0...8.1.1
 [8.1.0]: https://github.com/sebastianbergmann/environment/compare/8.0.4...8.1.0
 [8.0.4]: https://github.com/sebastianbergmann/environment/compare/8.0.3...8.0.4

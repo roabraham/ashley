@@ -12,12 +12,12 @@ namespace SebastianBergmann\CodeCoverage\Serialization;
 use const PHP_EOL;
 use function preg_replace_callback;
 use function serialize;
-use function str_starts_with;
 use DateTimeImmutable;
 use SebastianBergmann\CodeCoverage\CodeCoverage;
 use SebastianBergmann\CodeCoverage\Data\ProcessedCodeCoverageData;
 use SebastianBergmann\CodeCoverage\Util\Filesystem;
 use SebastianBergmann\CodeCoverage\Util\PathReducer;
+use SebastianBergmann\CodeCoverage\Util\Phar;
 use SebastianBergmann\CodeCoverage\Version;
 use SebastianBergmann\Environment\Runtime;
 use SebastianBergmann\GitState\Builder as GitStateBuilder;
@@ -49,14 +49,14 @@ use SebastianBergmann\GitState\Builder as GitStateBuilder;
  *     },
  *     basePath: string,
  *     codeCoverage: ProcessedCodeCoverageData,
- *     testResults: array<string, array{size: string, status: string, time: float}>,
+ *     testResults: array<non-empty-string, array{size: string, status: string, time: float}>,
  * }
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for phpunit/php-code-coverage
  */
 final readonly class Serializer
 {
-    public const int SERIALIZATION_FORMAT = 1;
+    public const int SERIALIZATION_FORMAT = 4;
 
     /**
      * @param non-empty-string $target
@@ -107,7 +107,7 @@ final readonly class Serializer
 
         $serializedData = serialize($data);
 
-        if (str_starts_with(self::class, 'PHPUnitPHAR\\')) {
+        if (Phar::isBundled()) {
             // @codeCoverageIgnoreStart
             $serializedData = $this->stripPharPrefix($serializedData);
             // @codeCoverageIgnoreEnd
@@ -124,8 +124,6 @@ final readonly class Serializer
     }
 
     /**
-     * @param non-empty-string $serialized
-     *
      * @throws PharPrefixCouldNotBeStrippedException
      *
      * @return non-empty-string
@@ -141,7 +139,7 @@ final readonly class Serializer
             $serialized,
         );
 
-        if ($result === null) {
+        if ($result === null || $result === '') {
             // @codeCoverageIgnoreStart
             throw new PharPrefixCouldNotBeStrippedException;
             // @codeCoverageIgnoreEnd

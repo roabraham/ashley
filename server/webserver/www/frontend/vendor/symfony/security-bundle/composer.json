@@ -16,7 +16,7 @@
         }
     ],
     "require": {
-        "php": ">=8.4",
+        "php": ">=8.4.1",
         "composer-runtime-api": ">=2.1",
         "ext-xml": "*",
         "symfony/clock": "^7.4|^8.0",
@@ -24,11 +24,11 @@
         "symfony/dependency-injection": "^7.4|^8.0",
         "symfony/event-dispatcher": "^7.4|^8.0",
         "symfony/http-kernel": "^7.4|^8.0",
-        "symfony/http-foundation": "^7.4|^8.0",
+        "symfony/http-foundation": "^7.4.23|^8.1.11",
         "symfony/password-hasher": "^7.4|^8.0",
-        "symfony/security-core": "^7.4|^8.0",
+        "symfony/security-core": "^8.1.10",
         "symfony/security-csrf": "^7.4|^8.0",
-        "symfony/security-http": "^7.4|^8.0",
+        "symfony/security-http": "^8.1.9",
         "symfony/service-contracts": "^2.5|^3"
     },
     "require-dev": {
@@ -42,7 +42,9 @@
         "symfony/framework-bundle": "^7.4|^8.0",
         "symfony/http-client": "^7.4|^8.0",
         "symfony/ldap": "^7.4|^8.0",
+        "symfony/lock": "^7.4|^8.0",
         "symfony/process": "^7.4|^8.0",
+        "symfony/property-info": "^7.4|^8.0",
         "symfony/rate-limiter": "^7.4|^8.0",
         "symfony/runtime": "^7.4|^8.0",
         "symfony/serializer": "^7.4|^8.0",

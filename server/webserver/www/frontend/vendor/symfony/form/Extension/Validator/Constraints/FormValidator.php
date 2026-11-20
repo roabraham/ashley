@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Form\Extension\Validator\Constraints;
 
+use Symfony\Component\Form\Flow\FormFlowInterface;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints\Composite;
@@ -29,6 +30,9 @@ class FormValidator extends ConstraintValidator
      */
     private \SplObjectStorage $resolvedGroups;
 
+    /**
+     * @psalm-suppress ParamNameMismatch
+     */
     public function validate(mixed $form, Constraint $formConstraint): void
     {
         if (!$formConstraint instanceof Form) {
@@ -53,8 +57,8 @@ class FormValidator extends ConstraintValidator
             }
 
             $data = $form->getData();
-            // Validate the data against its own constraints
-            $validateDataGraph = $form->isRoot()
+            // Validate the data of the root form and of the current step of a flow against its own constraints
+            $validateDataGraph = ($form->isRoot() || (self::isCurrentFlowStep($form) && !$config->getInheritData()))
                 && (\is_object($data) || \is_array($data))
                 && (\is_array($groups) || ($groups instanceof GroupSequence && $groups->groups))
             ;
@@ -189,7 +193,7 @@ class FormValidator extends ConstraintValidator
         }
 
         // Mark the form with an error if it contains extra fields
-        if (!$config->getOption('allow_extra_fields') && \count($form->getExtraData()) > 0) {
+        if (!$config->getOption('allow_extra_fields') && $form->getExtraData()) {
             $this->context->setConstraint($formConstraint);
             $this->context->buildViolation($config->getOption('extra_fields_message', ''))
                 ->setParameter('{{ extra_fields }}', '"'.implode('", "', array_keys($form->getExtraData())).'"')
@@ -244,6 +248,8 @@ class FormValidator extends ConstraintValidator
      *
      * @param string|GroupSequence|array<string|GroupSequence>|callable $groups The validation groups
      *
+     * @param-immediately-invoked-callable $groups
+     *
      * @return GroupSequence|array<string|GroupSequence>
      */
     private static function resolveValidationGroups(string|GroupSequence|array|callable $groups, FormInterface $form): GroupSequence|array
@@ -257,6 +263,13 @@ class FormValidator extends ConstraintValidator
         }
 
         return (array) $groups;
+    }
+
+    private static function isCurrentFlowStep(FormInterface $form): bool
+    {
+        $parent = $form->getParent();
+
+        return $parent instanceof FormFlowInterface && $form->getName() === $parent->getCursor()->getCurrentStep();
     }
 
     private static function getConstraintsInGroups(array $constraints, string|array $group): array

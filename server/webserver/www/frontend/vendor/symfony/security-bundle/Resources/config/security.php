@@ -95,6 +95,7 @@ return static function (ContainerConfigurator $container) {
                     'security.user_checker_locator' => service('security.user_checker_locator'),
                     'security.firewall.event_dispatcher_locator' => service('security.firewall.event_dispatcher_locator'),
                     'security.csrf.token_manager' => service('security.csrf.token_manager')->ignoreOnInvalid(),
+                    'security.firewall_config_locator' => service('security.firewall_config_locator')->ignoreOnInvalid(),
                 ]),
                 abstract_arg('authenticators'),
             ])
@@ -163,12 +164,16 @@ return static function (ContainerConfigurator $container) {
                 service('security.authentication.trust_resolver'),
                 service('security.authorization_checker'),
                 service('security.role_hierarchy')->nullOnInvalid(),
+                service('security.access.decision_manager'),
+                service('security.token_storage'),
             ])
             ->tag('security.voter', ['priority' => 245])
 
         ->set('security.access.closure_voter', ClosureVoter::class)
             ->args([
                 service('security.authorization_checker'),
+                service('security.access.decision_manager'),
+                service('security.token_storage'),
             ])
             ->tag('security.voter', ['priority' => 245])
 
@@ -239,6 +244,7 @@ return static function (ContainerConfigurator $container) {
                 service('router')->nullOnInvalid(),
                 service('security.token_storage')->nullOnInvalid(),
             ])
+            ->tag('kernel.reset', ['method' => 'reset', 'on_invalid' => 'ignore'])
 
         ->set('security.route_loader.logout', LogoutRouteLoader::class)
             ->args([
@@ -311,17 +317,21 @@ return static function (ContainerConfigurator $container) {
             ->tag('kernel.event_subscriber')
 
         ->set('security.is_granted_attribute_expression_language', BaseExpressionLanguage::class)
+            ->lazy()
             ->args([service('cache.security_is_granted_attribute_expression_language')->nullOnInvalid()])
 
         ->set('cache.security_is_granted_attribute_expression_language')
             ->parent('cache.system')
+            ->private()
             ->tag('cache.pool')
 
         ->set('security.is_csrf_token_valid_attribute_expression_language', BaseExpressionLanguage::class)
+            ->lazy()
             ->args([service('cache.security_is_csrf_token_valid_attribute_expression_language')->nullOnInvalid()])
 
         ->set('cache.security_is_csrf_token_valid_attribute_expression_language')
             ->parent('cache.system')
+            ->private()
             ->tag('cache.pool')
     ;
 };

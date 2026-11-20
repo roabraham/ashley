@@ -9,6 +9,9 @@
  */
 namespace PHPUnit\Framework\MockObject;
 
+/**
+ * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
+ */
 interface InvocationMocker extends InvocationStubber
 {
     /**
@@ -25,6 +28,11 @@ interface InvocationMocker extends InvocationStubber
      * @return $this
      */
     public function withParameterSetsInAnyOrder(mixed ...$arguments): self;
+
+    /**
+     * @return $this
+     */
+    public function withParameterSetsInPartialOrder(mixed ...$arguments): self;
 
     /**
      * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit

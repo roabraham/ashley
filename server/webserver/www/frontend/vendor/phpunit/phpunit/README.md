@@ -31,7 +31,7 @@ Please refer to the [documentation](https://phpunit.de/documentation.html?ref=gi
 
 Please refer to [CONTRIBUTING.md](https://github.com/sebastianbergmann/phpunit/blob/main/.github/CONTRIBUTING.md) for information on how to contribute to PHPUnit and its related projects.
 
-A big "Thank you!" to everyone who has contributed to PHPUnit!
+A big "Thank you!" to everyone who has contributed to PHPUnit, its [documentation](https://github.com/sebastianbergmann/phpunit-documentation-english), or one of its dependencies!
 You can find a detailed list of contributors on every PHPUnit related package on GitHub.
 
 Here is a list of all components that are primarily developed and maintained by [Sebastian Bergmann](https://sebastian-bergmann.de/open-source.html?ref=github):
@@ -48,6 +48,7 @@ Here is a list of all components that are primarily developed and maintained by 
 * [sebastian/diff](https://github.com/sebastianbergmann/diff)
 * [sebastian/environment](https://github.com/sebastianbergmann/environment)
 * [sebastian/exporter](https://github.com/sebastianbergmann/exporter)
+* [sebastian/file-filter](https://github.com/sebastianbergmann/file-filter)
 * [sebastian/git-state](https://github.com/sebastianbergmann/git-state)
 * [sebastian/global-state](https://github.com/sebastianbergmann/global-state)
 * [sebastian/lines-of-code](https://github.com/sebastianbergmann/lines-of-code)
@@ -57,8 +58,6 @@ Here is a list of all components that are primarily developed and maintained by 
 * [sebastian/type](https://github.com/sebastianbergmann/type)
 * [sebastian/version](https://github.com/sebastianbergmann/version)
 
-A very special thanks to everyone who has contributed to the [PHPUnit Manual](https://github.com/sebastianbergmann/phpunit-documentation-english).
-
 In addition to the components listed above, PHPUnit depends on the components listed below:
 
 * [myclabs/deep-copy](https://github.com/myclabs/DeepCopy)
@@ -66,13 +65,11 @@ In addition to the components listed above, PHPUnit depends on the components li
 * [phar-io/manifest](https://github.com/phar-io/manifest)
 * [phar-io/version](https://github.com/phar-io/version)
 * [staabm/side-effects-detector](https://github.com/staabm/side-effects-detector)
-* [theseer/tokenizer](https://github.com/theseer/tokenizer)
 
 These tools are used to develop PHPUnit:
 
 * [Composer](https://getcomposer.org/)
 * [Phive](https://phar.io/)
-* [PHP Autoload Builder](https://github.com/theseer/Autoload/)
 * [PHP-CS-Fixer](https://cs.symfony.com/)
 * [PHP-Scoper](https://github.com/humbug/php-scoper)
 * [PHPStan](https://phpstan.org/)
@@ -93,11 +90,10 @@ These businesses support Sebastian Bergmann's work on PHPUnit:
         </tr>
         <tr>
             <td style="width: 30%; vertical-align: middle;"><a href="https://testmo.com/"><img alt="Testmo GmbH" src=".github/img/testmo.svg" style="width: 200px;"/></a></td>
-            <td style="width: 30%; vertical-align: middle;"><a href="https://www.testmuai.com/?utm_medium=sponsor&utm_source=phpunit"><img alt="TestMu AI" src=".github/img/testmuai.svg" style="width: 200px;"/></a></td>
             <td style="width: 30%; vertical-align: middle;"><a href="https://tideways.com/"><img alt="Tideways GmbH" src=".github/img/tideways.svg" style="width: 200px;"/></a></td>
+            <td style="width: 30%; vertical-align: middle;"><a href="https://typo3.com/"><img alt="TYPO3 GmbH" src=".github/img/typo3.svg" style="width: 200px;"/></a></td>
         </tr>
         <tr>
-            <td style="width: 30%; vertical-align: middle;"><a href="https://typo3.com/"><img alt="TYPO3 GmbH" src=".github/img/typo3.svg" style="width: 200px;"/></a></td>
             <td style="width: 30%; vertical-align: middle;"><a href="https://vema-eg.de/"><img alt="VEMA Versicherungsmakler Genossenschaft eG" src=".github/img/vema.svg" style="width: 200px;"/></a></td>
         </tr>
     </tbody>

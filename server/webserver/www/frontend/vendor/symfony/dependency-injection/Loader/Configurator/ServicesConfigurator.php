@@ -18,6 +18,7 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
+use Symfony\Component\VarExporter\DeepCloner;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>
@@ -40,7 +41,9 @@ class ServicesConfigurator extends AbstractConfigurator
     ) {
         $this->defaults = new Definition();
         $this->instanceof = &$instanceof;
-        $this->anonymousHash = ContainerBuilder::hash($path ?: mt_rand());
+        $projectDir = $container->hasParameter('kernel.project_dir') ? $container->getParameter('kernel.project_dir') : null;
+        // hashing the path relative to the project keeps the ids independent from where the project is
+        $this->anonymousHash = ContainerBuilder::hash($path ? (\is_string($projectDir) && str_starts_with($path, $projectDir) ? substr($path, \strlen($projectDir)) : $path) : mt_rand());
         $this->anonymousCount = &$anonymousCount;
         $instanceof = [];
     }
@@ -87,7 +90,7 @@ class ServicesConfigurator extends AbstractConfigurator
         $definition->setAutowired($defaults->isAutowired());
         $definition->setAutoconfigured($defaults->isAutoconfigured());
         // deep clone, to avoid multiple process of the same instance in the passes
-        $definition->setBindings(unserialize(serialize($defaults->getBindings())));
+        $definition->setBindings(DeepCloner::deepClone($defaults->getBindings()));
         $definition->setChanges([]);
 
         $configurator = new ServiceConfigurator($this->container, $this->instanceof, true, $this, $definition, $id, $defaults->getTags(), $this->path);
@@ -146,7 +149,7 @@ class ServicesConfigurator extends AbstractConfigurator
      *
      * @param InlineServiceConfigurator[]|ReferenceConfigurator[] $services
      */
-    final public function stack(string $id, array $services): AliasConfigurator
+    final public function stack(string $id, array $services): StackConfigurator
     {
         foreach ($services as $i => $service) {
             if ($service instanceof InlineServiceConfigurator) {
@@ -164,14 +167,13 @@ class ServicesConfigurator extends AbstractConfigurator
             }
         }
 
-        $alias = $this->alias($id, '');
-        $alias->definition = $this->set($id)
+        $definition = $this->set($id)
             ->parent('')
             ->args($services)
             ->tag('container.stack')
             ->definition;
 
-        return $alias;
+        return new StackConfigurator($this, $definition);
     }
 
     /**

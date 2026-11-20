@@ -83,7 +83,9 @@ class FormType extends BaseType
                 $view->vars['attr']['readonly'] = true;
             }
 
-            $helpTranslationParameters = array_merge($view->parent->vars['help_translation_parameters'], $helpTranslationParameters);
+            if (!$options['help'] instanceof TranslatableInterface) {
+                $helpTranslationParameters = array_merge($view->parent->vars['help_translation_parameters'], $helpTranslationParameters);
+            }
         }
 
         $formConfig = $form->getConfig();
@@ -138,7 +140,14 @@ class FormType extends BaseType
         };
 
         // Wrap "post_max_size_message" in a closure to translate it lazily
-        $uploadMaxSizeMessage = static fn (Options $options) => static fn () => $options['post_max_size_message'];
+        $uploadMaxSizeMessage = static function (Options $options) {
+            // Read the message here rather than in the returned closure: an arrow
+            // function would capture $options and keep one Options instance alive
+            // for every resolved form.
+            $postMaxSizeMessage = $options['post_max_size_message'];
+
+            return static fn () => $postMaxSizeMessage;
+        };
 
         // For any form that is not represented by a single HTML control,
         // errors should bubble up by default

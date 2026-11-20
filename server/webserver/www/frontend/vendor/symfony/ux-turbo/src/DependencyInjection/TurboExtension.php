@@ -23,6 +23,7 @@ use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\UX\Turbo\Broadcaster\BroadcasterInterface;
+use Symfony\UX\Turbo\StreamSourceRendererInterface;
 use Symfony\UX\Turbo\Twig\TurboStreamListenRendererInterface;
 
 /**
@@ -38,6 +39,7 @@ final class TurboExtension extends Extension implements PrependExtensionInterfac
         $loader = (new PhpFileLoader($container, new FileLocator(\dirname(__DIR__).'/../config')));
         $loader->load('services.php');
         $container->getDefinition('turbo.twig.runtime')->replaceArgument(1, $config['default_transport']);
+        $container->setParameter('.turbo.mercure.ignore_cookie_domain_errors', $config['mercure']['ignore_cookie_domain_errors']);
 
         $this->registerTwig($config, $container);
         $this->registerBroadcast($config, $container, $loader);
@@ -58,6 +60,10 @@ final class TurboExtension extends Extension implements PrependExtensionInterfac
         $container
             ->registerForAutoconfiguration(TurboStreamListenRendererInterface::class)
             ->addTag('turbo.renderer.stream_listen');
+
+        $container
+            ->registerForAutoconfiguration(StreamSourceRendererInterface::class)
+            ->addTag('turbo.stream_source_renderer');
     }
 
     /**
@@ -112,12 +118,13 @@ final class TurboExtension extends Extension implements PrependExtensionInterfac
             return false;
         }
 
-        // check that FrameworkBundle 6.3 or higher is installed
+        // Before Symfony 8.2, FrameworkBundle provided the AssetMapper configuration.
         $bundlesMetadata = $container->getParameter('kernel.bundles_metadata');
         if (!\is_array($bundlesMetadata) || !isset($bundlesMetadata['FrameworkBundle'])) {
             return false;
         }
 
-        return is_file($bundlesMetadata['FrameworkBundle']['path'].'/Resources/config/asset_mapper.php');
+        return isset($bundlesMetadata['AssetMapperBundle'])
+            || is_file($bundlesMetadata['FrameworkBundle']['path'].'/Resources/config/asset_mapper.php');
     }
 }

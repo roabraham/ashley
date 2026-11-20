@@ -10,15 +10,16 @@
 namespace SebastianBergmann\CodeCoverage\Node;
 
 use const DIRECTORY_SEPARATOR;
-use function count;
+use function array_pop;
 use function explode;
+use function is_array;
 use function is_file;
 use function sha1_file;
-use function str_ends_with;
 use function substr;
 use SebastianBergmann\CodeCoverage\CodeCoverage;
 use SebastianBergmann\CodeCoverage\Data\ProcessedCodeCoverageData;
 use SebastianBergmann\CodeCoverage\StaticAnalysis\FileAnalyser;
+use SebastianBergmann\CodeCoverage\Test\TestSizes;
 use SebastianBergmann\CodeCoverage\Util\PathReducer;
 
 /**
@@ -27,6 +28,10 @@ use SebastianBergmann\CodeCoverage\Util\PathReducer;
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for phpunit/php-code-coverage
  *
  * @phpstan-import-type TestType from CodeCoverage
+ * @phpstan-import-type TestIndexType from ProcessedCodeCoverageData
+ * @phpstan-import-type TestSizeSet from TestSizes
+ *
+ * @phpstan-type TestDataType array{name: non-empty-string, size: string, status: string, time: float}
  */
 final readonly class Builder
 {
@@ -38,7 +43,7 @@ final readonly class Builder
     }
 
     /**
-     * @param array<string, TestType> $testResults
+     * @param array<non-empty-string, TestType> $testResults
      */
     public function build(ProcessedCodeCoverageData $codeCoverage, array $testResults, string $basePath = ''): Directory
     {
@@ -63,51 +68,94 @@ final readonly class Builder
 
         $root = new Directory($rootPath, null);
 
+        $testData = $this->testDataByTestIndex($codeCoverage->testIds(), $testResults);
+
         $this->addItems(
             $root,
             $this->buildDirectoryStructure($codeCoverage),
-            $testResults,
+            $testData,
+            // The test data is the same for every file of the report, so the
+            // size of each test is resolved to its bit here instead of once
+            // per file
+            File::sizeBitByTestIndex($testData),
+            $codeCoverage->collectsHitCounts(),
         );
 
         return $root;
     }
 
     /**
-     * @param array<string, mixed>    $items
-     * @param array<string, TestType> $tests
+     * Combines the test index to test id table of the coverage data with the test results into
+     * a map of test index to test data, so that consumers of the report tree can resolve the
+     * test indexes used in the coverage data without a separate lookup table.
+     *
+     * @param array<TestIndexType, non-empty-string> $testIds
+     * @param array<non-empty-string, TestType>      $testResults
+     *
+     * @return array<TestIndexType, TestDataType>
      */
-    private function addItems(Directory $root, array $items, array $tests): void
+    private function testDataByTestIndex(array $testIds, array $testResults): array
+    {
+        $testData = [];
+
+        foreach ($testIds as $index => $id) {
+            // Coverage data and test results are provided through separate setters
+            // and can disagree; a test that covered code must remain attributable
+            // in reports even when its metadata is missing
+            $result = $testResults[$id] ?? ['size' => 'unknown', 'status' => 'unknown', 'time' => 0.0];
+
+            $testData[$index] = [
+                'name'   => $id,
+                'size'   => $result['size'],
+                'status' => $result['status'],
+                'time'   => $result['time'],
+            ];
+        }
+
+        return $testData;
+    }
+
+    /**
+     * @param array<array-key, mixed>            $items
+     * @param array<TestIndexType, TestDataType> $tests
+     * @param array<TestIndexType, TestSizeSet>  $sizeBitByTestIndex
+     */
+    private function addItems(Directory $root, array $items, array $tests, array $sizeBitByTestIndex, bool $collectsHitCounts): void
     {
         foreach ($items as $key => $value) {
             $key = (string) $key;
 
-            if (str_ends_with($key, '/f')) {
+            if ($value instanceof FileCoverageData) {
                 $key      = substr($key, 0, -2);
                 $filename = $root->pathAsString() . DIRECTORY_SEPARATOR . $key;
 
-                if (is_file($filename)) {
+                $sha1 = is_file($filename) ? sha1_file($filename) : false;
+
+                if ($sha1 !== false) {
                     $analysisResult = $this->analyser->analyse($filename);
 
                     $root->addFile(
                         new File(
                             $key,
                             $root,
-                            sha1_file($filename),
-                            $value['lineCoverage'],
-                            $value['functionCoverage'],
+                            $sha1,
+                            $value->lineCoverage,
+                            $value->functionCoverage,
                             $tests,
                             $analysisResult->classes(),
                             $analysisResult->traits(),
                             $analysisResult->functions(),
                             $analysisResult->linesOfCode(),
-                            $value['functionCoverage'] !== [],
+                            $value->functionCoverage !== [],
+                            $collectsHitCounts,
+                            $sizeBitByTestIndex,
                         ),
                     );
                 }
-            } else {
+            } elseif (is_array($value)) {
                 $child = $root->addDirectory($key);
 
-                $this->addItems($child, $value, $tests);
+                $this->addItems($child, $value, $tests, $sizeBitByTestIndex, $collectsHitCounts);
             }
         }
     }
@@ -152,7 +200,7 @@ final readonly class Builder
      * )
      * </code>
      *
-     * @return array<string, array<string, array{lineCoverage: array<int, int>, functionCoverage: array<string, array<int, int>>}>>
+     * @return array<array-key, mixed>
      */
     private function buildDirectoryStructure(ProcessedCodeCoverageData $codeCoverage): array
     {
@@ -162,24 +210,25 @@ final readonly class Builder
         $functionCoverage = $codeCoverage->functionCoverage();
 
         foreach ($codeCoverage->coveredFiles() as $originalPath) {
-            $path    = explode(DIRECTORY_SEPARATOR, $originalPath);
-            $pointer = &$result;
-            $max     = count($path);
+            $segments = explode(DIRECTORY_SEPARATOR, $originalPath);
+            $file     = array_pop($segments);
 
-            for ($i = 0; $i < $max; $i++) {
-                $type = '';
+            $cursor = &$result;
 
-                if ($i === ($max - 1)) {
-                    $type = '/f';
+            foreach ($segments as $segment) {
+                if (!isset($cursor[$segment]) || !is_array($cursor[$segment])) {
+                    $cursor[$segment] = [];
                 }
 
-                $pointer = &$pointer[$path[$i] . $type];
+                $cursor = &$cursor[$segment];
             }
 
-            $pointer = [
-                'lineCoverage'     => $lineCoverage[$originalPath] ?? [],
-                'functionCoverage' => $functionCoverage[$originalPath] ?? [],
-            ];
+            $cursor[$file . '/f'] = new FileCoverageData(
+                $lineCoverage[$originalPath] ?? [],
+                $functionCoverage[$originalPath] ?? [],
+            );
+
+            unset($cursor);
         }
 
         return $result;

@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\Messenger;
 
+use Symfony\Component\Messenger\Stamp\StampInterface;
+
 /**
  * @author Samuel Roze <samuel.roze@gmail.com>
  */
@@ -49,6 +51,16 @@ class TraceableMessageBus implements MessageBusInterface
         }
     }
 
+    /**
+     * @return list<array{
+     *     stamps: list<StampInterface>,
+     *     message: object,
+     *     caller: array{name: string, file: string|null, line: int|null},
+     *     callTime: float,
+     *     exception?: \Throwable,
+     *     stamps_after_dispatch: list<StampInterface>,
+     * }>
+     */
     public function getDispatchedMessages(): array
     {
         return $this->dispatchedMessages;
@@ -59,12 +71,15 @@ class TraceableMessageBus implements MessageBusInterface
         $this->dispatchedMessages = [];
     }
 
+    /**
+     * @return array{name: string, file: string|null, line: int|null}
+     */
     private function getCaller(): array
     {
         $trace = debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS, 8);
 
-        $file = $trace[1]['file'] ?? null;
-        $line = $trace[1]['line'] ?? null;
+        $file = $trace[1]['file'] ?? $trace[2]['file'] ?? null;
+        $line = $trace[1]['line'] ?? $trace[2]['line'] ?? null;
 
         $handleTraitFile = (new \ReflectionClass(HandleTrait::class))->getFileName();
         $found = false;
@@ -83,8 +98,8 @@ class TraceableMessageBus implements MessageBusInterface
                 && 'dispatch' === $trace[$i]['function']
                 && is_a($trace[$i]['class'], MessageBusInterface::class, true)
             ) {
-                $file = $trace[$i]['file'];
-                $line = $trace[$i]['line'];
+                $file = $trace[$i]['file'] ?? $trace[$i + 1]['file'] ?? null;
+                $line = $trace[$i]['line'] ?? $trace[$i + 1]['line'] ?? null;
 
                 while (++$i < 8) {
                     if (isset($trace[$i]['function'], $trace[$i]['file']) && empty($trace[$i]['class']) && !str_starts_with($trace[$i]['function'], 'call_user_func')) {

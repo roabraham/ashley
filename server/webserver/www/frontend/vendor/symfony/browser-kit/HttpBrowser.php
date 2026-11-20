@@ -13,6 +13,7 @@ namespace Symfony\Component\BrowserKit;
 
 use Symfony\Component\BrowserKit\Exception\LogicException;
 use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Mime\Part\AbstractPart;
 use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
@@ -86,8 +87,12 @@ class HttpBrowser extends AbstractBrowser
 
         if ($uploadedFiles = $this->getUploadedFiles($request->getFiles())) {
             $part = new FormDataPart(array_replace_recursive($fields, $uploadedFiles));
+            $length = 0;
+            foreach ($part->bodyToIterable() as $chunk) {
+                $length += \strlen($chunk);
+            }
 
-            return [$part->bodyToIterable(), $part->getPreparedHeaders()->toArray()];
+            return [$part->bodyToIterable(), [...$part->getPreparedHeaders()->toArray(), 'Content-Length: '.$length]];
         }
 
         if (!$fields) {
@@ -101,6 +106,8 @@ class HttpBrowser extends AbstractBrowser
                     $v = $vars;
                 } elseif ($v instanceof \Stringable) {
                     $v = (string) $v;
+                } else {
+                    $v = [];
                 }
             }
         });
@@ -133,15 +140,19 @@ class HttpBrowser extends AbstractBrowser
     }
 
     /**
-     * Recursively go through the list. If the file has a tmp_name, convert it to a DataPart.
+     * Recursively go through the list. If the file is an UploadedFile or has a tmp_name, convert it to a DataPart.
      * Keep the original hierarchy.
      */
     private function getUploadedFiles(array $files): array
     {
         $uploadedFiles = [];
         foreach ($files as $name => $file) {
+            if ($file instanceof UploadedFile) {
+                $uploadedFiles[$name] = '' === $file->getPathname() ? new DataPart('', '') : DataPart::fromPath($file->getPathname(), $file->getClientOriginalName(), $file->getClientMimeType());
+                continue;
+            }
             if (!\is_array($file)) {
-                return $uploadedFiles;
+                continue;
             }
             if (!isset($file['tmp_name'])) {
                 $uploadedFiles[$name] = $this->getUploadedFiles($file);

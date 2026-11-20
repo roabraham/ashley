@@ -59,8 +59,8 @@ final class Facade
     }
 
     /**
-     * @param non-empty-string        $target
-     * @param array<string, TestType> $tests
+     * @param non-empty-string                  $target
+     * @param array<non-empty-string, TestType> $tests
      *
      * @throws XmlException
      */
@@ -219,20 +219,34 @@ final class Facade
 
         $fileReport->getWriter()->startElement('coverage');
 
+        $testData = $file->testData();
+
         foreach ($file->lineCoverageData() as $line => $tests) {
             if (!is_array($tests) || count($tests) === 0) {
                 continue;
             }
 
+            $testsById = [];
+
+            foreach ($tests as $testIndex => $count) {
+                if (!isset($testData[$testIndex])) {
+                    continue;
+                }
+
+                $testsById[$testData[$testIndex]['name']] = $count;
+            }
+
             $coverage = $fileReport->lineCoverage((string) $line);
-            $coverage->finalize($tests);
+            $coverage->finalize($testsById);
         }
         $fileReport->getWriter()->endElement();
 
         if ($this->includeSource) {
-            $fileReport->source()->setSourceCode(
-                file_get_contents($file->pathAsString()),
-            );
+            $source = file_get_contents($file->pathAsString());
+
+            if ($source !== false) {
+                $fileReport->source()->setSourceCode($source);
+            }
         }
 
         $fileReport->finalize();
@@ -275,7 +289,7 @@ final class Facade
                 (string) $method->executableLines,
                 (string) $method->executedLines,
                 (string) $method->coverage,
-                $method->crap,
+                (string) $method->crap,
             );
 
             $report->getWriter()->endElement();
@@ -296,14 +310,14 @@ final class Facade
             (string) $function->executableLines,
             (string) $function->executedLines,
             (string) $function->coverage,
-            $function->crap,
+            (string) $function->crap,
         );
 
         $report->getWriter()->endElement();
     }
 
     /**
-     * @param array<string, TestType> $tests
+     * @param array<non-empty-string, TestType> $tests
      */
     private function processTests(array $tests): void
     {

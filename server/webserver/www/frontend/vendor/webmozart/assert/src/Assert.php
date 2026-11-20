@@ -1554,7 +1554,7 @@ class Assert
     {
         static::string($value, $message);
 
-        if (!\preg_match('/^\p{L}+$/u', $value)) {
+        if (!\preg_match('/^\p{L}+$/uD', $value)) {
             $message = self::resolveMessage($message);
             static::reportInvalidArgument(\sprintf(
                 $message ?: 'Expected a value to contain only Unicode letters. Got: %s',
@@ -2030,9 +2030,11 @@ class Assert
     /**
      * @psalm-pure
      *
-     * @param string|object $classOrObject
+     * @template T as class-string|object
+     * @param T $classOrObject
      * @param string|callable():string $message
      *
+     * @return T
      * @throws InvalidArgumentException
      */
     public static function propertyExists(mixed $classOrObject, mixed $property, string|callable $message = ''): object|string
@@ -2140,6 +2142,40 @@ class Assert
             static::reportInvalidArgument(\sprintf(
                 $message ?: 'Expected the key %s to exist.',
                 static::valueToString($key)
+            ));
+        }
+
+        return $array;
+    }
+
+    /**
+     * @psalm-pure
+     *
+     * @param iterable<string|int> $keys
+     * @param string|callable():string $message
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function keysExist(mixed $array, mixed $keys, string|callable $message = ''): array
+    {
+        static::isArray($array, $message);
+        static::isIterable($keys);
+
+        $missing = [];
+
+        foreach ($keys as $key) {
+            static::validArrayKey($key, 'Expected an array key. Got: %s');
+
+            if (!(isset($array[$key]) || \array_key_exists($key, $array))) {
+                $missing[] = $key;
+            }
+        }
+
+        if ([] !== $missing) {
+            $message = self::resolveMessage($message);
+            static::reportInvalidArgument(\sprintf(
+                $message ?: 'Expected the keys %s to exist.',
+                \implode(', ', \array_map(static::valueToString(...), $missing))
             ));
         }
 
@@ -2442,24 +2478,33 @@ class Assert
     {
         static::string($value, $message);
 
-        $originalValue = $value;
-        $value = \str_replace(['urn:', 'uuid:', '{', '}'], '', $value);
+        $uuid = '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}';
 
-        // The nil UUID is special form of UUID that is specified to have all
-        // 128 bits set to zero.
-        if ('00000000-0000-0000-0000-000000000000' === $value) {
-            return $originalValue;
+        // URN form as specified by RFC 9562, e.g. "urn:uuid:ff6f8cb0-...".
+        if (\str_starts_with($value, 'urn:uuid:') && \preg_match('/^urn:uuid:'.$uuid.'$/D', $value)) {
+            return $value;
         }
 
-        if (!\preg_match('/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/D', $value)) {
-            $message = self::resolveMessage($message);
-            static::reportInvalidArgument(\sprintf(
-                $message ?: 'Value %s is not a valid UUID.',
-                static::valueToString($value)
-            ));
+        // "uuid:" prefix, optionally combined with the curly-braced form.
+        if (\str_starts_with($value, 'uuid:') && \preg_match('/^uuid:(?:'.$uuid.'|\{'.$uuid.'\})$/D', $value)) {
+            return $value;
         }
 
-        return $originalValue;
+        // Curly-braced form; the braces must be a matching pair.
+        if (\str_starts_with($value, '{') && \str_ends_with($value, '}') && \preg_match('/^\{'.$uuid.'\}$/D', $value)) {
+            return $value;
+        }
+
+        // Plain form, including the nil UUID with all 128 bits set to zero.
+        if (\preg_match('/^'.$uuid.'$/D', $value)) {
+            return $value;
+        }
+
+        $message = self::resolveMessage($message);
+        static::reportInvalidArgument(\sprintf(
+            $message ?: 'Value %s is not a valid UUID.',
+            static::valueToString($value)
+        ));
     }
 
     /**

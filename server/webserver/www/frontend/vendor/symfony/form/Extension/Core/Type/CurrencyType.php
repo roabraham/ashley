@@ -47,6 +47,14 @@ class CurrencyType extends AbstractType
                     false => '0',
                 };
 
+                // The date alone is ambiguous: "active_at" and "not_active_at" select opposite
+                // sets of currencies, so the key must record which one the date came from.
+                $dateCacheKey = match (true) {
+                    null !== $activeAt => 'A'.$activeAt->format('Y-m-d\TH:i:s'),
+                    null !== $notActiveAt => 'N'.$notActiveAt->format('Y-m-d\TH:i:s'),
+                    default => 'X',
+                };
+
                 return ChoiceList::loader(
                     $this,
                     new IntlCallbackChoiceLoader(
@@ -64,7 +72,7 @@ class CurrencyType extends AbstractType
                             };
 
                             foreach (Currencies::getCurrencyCodes() as $code) {
-                                if (!Currencies::isValidInAnyCountry($code, $legalTender, $active, $activeAt ?? $notActiveAt, $includeUndated)) {
+                                if (!Currencies::isValidInAnyCountry($code, $legalTender, $active, $activeAt ?? $notActiveAt ?? new \DateTimeImmutable(), $includeUndated)) {
                                     continue;
                                 }
 
@@ -74,7 +82,7 @@ class CurrencyType extends AbstractType
                             return array_flip($filteredCurrencyNames);
                         },
                     ),
-                    $choiceTranslationLocale.($activeAt ?? $notActiveAt)?->format('Y-m-d\TH:i:s').$legalTenderCacheKey.(int) $includeUndated,
+                    $choiceTranslationLocale.$dateCacheKey.$legalTenderCacheKey.(int) $includeUndated,
                 );
             },
             'choice_translation_domain' => false,

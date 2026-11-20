@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Tools\Pagination;
 
-use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\Internal\TypeProviderLocator;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\AST\Functions\IdentityFunction;
 use Doctrine\ORM\Query\AST\Node;
@@ -44,14 +44,14 @@ class LimitSubqueryWalker extends TreeWalkerAdapter
         $identifier = $rootClass->getSingleIdentifierFieldName();
 
         if (isset($rootClass->associationMappings[$identifier])) {
-            throw new RuntimeException('Paginating an entity with foreign key as identifier only works when using the Output Walkers. Call Paginator#setUseOutputWalkers(true) before iterating the paginator.');
+            throw new RuntimeException('Paginating an entity with foreign key as identifier only works when using the Output Walkers. Pass $useOutputWalkers = true to the paginator constructor.');
         }
 
         $query = $this->_getQuery();
 
         $query->setHint(
             self::IDENTIFIER_TYPE,
-            Type::getType($rootClass->fieldMappings[$identifier]->type),
+            TypeProviderLocator::fromConnection($query->getEntityManager()->getConnection())->get($rootClass->fieldMappings[$identifier]->type),
         );
 
         $query->setHint(self::FORCE_DBAL_TYPE_CONVERSION, true);
@@ -65,7 +65,7 @@ class LimitSubqueryWalker extends TreeWalkerAdapter
         $pathExpression->type = PathExpression::TYPE_STATE_FIELD;
 
         $selectStatement->selectClause->selectExpressions = [new SelectExpression($pathExpression, '_dctrn_id')];
-        $selectStatement->selectClause->isDistinct        = ($query->getHints()[Paginator::HINT_ENABLE_DISTINCT] ?? true) === true;
+        $selectStatement->selectClause->isDistinct        = ($query->getHints()[PaginatorInterface::HINT_ENABLE_DISTINCT] ?? true) === true;
 
         if (! isset($selectStatement->orderByClause)) {
             return;

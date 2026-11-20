@@ -9,12 +9,15 @@
  */
 namespace PHPUnit\Event;
 
+use function assert;
 use Iterator;
 
 /**
  * @template-implements Iterator<non-negative-int, Event>
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
+ *
+ * @internal This class is not covered by the backward compatibility promise for PHPUnit
  */
 final class EventCollectionIterator implements Iterator
 {
@@ -56,6 +59,8 @@ final class EventCollectionIterator implements Iterator
 
     public function current(): Event
     {
+        assert(isset($this->events[$this->position]));
+
         return $this->events[$this->position];
     }
 

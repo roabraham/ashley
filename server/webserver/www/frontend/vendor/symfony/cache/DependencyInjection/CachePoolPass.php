@@ -12,10 +12,14 @@
 namespace Symfony\Component\Cache\DependencyInjection;
 
 use Symfony\Component\Cache\Adapter\AbstractAdapter;
+use Symfony\Component\Cache\Adapter\ApcuAdapter;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\ChainAdapter;
+use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Adapter\FilesystemTagAwareAdapter;
 use Symfony\Component\Cache\Adapter\NullAdapter;
 use Symfony\Component\Cache\Adapter\ParameterNormalizer;
+use Symfony\Component\Cache\Adapter\PhpFilesAdapter;
 use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 use Symfony\Component\Cache\Messenger\EarlyExpirationDispatcher;
 use Symfony\Component\Cache\PruneableInterface;
@@ -31,6 +35,8 @@ use Symfony\Component\DependencyInjection\Reference;
  */
 class CachePoolPass implements CompilerPassInterface
 {
+    private const ADAPTERS_WITHOUT_PROVIDER = [ApcuAdapter::class, ArrayAdapter::class, FilesystemAdapter::class, FilesystemTagAwareAdapter::class, NullAdapter::class, PhpFilesAdapter::class];
+
     public function process(ContainerBuilder $container): void
     {
         if ($container->hasParameter('cache.prefix.seed')) {
@@ -58,10 +64,12 @@ class CachePoolPass implements CompilerPassInterface
                 continue;
             }
             $class = $adapter->getClass();
+            $factory = $adapter->getFactory();
             $providers = $adapter->getArguments();
             while ($adapter instanceof ChildDefinition) {
                 $adapter = $container->findDefinition($adapter->getParent());
                 $class = $class ?: $adapter->getClass();
+                $factory = $factory ?: $adapter->getFactory();
                 $providers += $adapter->getArguments();
                 if ($t = $adapter->getTag('cache.pool')) {
                     $tags[0] += $t[0];
@@ -84,7 +92,18 @@ class CachePoolPass implements CompilerPassInterface
             } else {
                 $clearer = null;
             }
-            unset($tags[0]['clearer'], $tags[0]['name']);
+            $marshallerServiceId = $tags[0]['marshaller'] ?? null;
+            unset($tags[0]['clearer'], $tags[0]['name'], $tags[0]['marshaller']);
+
+            // count the env vars of ignored attributes, so that the dumper doesn't report them as unused
+            if (\in_array($class, self::ADAPTERS_WITHOUT_PROVIDER, true) || [AbstractAdapter::class, 'createSystemCache'] === $factory) {
+                $container->resolveEnvPlaceholders($tags[0]['provider'] ?? null);
+                unset($tags[0]['provider']);
+            }
+            if (NullAdapter::class === $class) {
+                $container->resolveEnvPlaceholders($tags[0]['default_lifetime'] ?? null);
+                unset($tags[0]['default_lifetime']);
+            }
 
             if (isset($tags[0]['provider'])) {
                 $tags[0]['provider'] = new Reference(static::getServiceProvider($container, $tags[0]['provider']));
@@ -118,7 +137,7 @@ class CachePoolPass implements CompilerPassInterface
 
                     $i = 0;
 
-                    if (isset($chainedTags[0]['provider'])) {
+                    if (isset($chainedTags[0]['provider']) && !\in_array($chainedClass, self::ADAPTERS_WITHOUT_PROVIDER, true)) {
                         $chainedPool->replaceArgument($i++, new Reference(static::getServiceProvider($container, $chainedTags[0]['provider'])));
                     }
 
@@ -126,7 +145,7 @@ class CachePoolPass implements CompilerPassInterface
                         $chainedPool->replaceArgument($i++, $tags[0]['namespace']);
                     }
 
-                    if (isset($tags[0]['default_lifetime'])) {
+                    if (isset($tags[0]['default_lifetime']) && NullAdapter::class !== $chainedClass) {
                         $defaultLifetime = $tags[0]['default_lifetime'];
 
                         if (!is_numeric($defaultLifetime)) {
@@ -135,6 +154,14 @@ class CachePoolPass implements CompilerPassInterface
                         }
 
                         $chainedPool->replaceArgument($i++, $defaultLifetime);
+                    }
+
+                    if (null !== $marshallerServiceId) {
+                        if (null !== $marshallerIndex = $this->findDefaultMarshallerArgumentIndex($adapter)) {
+                            $chainedPool->replaceArgument($marshallerIndex, new Reference($marshallerServiceId));
+                        } elseif (!\in_array($chainedClass, [ArrayAdapter::class, NullAdapter::class], true)) {
+                            throw new InvalidArgumentException(\sprintf('The "marshaller" attribute of the "cache.pool" tag for service "%s" is not supported by chained adapter "%s".', $id, $chainedClass));
+                        }
                     }
 
                     $adapters[] = $chainedPool;
@@ -179,8 +206,16 @@ class CachePoolPass implements CompilerPassInterface
                 }
                 unset($tags[0][$attr]);
             }
+
+            if (null !== $marshallerServiceId && ChainAdapter::class !== $class) {
+                if (null === $marshallerIndex = $this->findDefaultMarshallerArgumentIndex($adapter)) {
+                    throw new InvalidArgumentException(\sprintf('The "marshaller" attribute of the "cache.pool" tag for service "%s" is not supported by adapter "%s"; its service definition must wire "cache.default_marshaller" as one of its arguments.', $id, $class));
+                }
+                $pool->replaceArgument($marshallerIndex, new Reference($marshallerServiceId));
+            }
+
             if (!empty($tags[0])) {
-                throw new InvalidArgumentException(\sprintf('Invalid "cache.pool" tag for service "%s": accepted attributes are "clearer", "provider", "name", "namespace", "default_lifetime", "early_expiration_message_bus", "reset" and "pruneable", found "%s".', $id, implode('", "', array_keys($tags[0]))));
+                throw new InvalidArgumentException(\sprintf('Invalid "cache.pool" tag for service "%s": accepted attributes are "clearer", "provider", "name", "namespace", "default_lifetime", "early_expiration_message_bus", "reset", "pruneable" and "marshaller", found "%s".', $id, implode('", "', array_keys($tags[0]))));
             }
 
             if (null !== $clearer) {
@@ -255,5 +290,16 @@ class CachePoolPass implements CompilerPassInterface
         }
 
         return $name;
+    }
+
+    private function findDefaultMarshallerArgumentIndex(Definition $definition): int|string|null
+    {
+        foreach ($definition->getArguments() as $index => $argument) {
+            if ($argument instanceof Reference && 'cache.default_marshaller' === (string) $argument) {
+                return \is_int($index) ? $index : (str_starts_with($index, 'index_') ? (int) substr($index, 6) : $index);
+            }
+        }
+
+        return null;
     }
 }

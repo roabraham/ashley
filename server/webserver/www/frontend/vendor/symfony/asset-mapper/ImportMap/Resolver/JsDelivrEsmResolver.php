@@ -205,7 +205,7 @@ final class JsDelivrEsmResolver implements PackageResolverInterface
                 'extraFiles' => [],
             ];
 
-            if (0 !== \count($extraFiles)) {
+            if ($extraFiles) {
                 $extraFileResponses[$package] = [];
                 foreach ($extraFiles as $extraFile) {
                     $extraFileResponses[$package][] = [$this->httpClient->request('GET', \sprintf(self::URL_PATTERN_DIST_CSS, $entry->getPackageName(), $entry->version, $extraFile)), $extraFile, $entry->getPackageName(), $entry->version];
@@ -245,7 +245,7 @@ final class JsDelivrEsmResolver implements PackageResolverInterface
                 }
                 $contents[$package]['extraFiles'][$extraFile] = $content;
 
-                if (0 !== \count($extraFiles)) {
+                if ($extraFiles) {
                     $extraFileResponses[$package] = [];
                     foreach ($extraFiles as $newExtraFile) {
                         $extraFileResponses[$package][] = [$this->httpClient->request('GET', \sprintf(self::URL_PATTERN_DIST_CSS, $packageName, $version, $newExtraFile)), $newExtraFile, $packageName, $version];
@@ -285,9 +285,10 @@ final class JsDelivrEsmResolver implements PackageResolverInterface
         preg_match_all(self::IMPORT_REGEX, $content, $matches);
         $dependencies = [];
         foreach ($matches[2] as $index => $packageName) {
-            $version = $matches[3][$index] ?: null;
+            $version = $matches[3][$index] ? rawurldecode($matches[3][$index]) : null;
             $packageName .= $matches[4][$index]; // add the path if any
 
+            self::checkPackagePath($packageName);
             $dependencies[] = new PackageRequireOptions($packageName, $version);
         }
 
@@ -304,6 +305,7 @@ final class JsDelivrEsmResolver implements PackageResolverInterface
         if (ImportMapType::JS === $type) {
             $content = preg_replace_callback(self::IMPORT_REGEX, static function ($matches) use (&$dependencies) {
                 $packageName = $matches[2].$matches[4]; // add the path if any
+                self::checkPackagePath($packageName);
                 $dependencies[] = $packageName;
 
                 // replace the "/npm/package@version/+esm" with "package@version"
@@ -329,10 +331,17 @@ final class JsDelivrEsmResolver implements PackageResolverInterface
                 continue;
             }
 
-            $extraFiles[] = Path::join(\dirname($sourceFilePath), $path);
+            $extraFiles[] = Path::join(\dirname('/'.$sourceFilePath), $path);
         }
 
         return preg_replace('{/\*# sourceMappingURL=[^ ]*+ \*/}', '', $content);
+    }
+
+    private static function checkPackagePath(string $packageName): void
+    {
+        if (preg_match('{(?:^|/)\.\.?(?:/|$)}', $packageName)) {
+            throw new RuntimeException(\sprintf('Invalid import "%s": "." and ".." path segments are not allowed.', $packageName));
+        }
     }
 
     /**

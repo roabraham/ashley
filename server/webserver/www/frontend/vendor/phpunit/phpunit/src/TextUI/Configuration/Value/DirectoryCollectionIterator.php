@@ -9,6 +9,7 @@
  */
 namespace PHPUnit\TextUI\Configuration;
 
+use function assert;
 use Iterator;
 
 /**
@@ -28,6 +29,9 @@ final class DirectoryCollectionIterator implements Iterator
      */
     private int $position = 0;
 
+    /**
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
+     */
     public function __construct(DirectoryCollection $directories)
     {
         $this->directories = $directories->asArray();
@@ -53,6 +57,8 @@ final class DirectoryCollectionIterator implements Iterator
 
     public function current(): Directory
     {
+        assert(isset($this->directories[$this->position]));
+
         return $this->directories[$this->position];
     }
 

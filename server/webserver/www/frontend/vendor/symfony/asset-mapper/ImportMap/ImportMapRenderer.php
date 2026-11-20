@@ -31,8 +31,8 @@ class ImportMapRenderer
     private const DEFAULT_ES_MODULE_SHIMS_POLYFILL_URL = 'https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js';
     private const DEFAULT_ES_MODULE_SHIMS_POLYFILL_INTEGRITY = 'sha384-ie1x72Xck445i0j4SlNJ5W5iGeL3Dpa0zD48MZopgWsjNB/lt60SuG1iduZGNnJn';
 
-    private const LOADER_JSON = "export default (async()=>await(await fetch('%s')).json())()";
-    private const LOADER_CSS = "document.head.appendChild(Object.assign(document.createElement('link'),{rel:'stylesheet',href:'%s'}))";
+    private const LOADER_JSON = 'export default (async()=>await(await fetch(`%s`)).json())()';
+    private const LOADER_CSS = 'document.head.appendChild(Object.assign(document.createElement(`link`),{rel:`stylesheet`,href:`%s`}))';
 
     public function __construct(
         private readonly ImportMapGenerator $importMapGenerator,
@@ -74,7 +74,7 @@ class ImportMapRenderer
 
             $preload = $data['preload'] ?? false;
             if ('json' === $data['type']) {
-                $importMap[$importName] = 'data:application/javascript,'.str_replace('%', '%25', \sprintf(self::LOADER_JSON, addslashes($path)));
+                $importMap[$importName] = $this->createLoaderUrl(self::LOADER_JSON, $path);
                 if ($preload) {
                     $webLinks[$path] = 'fetch';
                 }
@@ -88,7 +88,7 @@ class ImportMapRenderer
                 // importmap entry is a noop
                 $importMap[$importName] = 'data:application/javascript,';
             } else {
-                $importMap[$importName] = 'data:application/javascript,'.str_replace('%', '%25', \sprintf(self::LOADER_CSS, addslashes($path)));
+                $importMap[$importName] = $this->createLoaderUrl(self::LOADER_CSS, $path);
             }
         }
 
@@ -104,7 +104,7 @@ class ImportMapRenderer
         }
 
         $scriptAttributes = $attributes || $this->scriptAttributes ? ' '.$this->createAttributesString($attributes) : '';
-        $importMapJson = json_encode(['imports' => $importMap], \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_HEX_TAG);
+        $importMapJson = json_encode(['imports' => $importMap ?: new \stdClass()], \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_HEX_TAG);
         $output .= <<<HTML
 
             <script type="importmap"$scriptAttributes>
@@ -168,6 +168,14 @@ class ImportMapRenderer
         }
 
         return $output;
+    }
+
+    private function createLoaderUrl(string $loader, string $path): string
+    {
+        $loader = \sprintf($loader, addcslashes($path, '\\`$'));
+
+        // Polyfills like es-module-shims inline the URL in single-quoted strings without escaping it
+        return 'data:application/javascript,'.strtr($loader, ['%' => '%25', '#' => '%23', "'" => '%27', '\\' => '%5C']);
     }
 
     private function escapeAttributeValue(string $value, int $flags = \ENT_COMPAT | \ENT_SUBSTITUTE): string

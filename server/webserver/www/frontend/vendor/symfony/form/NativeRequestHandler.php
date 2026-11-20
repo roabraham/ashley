@@ -23,6 +23,7 @@ use Symfony\Component\Form\Util\ServerParams;
 class NativeRequestHandler implements RequestHandlerInterface
 {
     private ServerParams $serverParams;
+    private MissingDataHandler $missingDataHandler;
 
     /**
      * The allowed keys of the $_FILES array.
@@ -39,6 +40,7 @@ class NativeRequestHandler implements RequestHandlerInterface
     public function __construct(?ServerParams $params = null)
     {
         $this->serverParams = $params ?? new ServerParams();
+        $this->missingDataHandler = new MissingDataHandler();
     }
 
     /**
@@ -52,6 +54,7 @@ class NativeRequestHandler implements RequestHandlerInterface
 
         $name = $form->getName();
         $method = $form->getConfig()->getMethod();
+        $missingData = $this->missingDataHandler->missingData;
 
         if ($method !== self::getRequestMethod()) {
             return;
@@ -63,13 +66,15 @@ class NativeRequestHandler implements RequestHandlerInterface
             if ('' === $name) {
                 $data = $_GET;
             } else {
-                // Don't submit GET requests if the form's name does not exist
-                // in the request
-                if (!isset($_GET[$name])) {
+                $queryData = $_GET[$name] ?? $missingData;
+
+                if ($missingData === $queryData) {
+                    // Don't submit GET requests if the form's name does not exist
+                    // in the request
                     return;
                 }
 
-                $data = $_GET[$name];
+                $data = $this->missingDataHandler->handle($form, $queryData);
             }
         } else {
             // Mark the form with an error if the uploaded size was too large
@@ -79,11 +84,10 @@ class NativeRequestHandler implements RequestHandlerInterface
                 // Submit the form, but don't clear the default values
                 $form->submit(null, false);
 
-                $form->addError(new FormError(
-                    $form->getConfig()->getOption('upload_max_size_message')(),
-                    null,
-                    ['{{ max }}' => $this->serverParams->getNormalizedIniPostMaxSize()]
-                ));
+                $messageTemplate = $form->getConfig()->getOption('upload_max_size_message')();
+                $messageParameters = ['{{ max }}' => $this->serverParams->getNormalizedIniPostMaxSize()];
+
+                $form->addError(new FormError(strtr($messageTemplate, $messageParameters), $messageTemplate, $messageParameters));
 
                 return;
             }
@@ -101,19 +105,28 @@ class NativeRequestHandler implements RequestHandlerInterface
                 $params = \array_key_exists($name, $_POST) ? $_POST[$name] : $default;
                 $files = \array_key_exists($name, $fixedFiles) ? $fixedFiles[$name] : $default;
             } else {
+                $params = $missingData;
+                $files = null;
+            }
+
+            if ($missingData === $params) {
                 // Don't submit the form if it is not present in the request
                 return;
+            }
+
+            if ('PATCH' !== $method) {
+                $params = $this->missingDataHandler->handle($form, $params);
             }
 
             if (\is_array($params) && \is_array($files)) {
                 $data = FormUtil::mergeParamsAndFiles($params, $files);
             } else {
-                $data = $params ?: $files;
+                $data = null === $params || '' === $params || [] === $params ? $files : $params;
             }
         }
 
         // Don't auto-submit the form unless at least one field is present.
-        if ('' === $name && \count(array_intersect_key($data, $form->all())) <= 0) {
+        if ('' === $name && !array_intersect_key($data, $form->all())) {
             return;
         }
 

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 3.5.0
+
+- Add support for Symfony 8.2's standalone `AssetMapperBundle`
+- Alias the `StimulusHelper` service to its class name so it can be autowired
+- Add support for Twig 4
+
+## 3.3.0
+
+- Detect the `stimulusFetch: 'lazy'` directive inside preserved comments (`/*! ... */`)
+- Add support for the Symfony Reprise asset integration (Vite and Rsbuild)
+- Remove `@symfony/stimulus-bridge` from the npm peer dependencies; it is specific to Webpack Encore and must be installed manually there
+
 ## 3.0.0
 
 - Minimum required Symfony version is now 7.4

@@ -48,4 +48,17 @@ final class IsList extends Constraint
     {
         return $this->valueToTypeStringFragment($other) . $this->toString();
     }
+
+    /**
+     * Returns the negated string representation of the constraint.
+     */
+    protected function negatedToString(): string
+    {
+        return 'is not a list';
+    }
+
+    protected function negatedFailureDescription(mixed $other): string
+    {
+        return $this->valueToTypeStringFragment($other) . $this->negatedToString();
+    }
 }

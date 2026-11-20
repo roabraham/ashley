@@ -16,13 +16,24 @@ namespace PHPUnit\TextUI\Configuration;
  */
 final readonly class Directory
 {
+    /**
+     * @var non-empty-string
+     */
     private string $path;
 
+    /**
+     * @param non-empty-string $path
+     *
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
+     */
     public function __construct(string $path)
     {
         $this->path = $path;
     }
 
+    /**
+     * @return non-empty-string
+     */
     public function path(): string
     {
         return $this->path;

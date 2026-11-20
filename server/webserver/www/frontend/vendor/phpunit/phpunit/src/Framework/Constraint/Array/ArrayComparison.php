@@ -86,19 +86,15 @@ abstract class ArrayComparison extends Constraint
      */
     public function toString(): string
     {
-        if ($this->keysMatter && $this->orderMatters) {
-            return 'two arrays are ' . $this->comparisonType();
-        }
+        return 'two arrays are ' . $this->comparisonDescription();
+    }
 
-        if (!$this->keysMatter && !$this->orderMatters) {
-            return 'two arrays are ' . $this->comparisonType() . ' while ignoring keys and order';
-        }
-
-        if (!$this->keysMatter) {
-            return 'two arrays are ' . $this->comparisonType() . ' while ignoring keys';
-        }
-
-        return 'two arrays are ' . $this->comparisonType() . ' while ignoring order';
+    /**
+     * Returns the negated string representation of the constraint.
+     */
+    protected function negatedToString(): string
+    {
+        return 'two arrays are not ' . $this->comparisonDescription();
     }
 
     /**
@@ -112,6 +108,11 @@ abstract class ArrayComparison extends Constraint
         return $this->toString();
     }
 
+    protected function negatedFailureDescription(mixed $other): string
+    {
+        return $this->negatedToString();
+    }
+
     /**
      * @return 'equal'|'identical'
      */
@@ -123,6 +124,23 @@ abstract class ArrayComparison extends Constraint
      * concrete subclass.
      */
     abstract protected function compareLeaf(mixed $expected, mixed $actual): bool;
+
+    private function comparisonDescription(): string
+    {
+        if ($this->keysMatter && $this->orderMatters) {
+            return $this->comparisonType();
+        }
+
+        if (!$this->keysMatter && !$this->orderMatters) {
+            return $this->comparisonType() . ' while ignoring keys and order';
+        }
+
+        if (!$this->keysMatter) {
+            return $this->comparisonType() . ' while ignoring keys';
+        }
+
+        return $this->comparisonType() . ' while ignoring order';
+    }
 
     /**
      * Compares two values, recursing into arrays as needed.

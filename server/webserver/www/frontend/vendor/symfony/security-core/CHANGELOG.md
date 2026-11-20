@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+8.1
+---
+
+ * Add support for enums in `SignatureHasher::computeSignatureHash()`
+ * Add `getParentRoleNames()` method to `RoleHierarchyInterface`
+
 8.0
 ---
 

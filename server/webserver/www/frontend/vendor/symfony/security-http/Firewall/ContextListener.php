@@ -11,7 +11,10 @@
 
 namespace Symfony\Component\Security\Http\Firewall;
 
+use Doctrine\Persistence\Proxy;
+use ProxyManager\Proxy\LazyLoadingInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
@@ -31,7 +34,7 @@ use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Event\TokenDeauthenticatedEvent;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\VarExporter\LazyObjectInterface;
 
 /**
  * ContextListener manages the SecurityContext persistence through a session.
@@ -134,7 +137,7 @@ class ContextListener extends AbstractListener
                 $this->dispatcher?->dispatch(new TokenDeauthenticatedEvent($originalToken, $request));
             }
         } elseif (null !== $token) {
-            $this->logger?->warning('Expected a security token from the session, got something else.', ['key' => $this->sessionKey, 'received' => $token]);
+            $this->logger?->warning('Expected a security token from the session, got something else.', ['key' => $this->sessionKey, 'received' => get_debug_type($token)]);
 
             $token = null;
         }
@@ -174,6 +177,18 @@ class ContextListener extends AbstractListener
                 $session->remove($this->sessionKey);
             }
         } else {
+            if ($user = $token?->getUser()) {
+                if (($reflector = new \ReflectionClass($user))->isUninitializedLazyObject($user)) {
+                    $reflector->initializeLazyObject($user);
+                } elseif ($user instanceof Proxy && !$user->__isInitialized()) {
+                    $user->__load();
+                } elseif ($user instanceof LazyObjectInterface && !$user->isLazyObjectInitialized()) {
+                    $user->initializeLazyObject();
+                } elseif ($user instanceof LazyLoadingInterface && !$user->isProxyInitialized()) {
+                    $user->initializeProxy();
+                }
+            }
+
             $session->set($this->sessionKey, serialize($token));
 
             $this->logger?->debug('Stored the security token in the session.', ['key' => $this->sessionKey]);
@@ -193,6 +208,10 @@ class ContextListener extends AbstractListener
      */
     private function refreshUser(TokenInterface $token): ?TokenInterface
     {
+        if ($token instanceof SwitchUserToken && $token->getOriginalToken()->getUser() && !$this->refreshUser($token->getOriginalToken())) {
+            return null;
+        }
+
         $user = $token->getUser();
 
         $userNotFoundByProvider = false;
@@ -267,12 +286,12 @@ class ContextListener extends AbstractListener
         });
 
         try {
-            $token = unserialize($serializedToken);
+            $token = unserialize($serializedToken, ['allowed_classes' => true]);
         } catch (\ErrorException $e) {
             if (0x37313BC !== $e->getCode()) {
                 throw $e;
             }
-            $this->logger?->warning('Failed to unserialize the security token from the session.', ['key' => $this->sessionKey, 'received' => $serializedToken, 'exception' => $e]);
+            $this->logger?->warning('Failed to unserialize the security token from the session.', ['key' => $this->sessionKey, 'exception' => $e]);
         } finally {
             restore_error_handler();
             ini_set('unserialize_callback_func', $prevUnserializeHandler);
@@ -297,7 +316,7 @@ class ContextListener extends AbstractListener
 
             if (null !== $originalPassword
                 && $refreshedPassword !== $originalPassword
-                && (8 !== \strlen($originalPassword) || hash('crc32c', $refreshedPassword ?? $originalPassword) !== $originalPassword)
+                && (8 !== \strlen($originalPassword) || hash('crc32c', $refreshedPassword ?? '') !== $originalPassword)
             ) {
                 return true;
             }

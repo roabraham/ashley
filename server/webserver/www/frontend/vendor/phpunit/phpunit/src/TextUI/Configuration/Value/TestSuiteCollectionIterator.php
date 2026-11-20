@@ -9,6 +9,7 @@
  */
 namespace PHPUnit\TextUI\Configuration;
 
+use function assert;
 use Iterator;
 
 /**
@@ -28,6 +29,9 @@ final class TestSuiteCollectionIterator implements Iterator
      */
     private int $position = 0;
 
+    /**
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
+     */
     public function __construct(TestSuiteCollection $testSuites)
     {
         $this->testSuites = $testSuites->asArray();
@@ -53,6 +57,8 @@ final class TestSuiteCollectionIterator implements Iterator
 
     public function current(): TestSuite
     {
+        assert(isset($this->testSuites[$this->position]));
+
         return $this->testSuites[$this->position];
     }
 

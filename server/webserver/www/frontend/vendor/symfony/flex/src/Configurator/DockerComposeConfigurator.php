@@ -46,14 +46,15 @@ class DockerComposeConfigurator extends AbstractConfigurator
             return;
         }
 
-        $this->configureDockerCompose($recipe, $config, $options['force'] ?? false);
-
-        $this->write('Docker Compose definitions have been modified. Please run "docker compose up --build" again to apply the changes.');
+        if ($this->configureDockerCompose($recipe, $config, $options['force'] ?? false)) {
+            $this->write('Docker Compose definitions have been modified. Please run "docker compose up --build" again to apply the changes.', IOInterface::NORMAL);
+        }
     }
 
     public function unconfigure(Recipe $recipe, $config, Lock $lock)
     {
         $rootDir = $this->options->get('root-dir');
+        $modified = false;
         foreach ($this->normalizeConfig($config) as $file => $extra) {
             if (null === $dockerComposeFile = $this->findDockerComposeFile($rootDir, $file)) {
                 continue;
@@ -63,7 +64,7 @@ class DockerComposeConfigurator extends AbstractConfigurator
             // Remove recipe and add break line
             $contents = preg_replace(\sprintf('{%s+###> %s ###.*?###< %s ###%s+}s', "\n", $name, $name, "\n"), \PHP_EOL.\PHP_EOL, file_get_contents($dockerComposeFile), -1, $count);
             if (!$count) {
-                return;
+                continue;
             }
 
             foreach ($extra as $key => $value) {
@@ -74,9 +75,12 @@ class DockerComposeConfigurator extends AbstractConfigurator
 
             $this->write(\sprintf('Removing Docker Compose entries from "%s"', $dockerComposeFile));
             file_put_contents($dockerComposeFile, ltrim($contents, "\n"));
+            $modified = true;
         }
 
-        $this->write('Docker Compose definitions have been modified. Please run "docker compose up" again to apply the changes.');
+        if ($modified) {
+            $this->write('Docker Compose definitions have been modified. Please run "docker compose up" again to apply the changes.', IOInterface::NORMAL);
+        }
     }
 
     public function update(RecipeUpdate $recipeUpdate, array $originalConfig, array $newConfig): void
@@ -85,13 +89,24 @@ class DockerComposeConfigurator extends AbstractConfigurator
             return;
         }
 
-        $recipeUpdate->addOriginalFiles(
-            $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getOriginalRecipe(), $originalConfig)
-        );
+        $originalFiles = $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getOriginalRecipe(), $originalConfig, $newConfig, $recipeUpdate->getLock());
+        $newFiles = $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getNewRecipe(), $newConfig, $originalConfig, $recipeUpdate->getLock());
 
-        $recipeUpdate->addNewFiles(
-            $this->getContentsAfterApplyingRecipe($recipeUpdate->getRootDir(), $recipeUpdate->getNewRecipe(), $newConfig)
-        );
+        // files outside of the project directory cannot be patched
+        foreach ($newFiles as $file => $contents) {
+            if (!$this->filesystem->isAbsolutePath($file)) {
+                continue;
+            }
+
+            if ($contents !== $originalFiles[$file]) {
+                $this->io->writeError(\sprintf('  <warning>"%s" is outside of the project directory and was not updated. You might need to adjust it manually.</warning>', $file));
+            }
+
+            unset($originalFiles[$file], $newFiles[$file]);
+        }
+
+        $recipeUpdate->addOriginalFiles($originalFiles);
+        $recipeUpdate->addNewFiles($newFiles);
     }
 
     public static function shouldConfigureDockerRecipe(Composer $composer, IOInterface $io, Recipe $recipe): bool
@@ -229,9 +244,10 @@ class DockerComposeConfigurator extends AbstractConfigurator
         return $line;
     }
 
-    private function configureDockerCompose(Recipe $recipe, array $config, bool $update): void
+    private function configureDockerCompose(Recipe $recipe, array $config, bool $update): bool
     {
         $rootDir = $this->options->get('root-dir');
+        $modified = false;
         foreach ($this->normalizeConfig($config) as $file => $extra) {
             $dockerComposeFile = $this->findDockerComposeFile($rootDir, $file);
             if (null === $dockerComposeFile) {
@@ -275,7 +291,16 @@ class DockerComposeConfigurator extends AbstractConfigurator
                 }
 
                 // Keep end in memory (check break line on previous line)
-                $endAt[$node] = !$i || '' !== trim($lines[$i - 1]) ? $i : $i - 1;
+                if (null !== $node) {
+                    $endAt[$node] = !$i || '' !== trim($lines[$i - 1]) ? $i : $i - 1;
+                    // Prune nodesLines[old node] to match the range the splice will replace.
+                    if (isset($nodesLines[$node][$i])) {
+                        unset($nodesLines[$node][$i]);
+                        if ('' === trim($lines[$i - 1])) {
+                            unset($nodesLines[$node][$i - 1]);
+                        }
+                    }
+                }
                 $node = $matches[1];
                 if (!isset($nodesLines[$node])) {
                     $nodesLines[$node] = [];
@@ -285,7 +310,9 @@ class DockerComposeConfigurator extends AbstractConfigurator
                     $startAt[$node] = $i + 1;
                 }
             }
-            $endAt[$node] = \count($lines) + 1;
+            if (null !== $node) {
+                $endAt[$node] = \count($lines) + 1;
+            }
 
             foreach ($extra as $key => $value) {
                 if (isset($endAt[$key])) {
@@ -303,14 +330,15 @@ class DockerComposeConfigurator extends AbstractConfigurator
                     array_splice($lines, $startAt[$key], $length, ltrim($updatedContents, "\n"));
 
                     // reset any start/end positions after this to the new positions
+                    $shift = $length - 1;
                     foreach ($startAt as $sectionKey => $at) {
                         if ($at > $originalEndAt) {
-                            $startAt[$sectionKey] = $at - $length - 1;
+                            $startAt[$sectionKey] = $at - $shift;
                         }
                     }
                     foreach ($endAt as $sectionKey => $at) {
                         if ($at > $originalEndAt) {
-                            $endAt[$sectionKey] = $at - $length;
+                            $endAt[$sectionKey] = $at - $shift;
                         }
                     }
 
@@ -322,37 +350,44 @@ class DockerComposeConfigurator extends AbstractConfigurator
             }
 
             file_put_contents($dockerComposeFile, implode('', $lines));
+            $modified = true;
         }
+
+        return $modified;
     }
 
-    private function getContentsAfterApplyingRecipe(string $rootDir, Recipe $recipe, array $config): array
+    private function getContentsAfterApplyingRecipe(string $rootDir, Recipe $recipe, array $config, array $otherConfig, Lock $lock): array
     {
-        if (0 === \count($config)) {
-            return [];
-        }
+        $config = $this->normalizeConfig($config);
+        $removedConfig = array_diff_key($this->normalizeConfig($otherConfig), $config);
 
-        $files = array_filter(array_map(function ($file) use ($rootDir) {
-            return $this->findDockerComposeFile($rootDir, $file);
-        }, array_keys($config)));
+        $files = array_map(function ($file) use ($rootDir) {
+            return $this->findDockerComposeFile($rootDir, $file) ?? $rootDir.'/'.$file;
+        }, array_keys($config + $removedConfig));
 
         $originalContents = [];
         foreach ($files as $file) {
             $originalContents[$file] = file_exists($file) ? file_get_contents($file) : null;
         }
 
-        $this->configureDockerCompose(
-            $recipe,
-            $config,
-            true
-        );
+        if ($config) {
+            $this->configureDockerCompose(
+                $recipe,
+                $config,
+                true
+            );
+        }
+
+        if ($removedConfig) {
+            $this->unconfigure($recipe, $removedConfig, $lock);
+        }
 
         $updatedContents = [];
         foreach ($files as $file) {
             $localPath = $file;
-            if (str_starts_with($file, $rootDir)) {
+            if (str_starts_with($file, $rootDir.'/') || str_starts_with($file, $rootDir.\DIRECTORY_SEPARATOR)) {
                 $localPath = substr($file, \strlen($rootDir) + 1);
             }
-            $localPath = ltrim($localPath, '/\\');
             $updatedContents[$localPath] = file_exists($file) ? file_get_contents($file) : null;
         }
 

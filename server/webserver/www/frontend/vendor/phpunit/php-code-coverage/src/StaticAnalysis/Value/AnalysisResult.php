@@ -10,7 +10,7 @@
 namespace SebastianBergmann\CodeCoverage\StaticAnalysis;
 
 /**
- * @phpstan-type LinesType array<int, int>
+ * @phpstan-type LinesType array<positive-int, int>
  *
  * @internal This class is not covered by the backward compatibility promise for phpunit/php-code-coverage
  *
@@ -45,14 +45,24 @@ final readonly class AnalysisResult
     private array $executableLines;
 
     /**
-     * @var array<int, true>
+     * @var array<positive-int, true>
      */
     private array $branchOperatorLines;
 
     /**
-     * @var LinesType
+     * @var array<positive-int, true>
+     */
+    private array $deadLines;
+
+    /**
+     * @var array<int, true>
      */
     private array $ignoredLines;
+
+    /**
+     * @var ?non-empty-string
+     */
+    private ?string $parseError;
 
     /**
      * @param array<string, Interface_> $interfaces
@@ -60,10 +70,12 @@ final readonly class AnalysisResult
      * @param array<string, Trait_>     $traits
      * @param array<string, Function_>  $functions
      * @param LinesType                 $executableLines
-     * @param array<int, true>          $branchOperatorLines
-     * @param LinesType                 $ignoredLines
+     * @param array<positive-int, true> $branchOperatorLines
+     * @param array<positive-int, true> $deadLines
+     * @param array<int, true>          $ignoredLines
+     * @param ?non-empty-string         $parseError
      */
-    public function __construct(array $interfaces, array $classes, array $traits, array $functions, LinesOfCode $linesOfCode, array $executableLines, array $branchOperatorLines, array $ignoredLines)
+    public function __construct(array $interfaces, array $classes, array $traits, array $functions, LinesOfCode $linesOfCode, array $executableLines, array $branchOperatorLines, array $deadLines, array $ignoredLines, ?string $parseError = null)
     {
         $this->interfaces          = $interfaces;
         $this->classes             = $classes;
@@ -72,7 +84,9 @@ final readonly class AnalysisResult
         $this->linesOfCode         = $linesOfCode;
         $this->executableLines     = $executableLines;
         $this->branchOperatorLines = $branchOperatorLines;
+        $this->deadLines           = $deadLines;
         $this->ignoredLines        = $ignoredLines;
+        $this->parseError          = $parseError;
     }
 
     /**
@@ -121,7 +135,7 @@ final readonly class AnalysisResult
     }
 
     /**
-     * @return array<int, true>
+     * @return array<positive-int, true>
      */
     public function branchOperatorLines(): array
     {
@@ -129,10 +143,34 @@ final readonly class AnalysisResult
     }
 
     /**
-     * @return LinesType
+     * @return array<positive-int, true>
+     */
+    public function deadLines(): array
+    {
+        return $this->deadLines;
+    }
+
+    /**
+     * @return array<int, true>
      */
     public function ignoredLines(): array
     {
         return $this->ignoredLines;
+    }
+
+    /**
+     * @phpstan-assert-if-false !null $this->parseError()
+     */
+    public function wasParsed(): bool
+    {
+        return $this->parseError === null;
+    }
+
+    /**
+     * @return ?non-empty-string
+     */
+    public function parseError(): ?string
+    {
+        return $this->parseError;
     }
 }

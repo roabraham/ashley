@@ -323,7 +323,7 @@ class ProfilerController
         phpinfo();
         $phpinfo = ob_get_clean();
 
-        return new Response($phpinfo, 200, ['Content-Type' => 'text/html']);
+        return new Response($phpinfo, 200, ['Content-Type' => \in_array(\PHP_SAPI, ['cli', 'phpdbg'], true) ? 'text/plain' : 'text/html']);
     }
 
     /**
@@ -377,18 +377,18 @@ class ProfilerController
      */
     public function openAction(Request $request): Response
     {
+        $this->denyAccessIfProfilerDisabled();
+
         if (null === $this->baseDir) {
             throw new NotFoundHttpException('The base dir should be set.');
         }
 
-        $this->profiler?->disable();
-
-        $file = $request->query->get('file');
-        $line = $request->query->get('line');
+        $file = $request->query->getString('file');
+        $line = $request->query->getInt('line');
 
         $filename = $this->baseDir.\DIRECTORY_SEPARATOR.$file;
 
-        if (preg_match("'(^|[/\\\\])\.'", $file) || !is_readable($filename)) {
+        if ('' === $file || preg_match("'(^|[/\\\\])\.'", $file) || !is_file($filename) || !is_readable($filename)) {
             throw new NotFoundHttpException(\sprintf('The file "%s" cannot be opened.', $file));
         }
 
@@ -424,6 +424,13 @@ class ProfilerController
 
         $variables['csp_script_nonce'] = $nonces['csp_script_nonce'] ?? null;
         $variables['csp_style_nonce'] = $nonces['csp_style_nonce'] ?? null;
+
+        if (($variables['profile'] ?? null)?->hasCollector('dump')) {
+            $collector = $variables['profile']->getCollector('dump');
+            if ($collector instanceof DumpDataCollector) {
+                $collector->setNonce($variables['csp_script_nonce'], $variables['csp_style_nonce']);
+            }
+        }
 
         $response->setContent($this->twig->render($template, $variables));
 

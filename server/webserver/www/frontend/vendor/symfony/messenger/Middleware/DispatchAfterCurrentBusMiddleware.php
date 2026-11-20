@@ -13,7 +13,9 @@ namespace Symfony\Component\Messenger\Middleware;
 
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\Stamp\DispatchAfterCurrentBusStamp;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 /**
  * Allow to configure messages to be handled after the current bus is finished.
@@ -58,7 +60,15 @@ class DispatchAfterCurrentBusMiddleware implements MiddlewareInterface
              * A call to MessageBusInterface::dispatch() was made from inside the main bus handling,
              * but the message does not have the stamp. So, process it like normal.
              */
-            return $stack->next()->handle($envelope, $stack);
+            $queueLengthBefore = \count($this->queue);
+            try {
+                return $stack->next()->handle($envelope, $stack);
+            } catch (\Throwable $e) {
+                // drop the messages queued by the failed dispatch, they were likely dependent on it
+                $this->queue = \array_slice($this->queue, 0, $queueLengthBefore);
+
+                throw $e;
+            }
         }
 
         // First time we get here, mark as inside a "root dispatch" call:
@@ -73,8 +83,14 @@ class DispatchAfterCurrentBusMiddleware implements MiddlewareInterface
              * This is intentional since the queued commands were likely dependent
              * on the preceding command.
              */
+            $hasDroppedMessages = (bool) $this->queue;
             $this->queue = [];
             $this->isRootDispatchCallRunning = false;
+
+            if ($hasDroppedMessages && $exception instanceof HandlerFailedException) {
+                // a retry must run again the handlers that succeeded, so that they dispatch the dropped messages again
+                throw new HandlerFailedException($exception->getEnvelope()->withoutAll(HandledStamp::class), $exception->getWrappedExceptions());
+            }
 
             throw $exception;
         }
@@ -87,7 +103,7 @@ class DispatchAfterCurrentBusMiddleware implements MiddlewareInterface
             try {
                 // Execute the stored messages
                 $queueItem->getStack()->next()->handle($queueItem->getEnvelope(), $queueItem->getStack());
-            } catch (\Exception $exception) {
+            } catch (\Throwable $exception) {
                 // Gather all exceptions
                 $exceptions[] = $exception;
                 // Restore queue to previous state
@@ -96,7 +112,7 @@ class DispatchAfterCurrentBusMiddleware implements MiddlewareInterface
         }
 
         $this->isRootDispatchCallRunning = false;
-        if (\count($exceptions) > 0) {
+        if ($exceptions) {
             throw new DelayedMessageHandlingException($exceptions, $returnedEnvelope);
         }
 

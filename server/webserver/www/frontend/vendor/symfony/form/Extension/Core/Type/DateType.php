@@ -47,6 +47,27 @@ class DateType extends AbstractType
         'choice' => ChoiceType::class,
     ];
 
+    private const UTC_EQUIVALENT_TIMEZONES = [
+        '+00:00',
+        'Etc/GMT',
+        'Etc/GMT+0',
+        'Etc/GMT-0',
+        'Etc/GMT0',
+        'Etc/Greenwich',
+        'Etc/UCT',
+        'Etc/UTC',
+        'Etc/Universal',
+        'Etc/Zulu',
+        'GMT',
+        'GMT0',
+        'Greenwich',
+        'UCT',
+        'UTC',
+        'Universal',
+        'Z',
+        'Zulu',
+    ];
+
     public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         $dateFormat = \is_int($options['format']) ? $options['format'] : self::DEFAULT_FORMAT;
@@ -147,6 +168,10 @@ class DateType extends AbstractType
                 $yearOptions[$passOpt] = $monthOptions[$passOpt] = $dayOptions[$passOpt] = $options[$passOpt];
             }
 
+            $yearOptions['label'] = $options['labels']['year'];
+            $monthOptions['label'] = $options['labels']['month'];
+            $dayOptions['label'] = $options['labels']['day'];
+
             $builder
                 ->add('year', self::WIDGETS[$options['widget']], $yearOptions)
                 ->add('month', self::WIDGETS[$options['widget']], $monthOptions)
@@ -187,8 +212,10 @@ class DateType extends AbstractType
                     return;
                 }
 
-                if ($date->getTimezone()->getName() !== $options['model_timezone']) {
-                    throw new LogicException(\sprintf('Using a "%s" instance with a timezone ("%s") not matching the configured model timezone "%s" is not supported.', get_debug_type($date), $date->getTimezone()->getName(), $options['model_timezone']));
+                $timezone = $date->getTimezone()->getName();
+
+                if ($timezone !== $options['model_timezone'] && !(\in_array($timezone, self::UTC_EQUIVALENT_TIMEZONES, true) && \in_array($options['model_timezone'], self::UTC_EQUIVALENT_TIMEZONES, true))) {
+                    throw new LogicException(\sprintf('Using a "%s" instance with a timezone ("%s") not matching the configured model timezone "%s" is not supported.', get_debug_type($date), $timezone, $options['model_timezone']));
                 }
             });
         }
@@ -269,6 +296,11 @@ class DateType extends AbstractType
             ];
         };
 
+        $labelsNormalizer = static fn (Options $options, array $labels) => array_replace(
+            ['year' => null, 'month' => null, 'day' => null],
+            array_filter($labels, static fn ($label) => null !== $label)
+        );
+
         $format = static fn (Options $options) => 'single_text' === $options['widget'] ? self::HTML5_FORMAT : self::DEFAULT_FORMAT;
 
         $resolver->setDefaults([
@@ -282,6 +314,7 @@ class DateType extends AbstractType
             'view_timezone' => null,
             'calendar' => null,
             'placeholder' => $placeholderDefault,
+            'labels' => [],
             'html5' => true,
             // Don't modify \DateTime classes by reference, we treat
             // them like immutable value objects
@@ -301,6 +334,8 @@ class DateType extends AbstractType
 
         $resolver->setNormalizer('placeholder', $placeholderNormalizer);
         $resolver->setNormalizer('choice_translation_domain', $choiceTranslationDomainNormalizer);
+        $resolver->setNormalizer('labels', $labelsNormalizer);
+        $resolver->setAllowedTypes('labels', 'array');
 
         $resolver->setAllowedValues('input', [
             'datetime',

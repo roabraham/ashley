@@ -86,7 +86,7 @@ class ChoiceType extends AbstractType
 
             // Check if the choices already contain the empty value
             // Only add the placeholder option if this is not the case
-            if (null !== $options['placeholder'] && 0 === \count($choiceList->getChoicesForValues(['']))) {
+            if (null !== $options['placeholder'] && !$choiceList->getChoicesForValues([''])) {
                 $placeholderView = new ChoiceView(null, '', $options['placeholder'], $options['placeholder_attr']);
 
                 // "placeholder" is a reserved name
@@ -123,7 +123,8 @@ class ChoiceType extends AbstractType
                 }
 
                 // A map from submitted values to integers
-                $valueMap = array_flip($data);
+                // `null` entries are produced by MissingDataHandler for unchecked checkbox children
+                $valueMap = array_flip(array_filter($data, static fn ($v) => null !== $v));
 
                 // Make a copy of the value map to determine whether any unknown
                 // values were submitted
@@ -158,7 +159,7 @@ class ChoiceType extends AbstractType
                 unset($unknownValues['']);
 
                 // Throw exception if unknown values were submitted (multiple choices will be handled in a different event listener below)
-                if (\count($unknownValues) > 0 && !$options['multiple']) {
+                if ($unknownValues && !$options['multiple']) {
                     throw new TransformationFailedException(\sprintf('The choices "%s" do not exist in the choice list.', implode('", "', array_keys($unknownValues))));
                 }
 
@@ -172,7 +173,7 @@ class ChoiceType extends AbstractType
 
             $builder->addEventListener(FormEvents::POST_SUBMIT, static function (FormEvent $event) use (&$unknownValues, $messageTemplate, $translator) {
                 // Throw exception if unknown values were submitted
-                if (\count($unknownValues) > 0) {
+                if ($unknownValues) {
                     $form = $event->getForm();
 
                     $clientDataAsString = \is_scalar($form->getViewData()) ? (string) $form->getViewData() : (\is_array($form->getViewData()) ? implode('", "', array_keys($unknownValues)) : \gettype($form->getViewData()));
@@ -262,6 +263,11 @@ class ChoiceType extends AbstractType
         if (null !== $options['placeholder'] && !$view->vars['placeholder_in_choices']) {
             $view->vars['placeholder'] = $options['placeholder'];
             $view->vars['placeholder_attr'] = $options['placeholder_attr'];
+
+            // The default hides the placeholder of required fields, but an optional parent makes the field optional too
+            if ($options['required'] && !$form->isRequired() && ['hidden' => true] === $options['placeholder_attr']) {
+                $view->vars['placeholder_attr'] = [];
+            }
         }
 
         if ($options['multiple'] && !$options['expanded']) {
@@ -348,6 +354,8 @@ class ChoiceType extends AbstractType
             return new LazyChoiceLoader($choiceLoader);
         };
 
+        $placeholderAttr = static fn (Options $options) => $options['required'] ? ['hidden' => true] : [];
+
         $resolver->setDefaults([
             'multiple' => false,
             'expanded' => false,
@@ -367,7 +375,7 @@ class ChoiceType extends AbstractType
             'group_by' => null,
             'empty_data' => $emptyData,
             'placeholder' => $placeholderDefault,
-            'placeholder_attr' => [],
+            'placeholder_attr' => $placeholderAttr,
             'error_bubbling' => false,
             'compound' => $compound,
             // The view data is always a string or an array of strings,
@@ -437,7 +445,7 @@ class ChoiceType extends AbstractType
             'label_html' => $options['label_html'],
             'attr' => $choiceView->attr,
             'label_translation_parameters' => $choiceView->labelTranslationParameters,
-            'translation_domain' => $options['choice_translation_domain'],
+            'translation_domain' => 'placeholder' === $name ? $options['translation_domain'] : $options['choice_translation_domain'],
             'block_name' => 'entry',
         ];
 

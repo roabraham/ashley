@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\TypeInfo;
 
+use Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
 use Symfony\Component\TypeInfo\Type\ArrayShapeType;
 use Symfony\Component\TypeInfo\Type\BackedEnumType;
 use Symfony\Component\TypeInfo\Type\BuiltinType;
@@ -19,6 +20,7 @@ use Symfony\Component\TypeInfo\Type\EnumType;
 use Symfony\Component\TypeInfo\Type\GenericType;
 use Symfony\Component\TypeInfo\Type\IntersectionType;
 use Symfony\Component\TypeInfo\Type\NullableType;
+use Symfony\Component\TypeInfo\Type\ObjectShapeType;
 use Symfony\Component\TypeInfo\Type\ObjectType;
 use Symfony\Component\TypeInfo\Type\TemplateType;
 use Symfony\Component\TypeInfo\Type\UnionType;
@@ -228,6 +230,27 @@ trait TypeFactoryTrait
     }
 
     /**
+     * Builds an {@see ObjectShapeType} from a string-keyed shape map.
+     *
+     * Each entry is either a bare {@see Type} (treated as a required key) or an
+     * array describing the value type and whether the key is optional; a missing
+     * `optional` key defaults to `false`. Object shapes are always sealed.
+     *
+     * @param array<string, array{type: Type, optional?: bool}|Type> $shape
+     */
+    public static function objectShape(array $shape): ObjectShapeType
+    {
+        $shape = array_map(
+            static fn (array|Type $item): array => $item instanceof Type
+                ? ['type' => $item, 'optional' => false]
+                : ['type' => $item['type'], 'optional' => $item['optional'] ?? false],
+            $shape
+        );
+
+        return new ObjectShapeType($shape);
+    }
+
+    /**
      * @template T of class-string<\UnitEnum>|class-string<\BackedEnum>
      * @template U of BuiltinType<TypeIdentifier::INT>|BuiltinType<TypeIdentifier::STRING>
      *
@@ -320,6 +343,10 @@ trait TypeFactoryTrait
         }
 
         if (1 === \count($unionTypes)) {
+            if ($unionTypes[0] instanceof BuiltinType && $unionTypes[0]->getTypeIdentifier()->isStandalone()) {
+                throw new InvalidArgumentException(\sprintf('Cannot create union with "%s" standalone type.', $unionTypes[0]));
+            }
+
             return self::nullable($unionTypes[0]);
         }
 
@@ -435,7 +462,7 @@ trait TypeFactoryTrait
 
             $valueType = $valueTypes ? CollectionType::mergeCollectionValueTypes($valueTypes) : Type::mixed();
 
-            return self::collection($type, $valueType, $keyType, \is_array($value) && [] !== $value && array_is_list($value));
+            return self::collection($type, $valueType, $keyType, \is_array($value) && $value && array_is_list($value));
         }
 
         if ($value instanceof \ArrayAccess) {

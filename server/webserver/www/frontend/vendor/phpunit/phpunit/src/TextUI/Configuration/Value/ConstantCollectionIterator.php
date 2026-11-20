@@ -9,6 +9,7 @@
  */
 namespace PHPUnit\TextUI\Configuration;
 
+use function assert;
 use Iterator;
 
 /**
@@ -28,6 +29,9 @@ final class ConstantCollectionIterator implements Iterator
      */
     private int $position = 0;
 
+    /**
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
+     */
     public function __construct(ConstantCollection $constants)
     {
         $this->constants = $constants->asArray();
@@ -53,6 +57,8 @@ final class ConstantCollectionIterator implements Iterator
 
     public function current(): Constant
     {
+        assert(isset($this->constants[$this->position]));
+
         return $this->constants[$this->position];
     }
 

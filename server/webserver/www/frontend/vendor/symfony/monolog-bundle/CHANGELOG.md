@@ -1,5 +1,15 @@
 ## Unreleased
 
+* Allow the `WithMonologChannel` attribute to be used on a constructor argument to bind a specific channel to it
+* Add a `timezone` config option to set the timezone used for the timestamp of log records
+* Add `GoogleCloudLoggingFormatter` as `monolog.formatter.google` to services
+* Add `expand_newlines` option to the `error_log` handler
+* Add `parameters` option to the `native_mailer` handler to pass additional parameters to `mail()` (e.g. `-f sender@example.com`)
+* Add `rfc` option to the `syslogudp` handler to select the syslog RFC format (RFC3164, RFC5424 or RFC5424e)
+* Fix `ServiceNotFoundException` when a disabled handler is a member of a `group`, `whatfailuregroup` or `fallbackgroup` handler
+* Allow using `OutputInterface::VERBOSITY_*` constants (or numeric indexes) as keys of the `console` handler `verbosity_levels` option
+* Close all handlers on kernel shutdown (only handlers already instantiated are closed, so unused handlers are not instantiated just to be closed)
+
 ## 4.0.2 (2026-04-02)
 
 * Fix `TaggedIteratorArgument` deprecation warning when using `symfony/dependency-injection` 8.1
@@ -26,6 +36,10 @@
 * Remove `sentry` and `raven` types, use a `service` type with [`sentry/sentry-symfony`](https://docs.sentry.io/platforms/php/guides/symfony/logs/) instead
 * Remove `DebugHandlerPass`
 * Remove support for the `DebugHandler`
+
+## 3.11.3 unreleased
+
+* Fix `ServiceNotFoundException` when a disabled handler is a member of a `group`, `whatfailuregroup` or `fallbackgroup` handler
 
 ## 3.11.2 (2026-04-02)
 

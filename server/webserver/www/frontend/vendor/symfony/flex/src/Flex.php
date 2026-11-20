@@ -32,10 +32,12 @@ use Composer\IO\IOInterface;
 use Composer\IO\NullIO;
 use Composer\Json\JsonFile;
 use Composer\Json\JsonManipulator;
+use Composer\Package\CompletePackageInterface;
 use Composer\Package\Locker;
 use Composer\Package\Package;
 use Composer\Plugin\PluginEvents;
 use Composer\Plugin\PluginInterface;
+use Composer\Plugin\PreCommandRunEvent;
 use Composer\Plugin\PrePoolCreateEvent;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
@@ -75,6 +77,7 @@ class Flex implements PluginInterface, EventSubscriberInterface
     private $installer;
     private $postInstallOutput = [''];
     private $operations = [];
+    private $uninstalledImportMapEntryNames = [];
     private $lock;
     private $displayThanksReminder = 0;
     private $ignorePreleases = false;
@@ -159,8 +162,6 @@ class Flex implements PluginInterface, EventSubscriberInterface
             $input = $trace['args'][0];
             $app = $trace['object'];
 
-            $resolver = new PackageResolver($this->downloader);
-
             try {
                 $command = $input->getFirstArgument();
                 $command = $command ? $app->find($command)->getName() : null;
@@ -173,14 +174,6 @@ class Flex implements PluginInterface, EventSubscriberInterface
                 }
             } elseif ('update' === $command) {
                 $this->displayThanksReminder = 1;
-            } elseif ('outdated' === $command) {
-                $symfonyRequire = null;
-            }
-
-            if (isset(self::$aliasResolveCommands[$command])) {
-                if ($input->hasArgument('packages')) {
-                    $input->setArgument('packages', $resolver->resolve($input->getArgument('packages'), self::$aliasResolveCommands[$command]));
-                }
             }
 
             if (class_exists(BaseConfigCommand::class)) {
@@ -191,7 +184,7 @@ class Flex implements PluginInterface, EventSubscriberInterface
             }
 
             $addCommand = 'add'.(method_exists($app, 'addCommand') ? 'Command' : '');
-            $app->$addCommand(new Command\RecipesCommand($this, $this->lock, $rfs));
+            $app->$addCommand(new Command\RecipesCommand($this, $this->lock, $rfs, $this->options));
             $app->$addCommand(new Command\InstallRecipesCommand($this, $this->options->get('root-dir'), $this->options->get('runtime')['dotenv_path'] ?? '.env'));
             $app->$addCommand(new Command\UpdateRecipesCommand($this, $this->downloader, $rfs, $this->configurator, $this->options->get('root-dir')));
             $app->$addCommand(new Command\DumpEnvCommand($this->config, $this->options));
@@ -199,7 +192,7 @@ class Flex implements PluginInterface, EventSubscriberInterface
             break;
         }
 
-        $symfonyRequire = preg_replace('/\.x$/', '.x-dev', getenv('SYMFONY_REQUIRE') ?: ($composer->getPackage()->getExtra()['symfony']['require'] ?? ''));
+        $symfonyRequire = getenv('SYMFONY_REQUIRE') ?: ($composer->getPackage()->getExtra()['symfony']['require'] ?? '');
 
         if ($symfonyRequire || $this->ignorePreleases) {
             $this->filter = new PackageFilter($io, $symfonyRequire, $this->downloader, $this->ignorePreleases);
@@ -277,6 +270,24 @@ class Flex implements PluginInterface, EventSubscriberInterface
         }
     }
 
+    public function recordUninstalledImportMapEntryNames(PackageEvent $event): void
+    {
+        $operation = $event->getOperation();
+        if (!$operation instanceof UninstallOperation || !$this->shouldRecordOperation($operation, $event->isDevMode(), $event->getComposer())) {
+            return;
+        }
+
+        // the importmap entries of the package must be resolved now, while its files still exist
+        $package = $operation->getPackage();
+        $synchronizer = $this->createPackageJsonSynchronizer($this->options->get('root-dir'));
+        $entryNames = $synchronizer->resolveImportMapEntryNames([
+            'name' => $package->getName(),
+            'keywords' => $package instanceof CompletePackageInterface ? ($package->getKeywords() ?: []) : [],
+        ]);
+
+        $this->uninstalledImportMapEntryNames = array_merge($this->uninstalledImportMapEntryNames, $entryNames);
+    }
+
     public function recordOperations(InstallerEvent $event)
     {
         if (!$event->isExecutingOperations()) {
@@ -293,11 +304,11 @@ class Flex implements PluginInterface, EventSubscriberInterface
             $packages[] = new Package($name, $versionParser->normalize($info['version']), $info['version']);
         }
 
-        $transation = \Closure::bind(function () use ($packages, $event) {
+        $transaction = \Closure::bind(function () use ($packages, $event) {
             return new Transaction($packages, $event->getTransaction()->resultPackageMap);
         }, null, Transaction::class)();
 
-        foreach ($transation->getOperations() as $operation) {
+        foreach ($transaction->getOperations() as $operation) {
             if (!$operation instanceof UninstallOperation && $this->shouldRecordOperation($operation, $event->isDevMode(), $event->getComposer())) {
                 $this->operations[] = $operation;
             }
@@ -386,7 +397,12 @@ class Flex implements PluginInterface, EventSubscriberInterface
         }
 
         $this->io->writeError(\sprintf('<info>Symfony operations: %d recipe%s (%s)</>', \count($recipes), \count($recipes) > 1 ? 's' : '', $this->downloader->getSessionId()));
-        $installContribs = $this->composer->getPackage()->getExtra()['symfony']['allow-contrib'] ?? false;
+        if (false === $installContribs = getenv('SYMFONY_ALLOW_CONTRIB')) {
+            $installContribs = $this->composer->getPackage()->getExtra()['symfony']['allow-contrib'] ?? false;
+        }
+        if (!\is_bool($installContribs)) {
+            $installContribs = filter_var($installContribs, \FILTER_VALIDATE_BOOL);
+        }
         $manifest = null;
         $originalComposerJsonHash = $this->getComposerJsonHash();
         $postInstallRecipes = [];
@@ -420,6 +436,8 @@ class Flex implements PluginInterface, EventSubscriberInterface
                     'n'
                 );
                 if ('n' === $answer) {
+                    // Keep the package in lock but without recipe info, so the recipe can be applied later
+                    $this->lock->set($recipe->getName(), ['version' => $recipe->getPackage()->getPrettyVersion()]);
                     continue;
                 }
                 if ('a' === $answer) {
@@ -509,21 +527,27 @@ class Flex implements PluginInterface, EventSubscriberInterface
             return;
         }
 
-        $rootDir = realpath($rootDir);
-        $vendorDir = trim((new Filesystem())->makePathRelative($this->config->get('vendor-dir'), $rootDir), '/');
-
-        $executor = new ScriptExecutor($this->composer, $this->io, $this->options);
-        $synchronizer = new PackageJsonSynchronizer($rootDir, $vendorDir, $executor, $this->io);
+        $synchronizer = $this->createPackageJsonSynchronizer($rootDir);
 
         if ($synchronizer->shouldSynchronize()) {
             $lockData = $this->composer->getLocker()->getLockData();
 
-            if ($synchronizer->synchronize(array_merge($lockData['packages'] ?? [], $lockData['packages-dev'] ?? []))) {
+            if ($synchronizer->synchronize(array_merge($lockData['packages'] ?? [], $lockData['packages-dev'] ?? []), $this->uninstalledImportMapEntryNames)) {
                 $this->io->writeError('<info>Synchronizing package.json with PHP packages</>');
                 $this->io->writeError('<warning>Don\'t forget to run npm install --force or yarn install --force to refresh your JavaScript dependencies!</>');
                 $this->io->writeError('');
             }
+
+            $this->uninstalledImportMapEntryNames = [];
         }
+    }
+
+    private function createPackageJsonSynchronizer(string $rootDir): PackageJsonSynchronizer
+    {
+        $rootDir = realpath($rootDir);
+        $vendorDir = trim((new Filesystem())->makePathRelative($this->config->get('vendor-dir'), $rootDir), '/');
+
+        return new PackageJsonSynchronizer($rootDir, $vendorDir, new ScriptExecutor($this->composer, $this->io, $this->options), $this->io, $this->options->expandTargetDir('%ASSETS_DIR%'));
     }
 
     /**
@@ -668,6 +692,17 @@ class Flex implements PluginInterface, EventSubscriberInterface
         return array_merge($flexRecipe, $packRecipes, $metaRecipes, array_filter($recipes));
     }
 
+    public function resolvePackageAliases(PreCommandRunEvent $event)
+    {
+        $command = $event->getCommand();
+        $input = $event->getInput();
+
+        if (isset(self::$aliasResolveCommands[$command]) && $input->hasArgument('packages')) {
+            $resolver = new PackageResolver($this->downloader);
+            $input->setArgument('packages', $resolver->resolve($input->getArgument('packages'), self::$aliasResolveCommands[$command]));
+        }
+    }
+
     public function truncatePackages(PrePoolCreateEvent $event)
     {
         if (!$this->filter) {
@@ -705,6 +740,7 @@ class Flex implements PluginInterface, EventSubscriberInterface
             'src-dir' => 'src',
             'var-dir' => 'var',
             'public-dir' => 'public',
+            'assets-dir' => 'assets',
             'root-dir' => $extra['symfony']['root-dir'] ?? '.',
             'runtime' => $extra['runtime'] ?? [],
         ], $extra);
@@ -771,6 +807,14 @@ class Flex implements PluginInterface, EventSubscriberInterface
         $locker = new Locker($this->io, $lockFile, $this->composer->getInstallationManager(), $composerJson);
         $lockData = $locker->getLockData();
         $lockData['content-hash'] = Locker::getContentHash($composerJson);
+
+        // keep empty objects as objects, like Composer does
+        foreach (['stability-flags', 'platform', 'platform-dev'] as $key) {
+            if ([] === ($lockData[$key] ?? null)) {
+                $lockData[$key] = new \stdClass();
+            }
+        }
+
         $lockFile->write($lockData);
     }
 
@@ -842,9 +886,11 @@ class Flex implements PluginInterface, EventSubscriberInterface
         $events = [
             PackageEvents::POST_PACKAGE_UPDATE => 'enableThanksReminder',
             PackageEvents::POST_PACKAGE_INSTALL => 'recordFlexInstall',
+            PackageEvents::PRE_PACKAGE_UNINSTALL => 'recordUninstalledImportMapEntryNames',
             PackageEvents::POST_PACKAGE_UNINSTALL => 'record',
             InstallerEvents::PRE_OPERATIONS_EXEC => 'recordOperations',
             PluginEvents::PRE_POOL_CREATE => 'truncatePackages',
+            PluginEvents::PRE_COMMAND_RUN => 'resolvePackageAliases',
             ScriptEvents::POST_CREATE_PROJECT_CMD => 'configureProject',
             ScriptEvents::POST_INSTALL_CMD => 'install',
             ScriptEvents::PRE_UPDATE_CMD => 'configureInstaller',

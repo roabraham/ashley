@@ -38,6 +38,9 @@ final class ErrorDetailsStamp implements StampInterface
         if (!$throwable instanceof RecoverableExceptionInterface && class_exists(FlattenException::class)) {
             $flattenException = FlattenException::createFromThrowable($throwable);
             $flattenException->setTrace([], $throwable->getFile(), $throwable->getLine());
+            foreach ($flattenException->getAllPrevious() as $previous) {
+                $previous->setTrace([], $previous->getFile(), $previous->getLine());
+            }
         }
 
         return new self($throwable::class, $throwable->getCode(), $throwable->getMessage(), $flattenException);
@@ -69,15 +72,16 @@ final class ErrorDetailsStamp implements StampInterface
             return false;
         }
 
+        // compare codes as strings: XML does not preserve their type
         if ($this->flattenException && $that->flattenException) {
             return $this->flattenException->getClass() === $that->flattenException->getClass()
-                && $this->flattenException->getCode() === $that->flattenException->getCode()
+                && (string) $this->flattenException->getCode() === (string) $that->flattenException->getCode()
                 && $this->flattenException->getFile() === $that->flattenException->getFile()
                 && $this->flattenException->getLine() === $that->flattenException->getLine();
         }
 
         return $this->exceptionClass === $that->exceptionClass
-            && $this->exceptionCode === $that->exceptionCode
+            && (string) $this->exceptionCode === (string) $that->exceptionCode
             && $this->exceptionMessage === $that->exceptionMessage;
     }
 }

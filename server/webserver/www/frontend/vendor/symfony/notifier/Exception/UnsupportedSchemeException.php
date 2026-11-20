@@ -208,6 +208,10 @@ class UnsupportedSchemeException extends LogicException
             'class' => Bridge\Plivo\PlivoTransportFactory::class,
             'package' => 'symfony/plivo-notifier',
         ],
+        'prelude' => [
+            'class' => Bridge\Prelude\PreludeTransportFactory::class,
+            'package' => 'symfony/prelude-notifier',
+        ],
         'primotexto' => [
             'class' => Bridge\Primotexto\PrimotextoTransportFactory::class,
             'package' => 'symfony/primotexto-notifier',
@@ -358,6 +362,12 @@ class UnsupportedSchemeException extends LogicException
         $package = self::SCHEME_TO_PACKAGE_MAP[$provider] ?? null;
         if ($package && !class_exists($package['class'])) {
             parent::__construct(\sprintf('Unable to send notification via "%s" as the bridge is not installed. Try running "composer require %s".', $provider, $package['package']));
+
+            return;
+        }
+
+        if (!$name && $package && \in_array($dsn->getScheme(), ['fakechat+email', 'fakechat+logger', 'fakesms+email', 'fakesms+logger', 'mercure'], true)) {
+            parent::__construct(\sprintf('The "%s" scheme requires a configured "%s" factory. When using "Transport::fromDsn()" or "Transport::fromDsns()", pass it to "new Transport([$factory])" instead.', $dsn->getScheme(), $package['class']), 0, $previous);
 
             return;
         }

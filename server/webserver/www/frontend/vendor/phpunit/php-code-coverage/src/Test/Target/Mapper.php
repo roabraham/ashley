@@ -12,10 +12,12 @@ namespace SebastianBergmann\CodeCoverage\Test\Target;
 use function array_keys;
 use function array_merge;
 use function array_unique;
+use function array_values;
+use function realpath;
 use function strcasecmp;
 
 /**
- * @phpstan-type TargetMap array{namespaces: TargetMapPart, traits: TargetMapPart, classes: TargetMapPart, classesThatExtendClass: TargetMapPart, classesThatImplementInterface: TargetMapPart, methods: TargetMapPart, functions: TargetMapPart, reverseLookup: ReverseLookup}
+ * @phpstan-type TargetMap array{namespaces: TargetMapPart, traits: TargetMapPart, classes: TargetMapPart, classesThatExtendClass: TargetMapPart, classesThatImplementInterface: TargetMapPart, methods: TargetMapPart, functions: TargetMapPart, files: TargetMapPart, directories: TargetMapPart, directoriesRecursively: TargetMapPart, reverseLookup: ReverseLookup}
  * @phpstan-type TargetMapPart array<non-empty-string, array<non-empty-string, list<positive-int>>>
  * @phpstan-type ReverseLookup array<non-empty-string, non-empty-string>
  *
@@ -55,7 +57,7 @@ final readonly class Mapper
                     continue;
                 }
 
-                $result[$file] = array_unique(array_merge($result[$file], $lines));
+                $result[$file] = array_values(array_unique(array_merge($result[$file], $lines)));
             }
         }
 
@@ -71,6 +73,16 @@ final readonly class Mapper
     {
         if (isset($this->map[$target->key()][$target->target()])) {
             return $this->map[$target->key()][$target->target()];
+        }
+
+        if ($target->isFile() || $target->isDirectory() || $target->isDirectoryRecursively()) {
+            $resolved = realpath($target->target());
+
+            if ($resolved !== false && isset($this->map[$target->key()][$resolved])) {
+                return $this->map[$target->key()][$resolved];
+            }
+
+            throw new InvalidCodeCoverageTargetException($target);
         }
 
         foreach (array_keys($this->map[$target->key()]) as $key) {

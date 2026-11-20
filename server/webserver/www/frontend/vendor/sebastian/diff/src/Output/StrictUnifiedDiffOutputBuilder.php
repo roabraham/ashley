@@ -36,6 +36,9 @@ use SebastianBergmann\Diff\Differ;
  */
 final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
 {
+    /**
+     * @var array{addLineNumbers: bool, collapseRanges: bool, commonLineThreshold: int, contextLines: int, emitDiffLineEndWarning: bool, emitNoLineEndEofWarning: bool, fromFile: null|string, fromFileDate: null|string, header: null|string, toFile: null|string, toFileDate: null|string}
+     */
     private static array $default = [
         'addLineNumbers'          => true,  // when false, hunk header is rendered as `@@ @@` (no line numbers); when true, as `@@ -from,range +to,range @@`
         'collapseRanges'          => true,  // ranges of length one are rendered with the trailing `,1`
@@ -62,10 +65,13 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
     private string $header;
 
     /**
-     * @var positive-int
+     * @var int<0, max>
      */
     private int $contextLines;
 
+    /**
+     * @param array<string, mixed> $options
+     */
     public function __construct(array $options = [])
     {
         $options = array_merge(self::$default, $options);
@@ -97,6 +103,7 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
         if (null !== $options['header']) {
             $this->assertString($options, 'header');
 
+            /** @phpstan-ignore assign.propertyType */
             $this->header = $options['header'];
         } else {
             $this->assertString($options, 'fromFile');
@@ -106,9 +113,13 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
 
             $this->header = sprintf(
                 "--- %s%s\n+++ %s%s\n",
+                /** @phpstan-ignore argument.type */
                 $options['fromFile'],
+                /** @phpstan-ignore binaryOp.invalid */
                 null === $options['fromFileDate'] ? '' : "\t" . $options['fromFileDate'],
+                /** @phpstan-ignore argument.type */
                 $options['toFile'],
+                /** @phpstan-ignore binaryOp.invalid */
                 null === $options['toFileDate'] ? '' : "\t" . $options['toFileDate'],
             );
         }
@@ -121,6 +132,9 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
         $this->emitNoLineEndEofWarning = $options['emitNoLineEndEofWarning'];
     }
 
+    /**
+     * @param list<array{0: mixed, 1: int}> $diff
+     */
     public function getDiff(array $diff): string
     {
         if (0 === count($diff)) {
@@ -162,6 +176,9 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
             : $diff;
     }
 
+    /**
+     * @param non-empty-list<array{0: mixed, 1: int}> $diff
+     */
     private function writeDiffHunks(mixed $output, array $diff): void
     {
         assert(is_resource($output));
@@ -170,7 +187,9 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
 
         $upperLimit = count($diff);
 
+        /** @phpstan-ignore offsetAccess.notFound */
         if (0 === $diff[$upperLimit - 1][1]) {
+            /** @phpstan-ignore argument.type */
             $lc = substr($diff[$upperLimit - 1][0], -1);
 
             if ("\n" !== $lc) {
@@ -182,8 +201,11 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
             $toFind = [1 => true, 2 => true];
 
             for ($i = $upperLimit - 1; $i >= 0; $i--) {
+                /** @phpstan-ignore offsetAccess.notFound */
                 if (isset($toFind[$diff[$i][1]])) {
                     unset($toFind[$diff[$i][1]]);
+
+                    /** @phpstan-ignore argument.type */
                     $lc = substr($diff[$i][0], -1);
 
                     if ("\n" !== $lc) {
@@ -307,6 +329,9 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
         );
     }
 
+    /**
+     * @param list<array{0: mixed, 1: int}> $diff
+     */
     private function writeHunk(
         array $diff,
         int $diffStartIndex,
@@ -338,34 +363,52 @@ final class StrictUnifiedDiffOutputBuilder implements DiffOutputBuilderInterface
         }
 
         for ($i = $diffStartIndex; $i < $diffEndIndex; $i++) {
+            /** @phpstan-ignore offsetAccess.notFound */
             if ($diff[$i][1] === Differ::ADDED) {
                 $this->changed = true;
+
+                /** @phpstan-ignore binaryOp.invalid */
                 fwrite($output, '+' . $diff[$i][0]);
             } elseif ($diff[$i][1] === Differ::REMOVED) {
                 $this->changed = true;
+
+                /** @phpstan-ignore binaryOp.invalid */
                 fwrite($output, '-' . $diff[$i][0]);
             } elseif ($diff[$i][1] === Differ::OLD) {
+                /** @phpstan-ignore binaryOp.invalid */
                 fwrite($output, ' ' . $diff[$i][0]);
             } elseif ($diff[$i][1] === Differ::NO_LINE_END_EOF_WARNING) {
+                /** @phpstan-ignore argument.type */
                 fwrite($output, $this->emitNoLineEndEofWarning ? $diff[$i][0] : "\n");
             } elseif ($this->emitDiffLineEndWarning && $diff[$i][1] === Differ::DIFF_LINE_END_WARNING) {
+                /** @phpstan-ignore binaryOp.invalid */
                 fwrite($output, ' ' . $diff[$i][0]);
             }
             // else: unknown/invalid type or skipped warning - silently skip
         }
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     private function assertString(array $options, string $option): void
     {
-        if (!is_string($options[$option])) {
-            throw new ConfigurationException($option, 'a string', $options[$option]);
+        $value = $options[$option] ?? null;
+
+        if (!is_string($value)) {
+            throw new ConfigurationException($option, 'a string', $value);
         }
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     private function assertStringOrNull(array $options, string $option): void
     {
-        if (null !== $options[$option] && !is_string($options[$option])) {
-            throw new ConfigurationException($option, 'a string or <null>', $options[$option]);
+        $value = $options[$option] ?? null;
+
+        if (null !== $value && !is_string($value)) {
+            throw new ConfigurationException($option, 'a string or <null>', $value);
         }
     }
 }

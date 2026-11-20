@@ -100,13 +100,13 @@ class DefaultChoiceListFactory implements ChoiceListFactoryInterface
             // Remove empty group views that may have been created by
             // addChoiceViewsGroupedByCallable()
             foreach ($preferredViews as $key => $view) {
-                if ($view instanceof ChoiceGroupView && 0 === \count($view->choices)) {
+                if ($view instanceof ChoiceGroupView && !$view->choices) {
                     unset($preferredViews[$key]);
                 }
             }
 
             foreach ($otherViews as $key => $view) {
-                if ($view instanceof ChoiceGroupView && 0 === \count($view->choices)) {
+                if ($view instanceof ChoiceGroupView && !$view->choices) {
                     unset($otherViews[$key]);
                 }
             }
@@ -141,6 +141,9 @@ class DefaultChoiceListFactory implements ChoiceListFactoryInterface
         return new ChoiceListView($otherViews, $preferredViews);
     }
 
+    /**
+     * @param-immediately-invoked-callable $isPreferred
+     */
     private static function addChoiceView($choice, string $value, $label, array $keys, &$index, $attr, $labelTranslationParameters, ?callable $isPreferred, array &$preferredViews, array &$preferredViewsOrder, array &$otherViews, bool $duplicatePreferredChoices): void
     {
         // $value may be an integer or a string, since it's stored in the array
@@ -218,11 +221,11 @@ class DefaultChoiceListFactory implements ChoiceListFactoryInterface
                     $duplicatePreferredChoices,
                 );
 
-                if (\count($preferredViewsForGroup) > 0) {
+                if ($preferredViewsForGroup) {
                     $preferredViews[$key] = new ChoiceGroupView($key, $preferredViewsForGroup);
                 }
 
-                if (\count($otherViewsForGroup) > 0) {
+                if ($otherViewsForGroup) {
                     $otherViews[$key] = new ChoiceGroupView($key, $otherViewsForGroup);
                 }
 
@@ -247,6 +250,10 @@ class DefaultChoiceListFactory implements ChoiceListFactoryInterface
         }
     }
 
+    /**
+     * @param-immediately-invoked-callable $groupBy
+     * @param-immediately-invoked-callable $isPreferred
+     */
     private static function addChoiceViewsGroupedByCallable(callable $groupBy, $choice, string $value, $label, array $keys, &$index, $attr, $labelTranslationParameters, ?callable $isPreferred, array &$preferredViews, array &$preferredViewsOrder, array &$otherViews, bool $duplicatePreferredChoices): void
     {
         $groupLabels = $groupBy($choice, $keys[$value], $value);

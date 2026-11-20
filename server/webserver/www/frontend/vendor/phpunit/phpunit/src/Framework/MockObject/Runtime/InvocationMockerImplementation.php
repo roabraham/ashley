@@ -23,12 +23,14 @@ final class InvocationMockerImplementation extends AbstractInvocationImplementat
      * @throws Exception
      * @throws MethodNameNotConfiguredException
      * @throws MethodParametersAlreadyConfiguredException
+     * @throws MethodParametersAlreadyConfiguredForAnotherMatcherException
      *
      * @return $this
      */
     public function with(mixed ...$arguments): InvocationMocker
     {
         $this->ensureParametersCanBeConfigured();
+        $this->ensureNoOtherMatcherHasParametersRuleForSameMethod();
         $this->emitDeprecationWhenCreatedWithoutExplicitExpects();
 
         $this->matcher->setParametersRule(new Rule\Parameters($arguments));
@@ -39,6 +41,7 @@ final class InvocationMockerImplementation extends AbstractInvocationImplementat
     public function withParameterSetsInOrder(mixed ...$arguments): InvocationMocker
     {
         $this->ensureParametersCanBeConfigured();
+        $this->ensureNoOtherMatcherHasParametersRuleForSameMethod();
         $this->emitDeprecationWhenCreatedWithoutExplicitExpects();
 
         $this->matcher->setParametersRule(new Rule\OrderedParameterSets($arguments));
@@ -49,6 +52,7 @@ final class InvocationMockerImplementation extends AbstractInvocationImplementat
     public function withParameterSetsInAnyOrder(mixed ...$arguments): InvocationMocker
     {
         $this->ensureParametersCanBeConfigured();
+        $this->ensureNoOtherMatcherHasParametersRuleForSameMethod();
         $this->emitDeprecationWhenCreatedWithoutExplicitExpects();
 
         $this->matcher->setParametersRule(new Rule\UnorderedParameterSets($arguments));
@@ -56,15 +60,28 @@ final class InvocationMockerImplementation extends AbstractInvocationImplementat
         return $this;
     }
 
+    public function withParameterSetsInPartialOrder(mixed ...$arguments): InvocationMocker
+    {
+        $this->ensureParametersCanBeConfigured();
+        $this->ensureNoOtherMatcherHasParametersRuleForSameMethod();
+        $this->emitDeprecationWhenCreatedWithoutExplicitExpects();
+
+        $this->matcher->setParametersRule(new Rule\PartiallyOrderedParameterSets($arguments));
+
+        return $this;
+    }
+
     /**
      * @throws MethodNameNotConfiguredException
      * @throws MethodParametersAlreadyConfiguredException
+     * @throws MethodParametersAlreadyConfiguredForAnotherMatcherException
      *
      * @return $this
      */
     public function withAnyParameters(): InvocationMocker
     {
         $this->ensureParametersCanBeConfigured();
+        $this->ensureNoOtherMatcherHasParametersRuleForSameMethod();
         $this->emitDeprecationWhenCreatedWithoutExplicitExpects();
 
         $this->matcher->setParametersRule(new Rule\AnyParameters);
@@ -100,6 +117,19 @@ final class InvocationMockerImplementation extends AbstractInvocationImplementat
         $this->matcher->setAfterMatchBuilderId($id);
 
         return $this;
+    }
+
+    /**
+     * @throws MethodParametersAlreadyConfiguredForAnotherMatcherException
+     */
+    private function ensureNoOtherMatcherHasParametersRuleForSameMethod(): void
+    {
+        foreach ($this->configurableMethods as $method) {
+            if ($this->matcher->methodNameRule()->matchesName($method->name()) &&
+                $this->invocationHandler->hasMatcherWithParametersRuleForMethodName($this->matcher, $method->name())) {
+                throw new MethodParametersAlreadyConfiguredForAnotherMatcherException($method->name());
+            }
+        }
     }
 
     private function emitDeprecationWhenCreatedWithoutExplicitExpects(): void

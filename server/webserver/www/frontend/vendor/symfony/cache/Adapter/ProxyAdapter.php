@@ -49,7 +49,7 @@ class ProxyAdapter implements AdapterInterface, NamespacedPoolInterface, CacheIn
             }
         }
         $this->pool = $pool;
-        $this->poolHash = spl_object_hash($pool);
+        $this->poolHash = spl_object_id($pool);
         $this->namespaceLen = \strlen($namespace);
         $this->defaultLifetime = $defaultLifetime;
         self::$createCacheItem ??= \Closure::bind(
@@ -86,6 +86,9 @@ class ProxyAdapter implements AdapterInterface, NamespacedPoolInterface, CacheIn
         );
     }
 
+    /**
+     * @param-immediately-invoked-callable $callback
+     */
     public function get(string $key, callable $callback, ?float $beta = null, ?array &$metadata = null): mixed
     {
         if (!$this->pool instanceof CacheInterface) {

@@ -111,6 +111,11 @@ class NumberToLocalizedStringTransformer implements DataTransformerInterface
 
         $result = $this->castParsedValue($result);
 
+        if (\PHP_VERSION_ID >= 80511 || (\PHP_VERSION_ID >= 80426 && \PHP_VERSION_ID < 80500)) {
+            // NumberFormatter::parse() returns a position in bytes as of PHP 8.4.26 and 8.5.11
+            $position = mb_strlen(substr($value, 0, $position), 'UTF-8');
+        }
+
         if (false !== $encoding = mb_detect_encoding($value, null, true)) {
             $length = mb_strlen($value, $encoding);
             $remainder = mb_substr($value, $position, $length, $encoding);
@@ -144,9 +149,9 @@ class NumberToLocalizedStringTransformer implements DataTransformerInterface
 
         if (null !== $this->scale) {
             $formatter->setAttribute(\NumberFormatter::FRACTION_DIGITS, $this->scale);
-            $formatter->setAttribute(\NumberFormatter::ROUNDING_MODE, $this->roundingMode);
         }
 
+        $formatter->setAttribute(\NumberFormatter::ROUNDING_MODE, $this->roundingMode);
         $formatter->setAttribute(\NumberFormatter::GROUPING_USED, $this->grouping);
 
         return $formatter;

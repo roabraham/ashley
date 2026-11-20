@@ -51,11 +51,11 @@ final readonly class Colors
             '#e5a100',
             '#b88a00',
             '#fad4c0',
-            '#4a2a10',
+            '#371e09',
             '#d45500',
             '#b54400',
-            'var(--bs-gray-200)',
-            'var(--bs-gray-800)',
+            '#eef1f5',
+            '#22272e',
         );
     }
 

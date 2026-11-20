@@ -20,7 +20,6 @@ use Monolog\Processor\PsrLogMessageProcessor;
 use Monolog\ResettableInterface;
 use Symfony\Bridge\Monolog\Handler\FingersCrossed\HttpCodeActivationStrategy;
 use Symfony\Bridge\Monolog\Processor\TokenProcessor;
-use Symfony\Bundle\MonologBundle\MonologBundle;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\Argument\BoundArgument;
 use Symfony\Component\DependencyInjection\ChildDefinition;
@@ -42,6 +41,9 @@ final class MonologExtension extends Extension
     /** @var list<string> */
     private array $nestedHandlers = [];
 
+    /** @var array<string, true> */
+    private array $disabledHandlers = [];
+
     /**
      * Loads the Monolog configuration.
      *
@@ -59,7 +61,22 @@ final class MonologExtension extends Extension
 
             $container->setParameter('monolog.use_microseconds', $config['use_microseconds']);
 
+            if (null !== $config['timezone']) {
+                $prototype = $container->getDefinition('monolog.logger_prototype');
+                $prototype->setArgument(1, []);
+                $prototype->setArgument(2, []);
+                $prototype->setArgument(3, new Definition(\DateTimeZone::class, [$config['timezone']]));
+            }
+
             $handlers = [];
+
+            // Collect disabled handlers first so that group members referencing
+            // them can be skipped, regardless of the order they are declared in.
+            foreach ($config['handlers'] as $name => $handler) {
+                if (!$handler['enabled']) {
+                    $this->disabledHandlers[$name] = true;
+                }
+            }
 
             foreach ($config['handlers'] as $name => $handler) {
                 if (!$handler['enabled']) {
@@ -119,6 +136,9 @@ final class MonologExtension extends Extension
         $container->registerAttributeForAutoconfiguration(WithMonologChannel::class, static function (ChildDefinition $definition, WithMonologChannel $attribute): void {
             $definition->addTag('monolog.logger', ['channel' => $attribute->channel]);
         });
+        $container->registerAttributeForAutoconfiguration(WithMonologChannel::class, static function (ChildDefinition $definition, WithMonologChannel $attribute, \ReflectionParameter $reflector): void {
+            $definition->addTag('monolog.logger', ['channel' => $attribute->channel, 'argument' => $reflector->getName()]);
+        });
     }
 
     public function getXsdValidationBasePath(): string
@@ -147,8 +167,12 @@ final class MonologExtension extends Extension
         $handlerClass = $this->getHandlerClassByType($handler['type']);
         $definition = new Definition($handlerClass);
 
-        if ($handler['include_stacktraces']) {
-            $definition->setConfigurator([MonologBundle::class, 'includeStacktraces']);
+        if ($handler['include_stacktraces'] || null !== $handler['base_path']) {
+            $configurator = new Definition(FormatterConfigurator::class, [
+                $handler['include_stacktraces'],
+                $handler['base_path'],
+            ]);
+            $definition->setConfigurator([$configurator, '__invoke']);
         }
 
         if (null === $handler['process_psr_3_messages']['enabled']) {
@@ -470,6 +494,10 @@ final class MonologExtension extends Extension
             case 'fallbackgroup':
                 $references = [];
                 foreach ($handler['members'] as $nestedHandler) {
+                    if (isset($this->disabledHandlers[$nestedHandler])) {
+                        // a disabled handler is not registered as a service, skip it
+                        continue;
+                    }
                     $nestedHandlerId = $this->getHandlerId($nestedHandler);
                     $this->markNestedHandler($nestedHandlerId);
                     $references[] = new Reference($nestedHandlerId);
@@ -498,10 +526,9 @@ final class MonologExtension extends Extension
                     $handler['facility'],
                     $handler['level'],
                     $handler['bubble'],
+                    $handler['ident'] ?: 'php',
+                    $handler['rfc'],
                 ]);
-                if ($handler['ident']) {
-                    $definition->addArgument($handler['ident']);
-                }
                 break;
 
             case 'native_mailer':
@@ -514,6 +541,9 @@ final class MonologExtension extends Extension
                 ]);
                 if (!empty($handler['headers'])) {
                     $definition->addMethodCall('addHeader', [$handler['headers']]);
+                }
+                if (!empty($handler['parameters'])) {
+                    $definition->addMethodCall('addParameter', [$handler['parameters']]);
                 }
                 break;
 
@@ -631,6 +661,7 @@ final class MonologExtension extends Extension
                     $handler['message_type'],
                     $handler['level'],
                     $handler['bubble'],
+                    $handler['expand_newlines'],
                 ]);
                 break;
 
@@ -768,6 +799,11 @@ final class MonologExtension extends Extension
         if (!\in_array($handlerId, $this->nestedHandlers) && is_subclass_of($handlerClass, ResettableInterface::class)) {
             $definition->addTag('kernel.reset', ['method' => 'reset']);
         }
+
+        // All handlers (including nested ones) are tagged so the handler manager can close them
+        // on kernel shutdown. Unlike "kernel.reset", nested handlers must be closed too, as they
+        // hold resources that are not released when their wrapper handler is reset.
+        $definition->addTag('monolog.handler');
 
         $container->setDefinition($handlerId, $definition);
 

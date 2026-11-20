@@ -48,6 +48,8 @@ class AuthenticatorManager implements AuthenticatorManagerInterface, UserAuthent
 {
     /**
      * @param iterable<mixed, AuthenticatorInterface> $authenticators
+     * @param ExposeSecurityLevel                     $exposeSecurityErrors Passing the removed "bool $eraseCredentials" as 6th argument (pre-8.1 signature) is deprecated since Symfony 8.1
+     * @param string[]                                $requiredBadges
      */
     public function __construct(
         private iterable $authenticators,
@@ -55,10 +57,14 @@ class AuthenticatorManager implements AuthenticatorManagerInterface, UserAuthent
         private EventDispatcherInterface $eventDispatcher,
         private string $firewallName,
         private ?LoggerInterface $logger = null,
-        private bool $eraseCredentials = true,
-        private ExposeSecurityLevel $exposeSecurityErrors = ExposeSecurityLevel::None,
-        private array $requiredBadges = [],
+        private ExposeSecurityLevel|bool $exposeSecurityErrors = ExposeSecurityLevel::None,
+        private array|ExposeSecurityLevel $requiredBadges = [],
     ) {
+        if (\is_bool($exposeSecurityErrors)) {
+            trigger_deprecation('symfony/security-http', '8.1', 'Passing the "$eraseCredentials" argument to "%s::__construct()" is deprecated, as the "eraseCredentials()" method was removed in Symfony 8.0.', self::class);
+            $this->exposeSecurityErrors = $requiredBadges instanceof ExposeSecurityLevel ? $requiredBadges : ExposeSecurityLevel::None;
+            $this->requiredBadges = \func_num_args() > 7 ? func_get_arg(7) : [];
+        }
     }
 
     /**
@@ -77,6 +83,8 @@ class AuthenticatorManager implements AuthenticatorManagerInterface, UserAuthent
 
         // announce the authentication token
         $token = $this->eventDispatcher->dispatch(new AuthenticationTokenCreatedEvent($token, $passport))->getAuthenticatedToken();
+
+        $this->eventDispatcher->dispatch(new AuthenticationSuccessEvent($token), AuthenticationEvents::AUTHENTICATION_SUCCESS);
 
         // authenticate this in the system
         return $this->handleAuthenticationSuccess($token, $passport, $request, $authenticator, $this->tokenStorage->getToken());

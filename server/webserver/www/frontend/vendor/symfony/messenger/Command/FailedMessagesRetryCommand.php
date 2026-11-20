@@ -25,7 +25,6 @@ use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageSkipEvent;
 use Symfony\Component\Messenger\EventListener\StopWorkerOnMessageLimitListener;
 use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Messenger\Stamp\MessageDecodingFailedStamp;
 use Symfony\Component\Messenger\Stamp\SentToFailureTransportStamp;
 use Symfony\Component\Messenger\Transport\Receiver\ListableReceiverInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
@@ -192,7 +191,7 @@ class FailedMessagesRetryCommand extends AbstractFailedMessagesCommand implement
                 }
 
                 // break the loop if all messages are consumed
-                if (0 === \count($envelopes)) {
+                if (!$envelopes) {
                     break;
                 }
 
@@ -212,15 +211,11 @@ class FailedMessagesRetryCommand extends AbstractFailedMessagesCommand implement
     private function runWorker(string $failureTransportName, ReceiverInterface $receiver, SymfonyStyle $io, SymfonyStyle $errorIo, bool $shouldForce): int
     {
         $count = 0;
-        $listener = function (WorkerMessageReceivedEvent $messageReceivedEvent) use ($io, $errorIo, $receiver, $shouldForce, &$count) {
+        $listener = function (WorkerMessageReceivedEvent $messageReceivedEvent) use ($failureTransportName, $io, $errorIo, $receiver, $shouldForce, &$count) {
             ++$count;
             $envelope = $messageReceivedEvent->getEnvelope();
 
             $this->displaySingleMessage($envelope, $io, $errorIo);
-
-            if ($envelope->last(MessageDecodingFailedStamp::class)) {
-                throw new \RuntimeException(\sprintf('The message with id "%s" could not decoded, it can only be shown or removed.', $this->getMessageId($envelope) ?? '?'));
-            }
 
             $this->forceExit = true;
             try {
@@ -235,7 +230,7 @@ class FailedMessagesRetryCommand extends AbstractFailedMessagesCommand implement
             }
 
             if ('skip' === $choice) {
-                $this->eventDispatcher->dispatch(new WorkerMessageSkipEvent($envelope, $envelope->last(SentToFailureTransportStamp::class)->getOriginalReceiverName()));
+                $this->eventDispatcher->dispatch(new WorkerMessageSkipEvent($envelope, $envelope->last(SentToFailureTransportStamp::class)?->getOriginalReceiverName() ?? $failureTransportName));
             }
 
             $messageReceivedEvent->shouldHandle(false);

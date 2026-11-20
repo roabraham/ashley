@@ -50,6 +50,8 @@ class MessengerPass implements CompilerPassInterface
         }
 
         $this->registerHandlers($container, $busIds);
+
+        $this->registerTypeMapping($container);
     }
 
     private function registerHandlers(ContainerBuilder $container, array $busIds): void
@@ -60,6 +62,11 @@ class MessengerPass implements CompilerPassInterface
         $signedMessageTypes = [];
 
         foreach ($container->findTaggedServiceIds('messenger.message_handler', true) as $serviceId => $tags) {
+            // an option-less tag comes from autoconfiguration; it would defeat the configured ones
+            if ($configuredTags = array_filter($tags)) {
+                $tags = $configuredTags;
+            }
+
             foreach ($tags as $tag) {
                 if (isset($tag['bus']) && !\in_array($tag['bus'], $busIds, true)) {
                     throw new RuntimeException(\sprintf('Invalid handler service "%s": bus "%s" specified on the tag "messenger.message_handler" does not exist (known ones are: "%s").', $serviceId, $tag['bus'], implode('", "', $busIds)));
@@ -152,7 +159,27 @@ class MessengerPass implements CompilerPassInterface
         foreach ($handlersByBusAndMessage as $bus => $handlersByMessage) {
             foreach ($handlersByMessage as $message => $handlersByPriority) {
                 krsort($handlersByPriority);
-                $handlersByBusAndMessage[$bus][$message] = array_merge(...$handlersByPriority);
+                $handlers = array_merge(...$handlersByPriority);
+                $serviceIdsByName = [];
+
+                foreach ($handlers as $key => [$definitionId, $options]) {
+                    $serviceId = $handlerToOriginalServiceIdMapping[$definitionId];
+                    $name = $this->getServiceClass($container, $serviceId).'::'.($options['method'] ?? '__invoke');
+                    $serviceIdsByName[$name][$key] = $serviceId;
+                }
+
+                // several services sharing a name cannot be told apart at runtime, name them after their service id
+                foreach ($serviceIdsByName as $serviceIds) {
+                    if (1 === \count(array_unique($serviceIds))) {
+                        continue;
+                    }
+
+                    foreach ($serviceIds as $key => $serviceId) {
+                        $handlers[$key][1]['alias'] ??= $serviceId;
+                    }
+                }
+
+                $handlersByBusAndMessage[$bus][$message] = $handlers;
             }
         }
 
@@ -403,5 +430,40 @@ class MessengerPass implements CompilerPassInterface
 
             return $definition->getClass();
         }
+    }
+
+    private function registerTypeMapping(ContainerBuilder $container): void
+    {
+        if (!$container->hasDefinition('messenger.transport.symfony_serializer')) {
+            return;
+        }
+
+        $taggedIds = $container->findTaggedResourceIds('messenger.message', false);
+
+        // a message with no serialized type name is sent under its own class name, so that name is
+        // taken even though it never enters the map
+        $messageClasses = [];
+        foreach ($taggedIds as $id => $tags) {
+            $messageClasses[$container->getDefinition($id)->getClass()] = true;
+        }
+
+        $typeToClassMap = [];
+        foreach ($taggedIds as $id => $tags) {
+            $class = $container->getDefinition($id)->getClass();
+            foreach ($tags as $tag) {
+                if (!isset($tag['serializedTypeName'])) {
+                    continue;
+                }
+                if ($tag['serializedTypeName'] !== $class && isset($messageClasses[$tag['serializedTypeName']])) {
+                    throw new RuntimeException(\sprintf('The serialized type name "%s" set on class "%s" is the name of another message class, which uses it as its own serialized type.', $tag['serializedTypeName'], $class));
+                }
+                if (isset($typeToClassMap[$tag['serializedTypeName']])) {
+                    throw new RuntimeException(\sprintf('The serialized type name "%s" is already mapped to class "%s", cannot map it to "%s" as well. Each serialized type must be unique.', $tag['serializedTypeName'], $typeToClassMap[$tag['serializedTypeName']], $class));
+                }
+                $typeToClassMap[$tag['serializedTypeName']] = $class;
+            }
+        }
+
+        $container->getDefinition('messenger.transport.symfony_serializer')->setArgument(3, $typeToClassMap);
     }
 }

@@ -19,11 +19,16 @@ use PHPUnit\Event\InvalidArgumentException;
  */
 final readonly class HRTime
 {
+    /** @var non-negative-int */
     private int $seconds;
+
+    /** @var non-negative-int */
     private int $nanoseconds;
 
     /**
      * @throws InvalidArgumentException
+     *
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
      */
     public static function fromSecondsAndNanoseconds(int $seconds, int $nanoseconds): self
     {
@@ -78,6 +83,8 @@ final readonly class HRTime
     }
 
     /**
+     * @phpstan-assert non-negative-int $value
+     *
      * @throws InvalidArgumentException
      */
     private function ensureNotNegative(int $value, string $type): void

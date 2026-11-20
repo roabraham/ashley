@@ -24,20 +24,28 @@ class CookieJar
 
     public function set(Cookie $cookie): void
     {
-        $this->cookieJar[$cookie->getDomain()][$cookie->getPath()][$cookie->getName()] = $cookie;
+        $this->cookieJar[self::normalizeDomain($cookie->getDomain())][$cookie->getPath()][$cookie->getName()] = $cookie;
     }
 
     /**
      * Gets a cookie by name.
      *
+     * When several cookies match, the one with the longest path is returned,
+     * then the one with the most specific domain.
+     *
      * You should never use an empty domain, but if you do so,
-     * this method returns the first cookie for the given name/path
-     * (this behavior ensures a BC behavior with previous versions of
-     * Symfony).
+     * this method matches cookies of any domain (this behavior ensures
+     * a BC behavior with previous versions of Symfony).
      */
     public function get(string $name, string $path = '/', ?string $domain = null): ?Cookie
     {
         $this->flushExpiredCookies();
+
+        if (null !== $domain) {
+            $domain = self::normalizeDomain($domain);
+        }
+
+        $match = null;
 
         foreach ($this->cookieJar as $cookieDomain => $pathCookies) {
             if ($cookieDomain && $domain) {
@@ -48,16 +56,16 @@ class CookieJar
             }
 
             foreach ($pathCookies as $cookiePath => $namedCookies) {
-                if (!str_starts_with($path, $cookiePath)) {
+                if (!self::pathMatches($cookiePath, $path) || !isset($namedCookies[$name])) {
                     continue;
                 }
-                if (isset($namedCookies[$name])) {
-                    return $namedCookies[$name];
+                if (null === $match || self::isMoreSpecific($namedCookies[$name], $match)) {
+                    $match = $namedCookies[$name];
                 }
             }
         }
 
-        return null;
+        return $match;
     }
 
     /**
@@ -76,7 +84,7 @@ class CookieJar
             // this should never happen but it allows for a better BC
             $domains = array_keys($this->cookieJar);
         } else {
-            $domains = [$domain];
+            $domains = [self::normalizeDomain($domain)];
         }
 
         foreach ($domains as $domain) {
@@ -165,6 +173,9 @@ class CookieJar
         $this->flushExpiredCookies();
 
         $parts = array_replace(['path' => '/'], parse_url($uri));
+        if (isset($parts['host'])) {
+            $parts['host'] = self::normalizeDomain($parts['host']);
+        }
         $cookies = [];
         foreach ($this->cookieJar as $domain => $pathCookies) {
             if ($domain) {
@@ -175,7 +186,7 @@ class CookieJar
             }
 
             foreach ($pathCookies as $path => $namedCookies) {
-                if (!str_starts_with($parts['path'], $path)) {
+                if (!self::pathMatches($path, $parts['path'])) {
                     continue;
                 }
 
@@ -184,12 +195,16 @@ class CookieJar
                         continue;
                     }
 
-                    $cookies[$cookie->getName()] = $returnsRawValue ? $cookie->getRawValue() : $cookie->getValue();
+                    $name = $cookie->getName();
+
+                    if (!isset($cookies[$name]) || self::isMoreSpecific($cookie, $cookies[$name])) {
+                        $cookies[$name] = $cookie;
+                    }
                 }
             }
         }
 
-        return $cookies;
+        return array_map(static fn (Cookie $cookie) => $returnsRawValue ? $cookie->getRawValue() : $cookie->getValue(), $cookies);
     }
 
     /**
@@ -214,5 +229,44 @@ class CookieJar
                 }
             }
         }
+    }
+
+    private static function isMoreSpecific(Cookie $cookie, Cookie $other): bool
+    {
+        $pathLength = \strlen($cookie->getPath());
+        $otherPathLength = \strlen($other->getPath());
+
+        if ($pathLength !== $otherPathLength) {
+            return $pathLength > $otherPathLength;
+        }
+
+        return \strlen(ltrim($cookie->getDomain(), '.')) > \strlen(ltrim($other->getDomain(), '.'));
+    }
+
+    private static function pathMatches(string $cookiePath, string $requestPath): bool
+    {
+        if ($cookiePath === $requestPath) {
+            return true;
+        }
+
+        return str_starts_with($requestPath, $cookiePath) && (str_ends_with($cookiePath, '/') || '/' === $requestPath[\strlen($cookiePath)]);
+    }
+
+    private static function normalizeDomain(string $domain): string
+    {
+        if (!str_contains($domain, ':') || str_contains($domain, "\0")) {
+            return $domain;
+        }
+
+        $ip = ltrim($domain, '.');
+        $prefix = substr($domain, 0, \strlen($domain) - \strlen($ip));
+        $bracketed = str_starts_with($ip, '[') && str_ends_with($ip, ']');
+        if (false !== $address = @inet_pton($bracketed ? substr($ip, 1, -1) : $ip)) {
+            if (false !== $address = inet_ntop($address)) {
+                return $prefix.($bracketed ? '['.$address.']' : $address);
+            }
+        }
+
+        return $domain;
     }
 }

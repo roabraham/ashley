@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Doctrine\ORM;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Deprecations\Deprecation;
 use Doctrine\ORM\Cache\CacheConfiguration;
+use Doctrine\ORM\Cache\SecondLevelCachePlugin;
 use Doctrine\ORM\Exception\InvalidEntityRepository;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -29,6 +31,7 @@ use Psr\Cache\CacheItemPoolInterface;
 
 use function class_exists;
 use function is_a;
+use function method_exists;
 use function strtolower;
 
 use const PHP_VERSION_ID;
@@ -163,6 +166,31 @@ class Configuration extends \Doctrine\DBAL\Configuration
         }
 
         $this->attributes['proxyNamespace'] = $ns;
+    }
+
+    public function getUseSchemaEditorApi(): bool
+    {
+        return $this->attributes['use_schema_editor_api'] ?? false;
+    }
+
+    public function setUseSchemaEditorApi(bool $useSchemaEditorApi): void
+    {
+        /** @phpstan-ignore function.alreadyNarrowedType (This API is not always available) */
+        $schemaEditorApiIsAvailable = method_exists(Schema::class, 'edit');
+
+        if ($useSchemaEditorApi && ! $schemaEditorApiIsAvailable) {
+            throw new LogicException('Using the schema editor API requires doctrine/dbal 4.5 or higher.');
+        }
+
+        if (! $useSchemaEditorApi && $schemaEditorApiIsAvailable) {
+            Deprecation::trigger(
+                'doctrine/orm',
+                'https://github.com/doctrine/orm/pull/12780',
+                'Disabling the schema editor API is deprecated and will be impossible in Doctrine ORM 4.0.',
+            );
+        }
+
+        $this->attributes['use_schema_editor_api'] = $useSchemaEditorApi;
     }
 
     /**
@@ -575,6 +603,10 @@ class Configuration extends \Doctrine\DBAL\Configuration
 
     public function setSecondLevelCacheEnabled(bool $flag = true): void
     {
+        if ($flag && ! class_exists(SecondLevelCachePlugin::class)) {
+            throw new LogicException('Using the second level cache requires installing an additional package. Install with composer require doctrine/orm-plugin-second-level-cache');
+        }
+
         $this->attributes['isSecondLevelCacheEnabled'] = $flag;
     }
 
@@ -722,5 +754,15 @@ class Configuration extends \Doctrine\DBAL\Configuration
     public function getEagerFetchBatchSize(): int
     {
         return $this->attributes['fetchModeSubselectBatchSize'] ?? 100;
+    }
+
+    public function setDefaultStringTypeSchemaLength(int $length): void
+    {
+        $this->attributes['defaultStringTypeSchemaLength'] = $length;
+    }
+
+    public function getDefaultStringTypeSchemaLength(): int
+    {
+        return $this->attributes['defaultStringTypeSchemaLength'] ?? 255;
     }
 }

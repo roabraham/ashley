@@ -7,6 +7,7 @@ namespace Doctrine\Bundle\DoctrineBundle\Twig;
 use Doctrine\SqlFormatter\HtmlHighlighter;
 use Doctrine\SqlFormatter\NullHighlighter;
 use Doctrine\SqlFormatter\SqlFormatter;
+use RuntimeException;
 use Stringable;
 use Symfony\Component\VarDumper\Cloner\Data;
 use Twig\Extension\AbstractExtension;
@@ -24,8 +25,10 @@ use function implode;
 use function is_array;
 use function is_bool;
 use function is_string;
-use function preg_match;
+use function mb_check_encoding;
+use function preg_last_error;
 use function preg_replace_callback;
+use function sprintf;
 use function strtoupper;
 use function substr;
 
@@ -63,8 +66,7 @@ class DoctrineExtension extends AbstractExtension
         $result = $parameter;
 
         switch (true) {
-            // Check if result is non-unicode string using PCRE_UTF8 modifier
-            case is_string($result) && ! preg_match('//u', $result):
+            case is_string($result) && ! mb_check_encoding($result, 'UTF-8'):
                 $result = '0x' . strtoupper(bin2hex($result));
                 break;
 
@@ -116,7 +118,7 @@ class DoctrineExtension extends AbstractExtension
 
         $i = 0;
 
-        return preg_replace_callback(
+        $result = preg_replace_callback(
             '/(?<!\?)\?(?!\?)|(?<!:)(:[a-z0-9_]+)/i',
             static function (array $matches) use ($parameters, &$i): string {
                 $key = substr($matches[0], 1);
@@ -133,6 +135,15 @@ class DoctrineExtension extends AbstractExtension
             },
             $query,
         );
+
+        if ($result === null) {
+            throw new RuntimeException(sprintf(
+                'Failed to replace query parameters: PCRE error %d',
+                preg_last_error(),
+            ));
+        }
+
+        return $result;
     }
 
     public function prettifySql(string $sql): string

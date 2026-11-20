@@ -10,7 +10,6 @@
 namespace SebastianBergmann\CodeCoverage\Node;
 
 use function assert;
-use function count;
 use RecursiveIterator;
 
 /**
@@ -22,12 +21,15 @@ use RecursiveIterator;
  */
 final class Iterator implements RecursiveIterator
 {
-    private int $position;
-
     /**
      * @var list<AbstractNode>
      */
     private readonly array $nodes;
+
+    /**
+     * @var non-negative-int
+     */
+    private int $position = 0;
 
     public function __construct(Directory $node)
     {
@@ -41,9 +43,12 @@ final class Iterator implements RecursiveIterator
 
     public function valid(): bool
     {
-        return $this->position < count($this->nodes);
+        return isset($this->nodes[$this->position]);
     }
 
+    /**
+     * @return non-negative-int
+     */
     public function key(): int
     {
         return $this->position;
@@ -51,7 +56,7 @@ final class Iterator implements RecursiveIterator
 
     public function current(): ?AbstractNode
     {
-        return $this->valid() ? $this->nodes[$this->position] : null;
+        return $this->nodes[$this->position] ?? null;
     }
 
     public function next(): void
@@ -61,13 +66,15 @@ final class Iterator implements RecursiveIterator
 
     public function getChildren(): self
     {
-        assert($this->nodes[$this->position] instanceof Directory);
+        $node = $this->nodes[$this->position] ?? null;
 
-        return new self($this->nodes[$this->position]);
+        assert($node instanceof Directory);
+
+        return new self($node);
     }
 
     public function hasChildren(): bool
     {
-        return $this->nodes[$this->position] instanceof Directory;
+        return ($this->nodes[$this->position] ?? null) instanceof Directory;
     }
 }

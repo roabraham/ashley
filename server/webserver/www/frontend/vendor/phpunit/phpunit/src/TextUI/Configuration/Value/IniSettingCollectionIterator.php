@@ -9,6 +9,7 @@
  */
 namespace PHPUnit\TextUI\Configuration;
 
+use function assert;
 use Iterator;
 
 /**
@@ -28,6 +29,9 @@ final class IniSettingCollectionIterator implements Iterator
      */
     private int $position = 0;
 
+    /**
+     * @internal This method is not covered by the backward compatibility promise for PHPUnit
+     */
     public function __construct(IniSettingCollection $iniSettings)
     {
         $this->iniSettings = $iniSettings->asArray();
@@ -53,6 +57,8 @@ final class IniSettingCollectionIterator implements Iterator
 
     public function current(): IniSetting
     {
+        assert(isset($this->iniSettings[$this->position]));
+
         return $this->iniSettings[$this->position];
     }
 

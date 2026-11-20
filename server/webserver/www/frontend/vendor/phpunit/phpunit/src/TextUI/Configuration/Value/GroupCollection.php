@@ -17,6 +17,8 @@ use IteratorAggregate;
  * @immutable
  *
  * @template-implements IteratorAggregate<non-negative-int, Group>
+ *
+ * @internal This class is not covered by the backward compatibility promise for PHPUnit
  */
 final readonly class GroupCollection implements IteratorAggregate
 {
@@ -47,7 +49,7 @@ final readonly class GroupCollection implements IteratorAggregate
     }
 
     /**
-     * @return list<string>
+     * @return list<non-empty-string>
      */
     public function asArrayOfStrings(): array
     {

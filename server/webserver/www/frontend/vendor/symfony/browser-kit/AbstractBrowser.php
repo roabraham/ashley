@@ -211,7 +211,6 @@ abstract class AbstractBrowser
         $this->wrapContentPattern = $pattern;
     }
 
-
     /**
      * Returns the current BrowserKit Response instance.
      */
@@ -368,7 +367,7 @@ abstract class AbstractBrowser
 
         $this->request = $this->filterRequest($this->internalRequest);
 
-        if (true === $changeHistory) {
+        if ($changeHistory) {
             $this->history->add($this->internalRequest);
         }
 
@@ -432,7 +431,7 @@ abstract class AbstractBrowser
         if (file_exists($deprecationsFile)) {
             $deprecations = file_get_contents($deprecationsFile);
             unlink($deprecationsFile);
-            foreach ($deprecations ? unserialize($deprecations) : [] as $deprecation) {
+            foreach ($deprecations ? unserialize($deprecations, ['allowed_classes' => false]) : [] as $deprecation) {
                 if ($deprecation[0]) {
                     // unsilenced on purpose
                     trigger_error($deprecation[1], \E_USER_DEPRECATED);
@@ -443,10 +442,10 @@ abstract class AbstractBrowser
         }
 
         if (!$process->isSuccessful() || !preg_match('/^O\:\d+\:/', $process->getOutput())) {
-            throw new RuntimeException(\sprintf('OUTPUT: %s ERROR OUTPUT: %s.', $process->getOutput(), $process->getErrorOutput()));
+            throw new RuntimeException('OUTPUT: '.$process->getOutput().' ERROR OUTPUT: '.$process->getErrorOutput().'.');
         }
 
-        return unserialize($process->getOutput());
+        return unserialize($process->getOutput(), ['allowed_classes' => true]);
     }
 
     /**
@@ -622,8 +621,8 @@ abstract class AbstractBrowser
     protected function getAbsoluteUri(string $uri): string
     {
         // already absolute?
-        if (str_starts_with($uri, 'http://') || str_starts_with($uri, 'https://')) {
-            return $uri;
+        if (preg_match('{^https?://}i', $uri, $m)) {
+            return strtolower($m[0]).substr($uri, \strlen($m[0]));
         }
 
         if (!$this->history->isEmpty()) {
@@ -646,7 +645,7 @@ abstract class AbstractBrowser
         }
 
         if ('/' !== $uri[0]) {
-            $path = parse_url($currentUri, \PHP_URL_PATH);
+            $path = parse_url($currentUri, \PHP_URL_PATH) ?? '/';
 
             if (!str_ends_with($path, '/')) {
                 $path = substr($path, 0, strrpos($path, '/') + 1);
@@ -655,7 +654,7 @@ abstract class AbstractBrowser
             $uri = $path.$uri;
         }
 
-        return preg_replace('#^(.*?//[^/?]+)[/?].*$#', '$1', $currentUri).$uri;
+        return preg_replace('{^(.*?//[^/?#]+)[/?#].*$}', '$1', $currentUri).$uri;
     }
 
     /**
@@ -689,3 +688,5 @@ abstract class AbstractBrowser
         return $host;
     }
 }
+
+// @php-cs-fixer-ignore error_suppression This file is explicitly expected to not silence each of trigger_error calls
