@@ -1327,6 +1327,68 @@
     }
 
     /**
+     * Return true if url is same-origin with the current page.
+     * Relative / scheme-less URLs are treated as same-origin.
+     * Invalid/unparseable URLs are treated as same-origin (render directly).
+     *
+     * @param {string} url - URL to check
+     * @returns {boolean} - returns FALSE on remote files, TRUE otherwise
+     */
+    function isSameOriginUrl(url) {
+        if (typeof url !== 'string') { return true; }
+        const urlFixed = url.trim();
+        if (urlFixed === '') { return true; }
+        if (!/^[a-z][a-z0-9+.-]*:/i.test(urlFixed)) { return true; }
+        try {
+            const parsed = new URL(urlFixed);
+            const loc = window.location;
+            if (parsed.protocol !== loc.protocol) { return false; }
+            if (parsed.hostname !== loc.hostname) { return false; }
+            return (parsed.port === loc.port);
+        } catch (e) {
+            return true;
+        }
+    }
+
+    /**
+     * Render a confirmed-good video into messageDiv, replacing any loader.
+     * Genuine load failures fall back to a "Video not found" alert.
+     *
+     * @param {string} videoPathFixed - video path to render
+     * @param {HTMLElement} messageDiv - target DOM ID
+     */
+    function renderVideo(videoPathFixed, messageDiv) {
+        const videoContainer = document.createElement('div');
+        videoContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
+        const video = document.createElement('video');
+        video.src         = videoPathFixed;
+        video.controls    = true;
+        video.loop        = true;
+        video.playsInline = true;
+        video.muted       = true;
+        video.autoplay    = true;
+        video.className   = 'chat-video rounded shadow-sm';
+        video.style.maxWidth  = '100%';
+        video.style.maxHeight = '50vh';
+        video.style.height    = 'auto';
+        video.onloadedmetadata = () => {
+            if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+        };
+        video.onerror = () => {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-warning mt-2 mb-3 w-100';
+            errorDiv.innerHTML = '<strong class="me-2">Video not found:</strong>' + escapeHtml(videoPathFixed);
+            messageDiv.innerHTML = '';
+            messageDiv.appendChild(errorDiv);
+            if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+        };
+        messageDiv.innerHTML = '';
+        videoContainer.appendChild(video);
+        messageDiv.appendChild(videoContainer);
+        if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+    }
+
+    /**
      * Append a looping video message to the chat box.
      * Shows a spinner while the HEAD request confirms the video exists.
      *
@@ -1349,29 +1411,19 @@
         messageDiv.appendChild(loadingDiv);
         DOM.chatBox.appendChild(messageDiv);
         DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+        // Remote (cross-origin) URLs: skip the HEAD probe. Browsers block
+        // cross-origin HEAD requests via CORS and many remote hosts reject HEAD
+        // outright, so the probe fails even for valid media. Render directly;
+        // the video onerror handler catches genuine failures. Same-origin URLs
+        // are still HEAD-checked first.
+        if (!isSameOriginUrl(videoPathFixed)) {
+            renderVideo(videoPathFixed, messageDiv);
+            return;
+        }
         fetch(videoPathFixed, { method: 'HEAD' })
         .then((response) => {
             if (!response.ok) { throw new Error('Video not found'); }
-            const videoContainer = document.createElement('div');
-            videoContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
-            const video = document.createElement('video');
-            video.src         = videoPathFixed;
-            video.controls    = true;
-            video.loop        = true;
-            video.playsInline = true;
-            video.muted       = true;
-            video.autoplay    = true;
-            video.className   = 'chat-video rounded shadow-sm';
-            video.style.maxWidth  = '100%';
-            video.style.maxHeight = '50vh';
-            video.style.height    = 'auto';
-            video.onloadedmetadata = () => {
-                if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
-            };
-            messageDiv.innerHTML = '';
-            videoContainer.appendChild(video);
-            messageDiv.appendChild(videoContainer);
-            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+            renderVideo(videoPathFixed, messageDiv);
         })
         .catch(() => {
             const errorDiv = document.createElement('div');
@@ -1381,6 +1433,52 @@
             messageDiv.appendChild(errorDiv);
             DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
         });
+    }
+
+    /**
+     * Render a confirmed-good image into messageDiv, replacing any loader.
+     * Genuine load failures fall back to an "Image not found" alert.
+     *
+     * @param {string} imagePathFixed - image path to render
+     * @param {HTMLElement} messageDiv - target DOM ID
+     */
+    function renderImage(imagePathFixed, messageDiv) {
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
+        const image = document.createElement('img');
+        image.alt          = '';
+        image.className    = 'chat-image img-fluid rounded shadow-sm';
+        image.style.cursor = 'pointer';
+        image.style.maxHeight = '50vh';
+        image.tabIndex     = 0;
+        image.setAttribute('role', 'button');
+        image.setAttribute('aria-label', 'Open image preview');
+        image.addEventListener('click', () => {
+            showImagePreview(imagePathFixed);
+        });
+        // Keyboard: open the preview with Enter or Space (EU accessibility compliance).
+        image.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                showImagePreview(imagePathFixed);
+            }
+        });
+        image.onload = () => {
+            if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+        };
+        image.onerror = () => {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-warning mt-2 mb-3 w-100';
+            errorDiv.innerHTML = '<strong class="me-2">Image not found:</strong>' + escapeHtml(imagePathFixed);
+            messageDiv.innerHTML = '';
+            messageDiv.appendChild(errorDiv);
+            if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
+        };
+        image.src = imagePathFixed;
+        messageDiv.innerHTML = '';
+        imageContainer.appendChild(image);
+        messageDiv.appendChild(imageContainer);
+        if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
     }
 
     /**
@@ -1407,37 +1505,19 @@
         messageDiv.appendChild(loadingDiv);
         DOM.chatBox.appendChild(messageDiv);
         DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+        // Remote (cross-origin) URLs: skip the HEAD probe. Browsers block
+        // cross-origin HEAD requests via CORS and many remote hosts reject HEAD
+        // outright, so the probe fails even for valid images. Render directly;
+        // the img onerror handler catches genuine failures. Same-origin URLs
+        // are still HEAD-checked first.
+        if (!isSameOriginUrl(imagePathFixed)) {
+            renderImage(imagePathFixed, messageDiv);
+            return;
+        }
         fetch(imagePathFixed, { method: 'HEAD' })
         .then((response) => {
             if (!response.ok) { throw new Error('Image not found'); }
-            const imageContainer = document.createElement('div');
-            imageContainer.className = 'video-container mt-2 mb-3 w-100 text-center';
-            const image = document.createElement('img');
-            image.src          = imagePathFixed;
-            image.alt          = '';
-            image.className    = 'chat-image img-fluid rounded shadow-sm';
-            image.style.cursor = 'pointer';
-            image.style.maxHeight = '50vh';
-            image.tabIndex     = 0;
-            image.setAttribute('role', 'button');
-            image.setAttribute('aria-label', 'Open image preview');
-            image.addEventListener('click', () => {
-                showImagePreview(imagePathFixed);
-            });
-            // Keyboard: open the preview with Enter or Space (EU accessibility compliance).
-            image.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    showImagePreview(imagePathFixed);
-                }
-            });
-            image.onload = () => {
-                if (DOM.chatBox) { DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight; }
-            };
-            messageDiv.innerHTML = '';
-            imageContainer.appendChild(image);
-            messageDiv.appendChild(imageContainer);
-            DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+            renderImage(imagePathFixed, messageDiv);
         })
         .catch(() => {
             const errorDiv = document.createElement('div');
