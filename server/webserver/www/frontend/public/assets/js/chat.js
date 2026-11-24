@@ -1365,7 +1365,6 @@
         video.controls    = true;
         video.loop        = true;
         video.playsInline = true;
-        video.muted       = true;
         video.autoplay    = true;
         video.className   = 'chat-video rounded shadow-sm';
         video.style.maxWidth  = '100%';
