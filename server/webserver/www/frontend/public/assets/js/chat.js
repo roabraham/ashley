@@ -400,11 +400,11 @@
         const result = [];
         for (let i = 0; i < segments.length; i++) {
             if (i % 2 === 1) {
-                let code = segments[i];
+                let code = segments[i].replace(/\r\n/g, '\n').replace(/\r/g, '\n');
                 const firstLineEnd = code.indexOf('\n');
                 if (firstLineEnd > -1) {
                     const possibleLang = code.substring(0, firstLineEnd).trim();
-                    if (possibleLang.length > 0 && possibleLang.indexOf(' ') === -1) {
+                    if (possibleLang.length > 0 && (!/\s/.test(possibleLang))) {
                         code = code.substring(firstLineEnd + 1);
                     }
                 }
@@ -414,7 +414,7 @@
                 result.push('<pre><code>' + escapeHtml(code) + '</code></pre>');
                 continue;
             }
-            let segment = segments[i];
+            let segment = segments[i].replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             // Escape ALL regular text first so no raw HTML/JavaScript from the
             // LLM or server can reach the DOM via innerHTML (XSS protection).
             // Backticks are not touched by escapeHtml, so inline-code spans
@@ -423,7 +423,7 @@
             // Inline code (`...`) -> <code>...</code>. Content is already
             // escaped by escapeHtml() above; do not escape again to avoid
             // double-encoding entities like &amp; -> &amp;amp;.
-            segment = segment.replace(/`([^`]+)`/g, function(_, code) {
+            segment = segment.replace(/`([^`\n]+)`/g, function (_, code) {
                 return '<code>' + code + '</code>';
             });
             segment = segment.replace(/\n/g, '<br/>');

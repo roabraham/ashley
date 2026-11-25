@@ -687,9 +687,7 @@ class ChatController extends AbstractController
         // Streaming mode (response mode 2)
         if ($responseMode == 2) {
             if (!$llmEnabled) {
-                return $this->json([
-                    'reply' => "I'm sorry, I don't understand. Can you, please, be more specific?"
-                ]);
+                return $this->buildAutocompleteFallbackReply($userMessage, $llmConfig, $persona);
             }
             return $this->json([
                 'response_mode' => 2,
@@ -699,9 +697,7 @@ class ChatController extends AbstractController
         }
         // LLM disabled fallback
         if (!$llmEnabled) {
-            return $this->json([
-                'reply' => "I'm sorry, I don't understand. Can you, please, be more specific?"
-            ]);
+            return $this->buildAutocompleteFallbackReply($userMessage, $llmConfig, $persona);
         }
         // Load conversation history
         $history = $session->get('conversation_history', []);
@@ -833,54 +829,18 @@ class ChatController extends AbstractController
      * @return JsonResponse
      */
     protected function autocomplete(array $data, array $llmConfig, array $persona): JsonResponse {
-        try {
-            // Both values are validated and clamped by the configuration service.
-            $autocompleteConfig = $this->configService->getAutocompleteConfig();
-            $maxPopupItems = max(intval(trim($autocompleteConfig['max_popup_items'] ?? 3)), 1);
-            $minAutocompleteLength = max(intval(trim($autocompleteConfig['min_autocomplete_length'] ?? 3)), 1);
-            // A missing or non-string text field is treated as "nothing typed yet" instead of an error: the popup simply stays hidden.
-            $rawInputText = $data['text'] ?? '';
-            $text = is_string($rawInputText) ? trim(preg_replace('/\s+/u', ' ', $rawInputText)) : '';
-            if ($text == '') { return $this->json(['success' => true, 'items' => []]); }
-            if (mb_strlen($text, 'UTF-8') > self::MAX_AUTOCOMPLETE_INPUT_LENGTH) {
-                return $this->json([
-                    'error'   => 'INVALID_INPUT_LENGTH',
-                    'message' => 'The autocomplete request text exceeds the maximum accepted length of ' . self::MAX_AUTOCOMPLETE_INPUT_LENGTH . ' characters.'
-                ], Response::HTTP_BAD_REQUEST);
-            }
-            $searchTerms = $this->buildAutocompleteSearchTerms($text, $minAutocompleteLength);
-            if (empty($searchTerms)) {
-                // Not a single word is long enough yet - do not query at all.
-                return $this->json(['success' => true, 'items' => []]);
-            }
-            $personalityId = intval($persona['personality_id'] ?? 0);
-            if (empty($personalityId)) {
-                // Without an active personality there is no behavior list to suggest from.
-                return $this->json(['success' => true, 'items' => []]);
-            }
-            $queryBuilder = $this->databaseConnection->getPersonalityConnection()->createQueryBuilder();
-            $queryBuilder
-                ->select('user_prompt')
-                ->from('behavior')
-                ->where('(personality_id = :personality_id OR all_personalities != 0)')
-                ->setParameter('personality_id', $personalityId, ParameterType::INTEGER)
-                ->setMaxResults($maxPopupItems);
-            $expressionBuilder = $queryBuilder->expr();
-            $normalizedPrompt = 'LOWER(TRIM(user_prompt))';
-            $likeEscapeLiteral = $this->databaseConnection->getLikeEscapeLiteral();
-            foreach ($searchTerms as $termIndex => $searchTerm) {
-                $placeholder = $queryBuilder->createNamedParameter(
-                    '%' . $this->databaseConnection->escapeLikeWildcards($searchTerm) . '%',
-                    ParameterType::STRING,
-                    ":autocomplete_term_{$termIndex}"
-                );
-                $queryBuilder->andWhere($expressionBuilder->like($normalizedPrompt, $placeholder, $likeEscapeLiteral));
-            }
-            $rows = $queryBuilder->executeQuery()->fetchAllAssociative();
+        // A missing or non-string text field is treated as "nothing typed yet" instead of an error: the popup simply stays hidden.
+        $rawInputText = $data['text'] ?? '';
+        $text = is_string($rawInputText) ? trim(preg_replace('/\s+/u', ' ', $rawInputText)) : '';
+        if ($text == '') { return $this->json(['success' => true, 'items' => []]); }
+        if (mb_strlen($text, 'UTF-8') > self::MAX_AUTOCOMPLETE_INPUT_LENGTH) {
             return $this->json([
-                'success' => true,
-                'items'   => $this->formatAutocompleteItems($rows)
-            ]);
+                'error'   => 'INVALID_INPUT_LENGTH',
+                'message' => 'The autocomplete request text exceeds the maximum accepted length of ' . self::MAX_AUTOCOMPLETE_INPUT_LENGTH . ' characters.'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+        try {
+            $items = $this->buildAutocompleteResult($text, $llmConfig, $persona);
         } catch (\Doctrine\DBAL\Exception $exception) {
             return $this->json([
                 'error'   => 'AUTOCOMPLETE_QUERY_FAILED',
@@ -892,6 +852,10 @@ class ChatController extends AbstractController
                 'message' => 'The autocomplete lookup is unavailable because the personality database cannot be opened: ' . $exception->getMessage()
             ], Response::HTTP_SERVICE_UNAVAILABLE);
         }
+        return $this->json([
+            'success' => true,
+            'items'   => $items
+        ]);
     }
 
     /**
@@ -949,6 +913,110 @@ class ChatController extends AbstractController
             $items[] = $prompt;
         }
         return $items;
+    }
+
+    /**
+     * Build all autocomplete suggestions as a plain PHP array.
+     *
+     * Returns the known `behavior` `user_prompt` texts whose content contains every word of `$text` that is at least `min_autocomplete_length` characters long.
+     *
+     * This is deliberately pure SQL pattern matching on `user_prompt` only:
+     *
+     * - No embedding column is read, so suggestions work before `app:generate-embeddings` has ever been run.
+     * - The embedding engine does not have to be enabled at all; the `embedding_enabled` flag is never consulted.
+     * - The `embedding` column holds vectors thousands of characters long, so keeping it out of the query avoids reading those blobs from disk for every scanned row.
+     * - Only `user_prompt` is selected and returned.
+     *
+     * Records are still scoped to the active personality (`personality_id` match or a behavior shared by all personalities), so the popup cannot offer prompts that belong to a different persona.
+     *
+     * Matching uses one case-insensitive `LIKE` predicate per search term:
+     *
+     * ```sql
+     * LOWER(TRIM(behavior.user_prompt)) LIKE :autocomplete_term_0 ESCAPE '\' AND ...
+     * ```
+     *
+     * No `ORDER BY` is emitted: without a sort key SQLite can stop scanning as soon as `max_popup_items` rows matched instead of buffering every match through a temporary sorter first, and a full scan of this rowid table already yields rows in ascending `id` order, so the result stays deterministic.
+     *
+     * The query is built with the Doctrine DBAL query builder; every user supplied value is bound as a named parameter, so no input can reach the SQL text.
+     *
+     * Exceptions thrown by the database layer (\Doctrine\DBAL\Exception, \RuntimeException) are NOT caught here; callers are responsible for handling them according to their own context.
+     *
+     * @param string $text Raw textarea content / user message to match against
+     * @param array $llmConfig LLM configuration from {@see ConfigService}
+     * @param array $persona Persona configuration from {@see ConfigService}
+     * @return array<int,string> Array of matching prompt strings (empty when nothing qualifies or nothing matches)
+     */
+    protected function buildAutocompleteResult(string $text, array $llmConfig, array $persona): array {
+        // Check input text
+        $textFixed = trim($text);
+        if ($textFixed == '') { return []; }
+        // Check config
+        $autocompleteConfig = $this->configService->getAutocompleteConfig();
+        $maxPopupItems = max(intval(trim($autocompleteConfig['max_popup_items'] ?? 3)), 1);
+        $minAutocompleteLength = max(intval(trim($autocompleteConfig['min_autocomplete_length'] ?? 3)), 1);
+        $personalityId = intval($persona['personality_id'] ?? 0);
+        if (empty($personalityId)) {
+            // Without an active personality there is no behavior list to suggest from
+            return [];
+        }
+        // Build search terms
+        $searchTerms = $this->buildAutocompleteSearchTerms($textFixed, $minAutocompleteLength);
+        if (empty($searchTerms)) {
+            // Not a single word is long enough yet - do not query at all
+            return [];
+        }
+        $queryBuilder = $this->databaseConnection->getPersonalityConnection()->createQueryBuilder();
+        $queryBuilder
+            ->select('user_prompt')
+            ->from('behavior')
+            ->where('(personality_id = :personality_id OR all_personalities != 0)')
+            ->setParameter('personality_id', $personalityId, ParameterType::INTEGER)
+            ->setMaxResults($maxPopupItems);
+        $expressionBuilder = $queryBuilder->expr();
+        $normalizedPrompt = 'LOWER(TRIM(user_prompt))';
+        $likeEscapeLiteral = $this->databaseConnection->getLikeEscapeLiteral();
+        foreach ($searchTerms as $termIndex => $searchTerm) {
+            $placeholder = $queryBuilder->createNamedParameter(
+                '%' . $this->databaseConnection->escapeLikeWildcards($searchTerm) . '%',
+                ParameterType::STRING,
+                ":autocomplete_term_{$termIndex}"
+            );
+            $queryBuilder->andWhere($expressionBuilder->like($normalizedPrompt, $placeholder, $likeEscapeLiteral));
+        }
+        $rows = $queryBuilder->executeQuery()->fetchAllAssociative();
+        return $this->formatAutocompleteItems($rows);
+    }
+
+    /**
+     * Build an autocomplete-based fallback reply for when the LLM cannot respond.
+     *
+     * Normalizes the user message, builds autocomplete suggestions via {@see buildAutocompleteResult}, and returns a JsonResponse suggesting matching behavior prompts when the list is non-empty or the original "be more specific" message when the list is empty.
+     *
+     * Exceptions from the database layer are swallowed: a failure here degrades gracefully to the original fallback message so the chat reply is never broken by a DB issue.
+     *
+     * @param string $userMessage The incoming user message text
+     * @param array $llmConfig LLM configuration from {@see ConfigService}
+     * @param array $persona Persona configuration from {@see ConfigService}
+     * @return JsonResponse Either "Do you mean one of these?..." with a bulleted suggestion list or "Can you, please, be more specific?" when no suggestions match
+     */
+    protected function buildAutocompleteFallbackReply(string $userMessage, array $llmConfig, array $persona): JsonResponse {
+        $fallbackMessage = "I'm sorry, I don't understand. Can you, please, be more specific?";
+        $normalizedMessage = trim(preg_replace('/\s+/u', ' ', $userMessage));
+        if ($normalizedMessage == '') { return $this->json(['reply' => $fallbackMessage]); }
+        if (mb_strlen($normalizedMessage, 'UTF-8') > self::MAX_AUTOCOMPLETE_INPUT_LENGTH) {
+            return $this->json(['reply' => $fallbackMessage]);
+        }
+        $suggestions = [];
+        try {
+            $suggestions = $this->buildAutocompleteResult($normalizedMessage, $llmConfig, $persona);
+        } catch (\Throwable $e) {
+            $suggestions = [];
+        }
+        if (empty($suggestions)) { return $this->json(['reply' => $fallbackMessage]); }
+        $suggestionList = PHP_EOL . '* ' . implode(PHP_EOL . '* ', $suggestions);
+        return $this->json([
+            'reply' => "I'm sorry, I don't understand. Do you mean one of these?{$suggestionList}"
+        ]);
     }
 
     // =========================================================================
