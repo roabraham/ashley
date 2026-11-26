@@ -1013,7 +1013,10 @@ class ChatController extends AbstractController
             $suggestions = [];
         }
         if (empty($suggestions)) { return $this->json(['reply' => $fallbackMessage]); }
-        $suggestionList = PHP_EOL . '* ' . implode(PHP_EOL . '* ', $suggestions);
+        $suggestionList = '';
+        foreach ($suggestions as $currentSuggestion) {
+            $suggestionList .= (PHP_EOL . '{{PROMPT_SUGGESTION:' . $currentSuggestion . '}}');
+        }
         return $this->json([
             'reply' => "I'm sorry, I don't understand. Do you mean one of these?{$suggestionList}"
         ]);

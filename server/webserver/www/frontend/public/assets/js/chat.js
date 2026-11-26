@@ -71,6 +71,12 @@
  *   (so Enter keeps sending the message), aborts superseded lookups and re-validates
  *   both `min_autocomplete_length` and `max_popup_items` against the same bounds the
  *   server enforces.
+ * - {{PROMPT_SUGGESTION:text}} fallback replies are rendered as Bootstrap
+ *   btn-primary filled buttons inside assistant bubbles (formatMessageText +
+ *   renderPromptSuggestions). Clicking fills the input and calls
+ *   handleFormSubmit(), identical to clicking Submit. Buttons are XSS-safe
+ *   (text HTML-escaped, stored in data-* attribute, decoded on read) and
+ *   keyboard-accessible (tabindex=0, aria-label).
  *
  * This module is written as a single IIFE that loads directly via a <script> tag
  * (no bundler/transpilation), so it stays 100% ES6: const/let, arrow functions,
@@ -420,6 +426,17 @@
             // Backticks are not touched by escapeHtml, so inline-code spans
             // survive for the next replacement step.
             segment = escapeHtml(segment);
+            // Replace {{PROMPT_SUGGESTION:text}} markers with Bootstrap
+            // suggestion buttons. Runs after escapeHtml() so the prompt
+            // text is XSS-safe; runs before inline-code handling so button
+            // HTML (which contains no backticks) is not disturbed.
+            // Wrapped in try/catch so a rendering failure never suppresses
+            // the whole assistant bubble on page reload / history re-render
+            try {
+                segment = renderPromptSuggestions(segment);
+            } catch (e) {
+                console.warn('[UI] renderPromptSuggestions failed:', e.message);
+            }
             // Inline code (`...`) -> <code>...</code>. Content is already
             // escaped by escapeHtml() above; do not escape again to avoid
             // double-encoding entities like &amp; -> &amp;amp;.
@@ -430,6 +447,44 @@
             result.push(segment);
         }
         return result.join('');
+    }
+
+    /**
+     * Replace {{PROMPT_SUGGESTION:text}} markers with Bootstrap-based,
+     * clickable suggestion buttons rendered inside assistant bubbles.
+     *
+     * The input segment is already HTML-escaped (escapeHtml() has run), so
+     * the extracted prompt text is safe to place inside <button> content
+     * and a data-* attribute. The browser decodes HTML entities when the
+     * attribute is read back via getAttribute(), so the original text is
+     * recovered on click — no raw LLM/server text reaches the DOM.
+     *
+     * Buttons use type="button" so they cannot accidentally submit a parent
+     * form, tabindex="0" for keyboard focus, and aria-label for screen
+     * readers.
+     *
+     * @param {string} segment - HTML-escaped text segment (no code-block fences).
+     * @returns {string} Segment with suggestion markers replaced by button HTML.
+     */
+    function renderPromptSuggestions(segment) {
+        if (typeof segment !== 'string') { return ''; }
+        return segment.replace(
+            /\{\{PROMPT_SUGGESTION:([\s\S]*?)\}\}/g,
+            function (match, promptText) {
+                // Skip empty suggestions to avoid rendering blank buttons.
+                const promptTextFixed = promptText.trim();
+                if (promptTextFixed === '') { return match; }
+                // promptTextFixed is already HTML-escaped by escapeHtml() upstream.
+                return '<button type="button" class="btn btn-primary btn-sm ' +
+                    'prompt-suggestion-btn" ' +
+                    'data-prompt-text="' + promptTextFixed + '" ' +
+                    'title="' + promptTextFixed + '" ' +
+                    'aria-label="Send: ' + promptTextFixed + '" ' +
+                    'tabindex="0">' +
+                    promptTextFixed +
+                    '</button>';
+            }
+        );
     }
 
     /**
@@ -2072,6 +2127,42 @@
     }
 
     /**
+     * Event delegation for prompt-suggestion buttons rendered inside chat
+     * bubbles. Clicking a suggestion fills the chat input with its text and
+     * submits it through handleFormSubmit() — exactly as if the user had typed
+     * it and clicked Submit. Everything is processed the same way (API call,
+     * history, TTS, UI lock).
+     *
+     * Uses e.target.closest() so clicks on the button's text content or any
+     * inner element still match. type="button" on the markup prevents accidental
+     * form submission. AppState.isProcessing guard inside handleFormSubmit()
+     * prevents double-sends on rapid clicks.
+     *
+     * @param {Event} e
+     */
+    function handlePromptSuggestionClick(e) {
+        if (!e) { return; }
+        if (!e.target) { return; }
+        if (!e.target.closest) { return; }
+        const btn = e.target.closest('.prompt-suggestion-btn');
+        if (!btn) { return; }
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        // getAttribute() decodes HTML entities back to the original text.
+        const promptText = (btn.getAttribute('data-prompt-text') || '').trim();
+        if (promptText === '') { return; }
+        if (!DOM.input) { return; }
+        DOM.input.value = promptText;
+        DOM.input.style.height = 'auto';
+        DOM.input.style.height = DOM.input.scrollHeight + 'px';
+        DOM.input.classList.remove('is-invalid');
+        closeAutocomplete();
+        DOM.input.focus();
+        handleFormSubmit();
+    }
+
+    /**
      * Continue the send flow after any necessary pre-flight compression.
      * Routes to either direct streaming or the proxy API.
      *
@@ -3046,6 +3137,11 @@
                 handleFormSubmit();
             });
         }
+        // Event delegation for {{PROMPT_SUGGESTION:...}} buttons rendered
+        // inside assistant bubbles. The chat box is a stable element present
+        // for the page lifetime, so a single listener covers buttons added
+        // dynamically via innerHTML at any time.
+        if (DOM.chatBox) { DOM.chatBox.addEventListener('click', handlePromptSuggestionClick); }
         const exportBtn = document.getElementById('export-conversation-btn');
         if (exportBtn) {
             exportBtn.addEventListener('click', (e) => {

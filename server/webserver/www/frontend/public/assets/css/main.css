@@ -323,6 +323,75 @@ body {
     overflow-wrap: break-word;
 }
 
+/** Prompt-suggestion buttons rendered inside assistant replies. Bootstrap-styled, elegant filled chips that turn {{PROMPT_SUGGESTION:...}} markers into clickable shortcuts */
+.bubble .prompt-suggestion-btn {
+    display: inline-block;
+    margin: 0.25rem 0.25rem 0.25rem 0;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    border: 1px solid #0d6efd;
+    color: #ffffff;
+    background-color: #0d6efd;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: normal;
+    vertical-align: middle;
+    line-height: 1.4;
+    max-width: calc(100% - 0.5rem);
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Prevent awkward wrapping when multiple buttons sit side by side */
+.bubble .prompt-suggestion-btn + .prompt-suggestion-btn {
+    margin-left: 0.5rem;
+}
+
+.bubble .prompt-suggestion-btn:hover {
+    background-color: #0b5ed7;
+    color: #ffffff;
+    border-color: #0a58ca;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(13, 110, 253, 0.22);
+}
+
+.bubble .prompt-suggestion-btn:focus {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+}
+
+.bubble .prompt-suggestion-btn:active {
+    background-color: #0a58ca;
+    border-color: #0a53be;
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+/* Dark mode overrides */
+body.dark-mode .bubble .prompt-suggestion-btn {
+    border-color: #6ea8fe;
+    color: #ffffff;
+    background-color: #0d6efd;
+}
+
+body.dark-mode .bubble .prompt-suggestion-btn:hover {
+    background-color: #0b5ed7;
+    color: #ffffff;
+    border-color: #0a58ca;
+    box-shadow: 0 2px 5px rgba(110, 168, 254, 0.3);
+}
+
+body.dark-mode .bubble .prompt-suggestion-btn:focus {
+    outline-color: #6ea8fe;
+}
+
+body.dark-mode .bubble .prompt-suggestion-btn:active {
+    background-color: #0a58ca;
+    border-color: #0a53be;
+}
+
 /** Animated blinking dots keyframes */
 @keyframes blinkDots {
     0% { content: "."; }
