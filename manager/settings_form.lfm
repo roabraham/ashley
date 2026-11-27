@@ -2200,6 +2200,7 @@ object SettingsForm: TSettingsForm
     Top = 501
     Width = 94
     Anchors = [akRight, akBottom]
+    Cancel = True
     Caption = 'Cancel'
     ModalResult = 2
     ParentShowHint = False
@@ -2214,6 +2215,7 @@ object SettingsForm: TSettingsForm
     Width = 94
     Anchors = [akRight, akBottom]
     Caption = 'OK'
+    Default = True
     ModalResult = 1
     ParentShowHint = False
     ShowHint = True
