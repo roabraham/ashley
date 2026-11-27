@@ -69,12 +69,13 @@ Count=1
 Item_0=..\manager
 
 [Files]
-Count=5
+Count=6
 Item_0=..\manager\about_form.pas
 Item_1=..\manager\main_form.pas
 Item_2=..\manager\progress_form.pas
 Item_3=..\manager\settings_form.pas
-Item_4=..\manager\vinfo.pas
+Item_4=..\manager\system_message_editor.pas
+Item_5=..\manager\vinfo.pas
 
 [AdditionalFiles]
 Count=0

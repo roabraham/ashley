@@ -1,0 +1,174 @@
+object SystemMessageEditor: TSystemMessageEditor
+  Left = 349
+  Height = 400
+  Top = 37
+  Width = 600
+  BorderWidth = 8
+  Caption = 'System Message Editor'
+  ClientHeight = 400
+  ClientWidth = 600
+  Constraints.MinHeight = 400
+  Constraints.MinWidth = 600
+  DesignTimePPI = 120
+  Icon.Data = {
+    7E04000000000100010010100000010020006804000016000000280000001000
+    0000200000000100200000000000000400006400000064000000000000000000
+    00000000000000000000141312230F0E0D621C1D1D1D00000000000000000000
+    0000000000000B10220B06070F6807080D532427440100000000000000000000
+    000000000000120E0C3F3A322BF350463EFE3A322CE809090A28000000000000
+    0000191E4E02020237AD020181FE02025CFD030436AE1A203702000000000000
+    0000000000003D352DC1574E44FE797672FE483E37FE2B231EDF0C0C111E0000
+    00000303168B020192FD040AB9FE040583FE020272FE04063250000000000000
+    000000000000564D44C54B4037FED8D9D7FD4E4742FE4A3F38FE241C19CB0505
+    146D030393FE0203B0FE060ECAFE1324EAFE141EC5FE0607556B000000000000
+    000000000000342F292C676057E750463DFD4D4239FE4E433BFE322823FE0302
+    7EFD0203B3FE0407C2FE1323DFFE2B40ECFD182497A6141C3B03000000000000
+    0000000000000000000026221D245F5952E2584F46FE50463EFE1D185BFE0303
+    AFFE0508C5FF101DDCFE283FE7FD1E2A848A232B620100000000000000000000
+    00000000000000000000000000001D1A1821605952DA39312AFE221C5EFE101A
+    D2FE121FDCFE273DE4FC1B27846B000000000000000000000000000000000000
+    0000000000000000000000000000000000001D191637534E49FD423934FE2C2B
+    7CFE2739D5FE272755EC0E0E1226000000000000000000000000000000000000
+    000000000000000000000000000000000000403931A8959187FE686158FE534C
+    44FE6B645DFE8F8982FE4C4843E218161434171615293234320A000000000000
+    00000000000000000000655F59011E1A1582A39F97FEC8C5BCF9837E7774807F
+    7BB3C4C1BBFE89827AFE8C857EFE79756FFD78736DFE69655EEC15120E500000
+    000000000000181714301C1712B79F9A92FDCCC9BFFB76756F5500000000231E
+    1A0291908DA7C1BDB9FE928A83FE9D9791FE9F9993FE9C9690FE78726BF41D1B
+    171B1E201F1093918BE8D5D2C9FEC8C5BCFC73726C6E00000000000000000000
+    00004B4844099C9893FDADA8A2FEACA7A1FEA29F99F5C2C0BCFEABA59EFE1612
+    105C22211E5EE5E3DBFEEAE9E2FEC6C4BEEA23201B1500000000000000000000
+    00007D7A7303AFACA7FABEBBB5FE8C8A85EC3B39360F7D7C797EC6C4BEFC332D
+    2871211F1C18ADACA9CAC7C7C3EF5957533E0000000000000000000000000000
+    000000000000ACADAAB6D3D1CCFE8C8882FD44413B76000000001B1B162C201E
+    180600000000565550022A262312000000000000000000000000000000000000
+    0000000000002927241FC9C9C6E5D8D8D3FEBCBAB4FD6C696360000000000000
+    0000000000000000000000000000000000000000000000000000000000000000
+    00000000000000000000221F1B1C8B8A8879A3A3A28C55534E25000000000000
+    0000000000000000000000000000000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000
+    0000
+  }
+  Menu = MainMenu
+  Position = poOwnerFormCenter
+  LCLVersion = '4.4.0.0'
+  object BottomBevel: TBevel
+    Left = 8
+    Height = 40
+    Top = 352
+    Width = 584
+    Align = alBottom
+    Shape = bsTopLine
+  end
+  object OKbutton: TButton
+    Left = 402
+    Height = 31
+    Hint = 'Apply changes and close'
+    Top = 361
+    Width = 94
+    Anchors = [akRight, akBottom]
+    Caption = 'OK'
+    Default = True
+    ModalResult = 1
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 1
+  end
+  object CancelButton: TButton
+    Left = 498
+    Height = 31
+    Hint = 'Close discarding changes'
+    Top = 361
+    Width = 94
+    Anchors = [akRight, akBottom]
+    Cancel = True
+    Caption = 'Cancel'
+    ModalResult = 2
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 2
+  end
+  object Content: TMemo
+    Left = 8
+    Height = 344
+    Hint = 'Edit system message here'
+    Top = 8
+    Width = 584
+    Align = alClient
+    PopupMenu = EditorPopupMenu
+    ParentShowHint = False
+    ScrollBars = ssAutoBoth
+    ShowHint = True
+    TabOrder = 0
+  end
+  object MainMenu: TMainMenu
+    Left = 16
+    Top = 16
+    object EditMenu: TMenuItem
+      Caption = 'Edit'
+      object UndoMenu: TMenuItem
+        Caption = 'Undo'
+        Hint = 'Undo last action'
+        ShortCut = 16474
+        OnClick = UndoMenuClick
+      end
+      object Separator1: TMenuItem
+        Caption = '-'
+      end
+      object CutMenu: TMenuItem
+        Caption = 'Cut'
+        Hint = 'Cut selected text'
+        ShortCut = 16472
+        OnClick = CutMenuClick
+      end
+      object CopyMenu: TMenuItem
+        Caption = 'Copy'
+        Hint = 'Copy selected text'
+        ShortCut = 16451
+        OnClick = CopyMenuClick
+      end
+      object PasteMenu: TMenuItem
+        Caption = 'Paste'
+        Hint = 'Paste text from clipboard'
+        ShortCut = 16470
+        OnClick = PasteMenuClick
+      end
+      object Separator2: TMenuItem
+        Caption = '-'
+      end
+      object SelectAllMenu: TMenuItem
+        Caption = 'Select All'
+        Hint = 'Select all text'
+        ShortCut = 16449
+        OnClick = SelectAllMenuClick
+      end
+    end
+  end
+  object EditorPopupMenu: TPopupMenu
+    Left = 56
+    Top = 16
+    object CutPopupMenu: TMenuItem
+      Caption = 'Cut'
+      Hint = 'Cut selected text'
+      OnClick = CutPopupMenuClick
+    end
+    object CopyPopupMenu: TMenuItem
+      Caption = 'Copy'
+      Hint = 'Copy selected text'
+      OnClick = CopyPopupMenuClick
+    end
+    object PastePopupMenu: TMenuItem
+      Caption = 'Paste'
+      Hint = 'Paste text from clipboard'
+      OnClick = PastePopupMenuClick
+    end
+    object Separator3: TMenuItem
+      Caption = '-'
+    end
+    object SelectAllPopupMenu: TMenuItem
+      Caption = 'Select All'
+      Hint = 'Select all text'
+      OnClick = SelectAllPopupMenuClick
+    end
+  end
+end

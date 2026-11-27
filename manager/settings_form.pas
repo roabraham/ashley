@@ -9,7 +9,7 @@ uses
   Classes, LCLIntf, SysUtils, DB, SQLite3Conn, SQLDB, Forms, Controls, Graphics,
   Dialogs, StdCtrls, ExtCtrls, ValEdit, ComCtrls, DBCtrls, Grids, Spin, fpjson,
   jsonparser, StrUtils, RegExpr, process, FileUtil, SynHighlighterCss, SynEdit,
-  math, base64, Types, fgl, progress_form;
+  math, base64, Types, fgl, system_message_editor, progress_form;
 
 type
 
@@ -127,6 +127,12 @@ type
     AddVoiceTTSmodelButton: TButton;
     { Button to add a new TTS parameter row. }
     AddTTSparameterButton: TButton;
+    { Button to edit the system prompt of the persona. }
+    EditSystemPromptButton: TButton;
+    { Button to edit the summary prompt of the persona. }
+    EditSummaryPromptButton: TButton;
+    { Group box containing system message controls. }
+    SystemMessagesGroupBox: TGroupBox;
     { SQL query component for loading default TTS models from the database. }
     TTSmodelQuery: TSQLQuery;
     { Process component for running the TTS server. }
@@ -173,10 +179,6 @@ type
     PHPtimezoneLabel: TLabel;
     { Button to open the temporary directory in the file explorer. }
     OpenTempDirButton: TButton;
-    { Label for the persona summary prompt field. }
-    PersonaSummaryPromptLabel: TLabel;
-    { Memo control for editing the persona summary prompt. }
-    PersonaSummaryPrompt: TMemo;
     { Radio button for choosing light color theme on frontpage. }
     DefaultThemeLightRadioButton: TRadioButton;
     { Radio button for choosing dark color theme on frontpage. }
@@ -247,10 +249,6 @@ type
     PersonaQuery: TSQLQuery;
     { Transaction component for the persona database connection. }
     PersonaTransaction: TSQLTransaction;
-    { Memo control for editing the persona system prompt. }
-    PersonaSystemPrompt: TMemo;
-    { Label for the persona system prompt field. }
-    PersonaSystemPromptLabel: TLabel;
     { Input field for the persona initial message. }
     PersonaInitialMessage: TLabeledEdit;
     { Auto-generated bound label for the persona description field. }
@@ -389,6 +387,10 @@ type
     procedure AddMainTTSmodelButtonClick(Sender: TObject);
     { Handles add TTS parameter button click. }
     procedure AddTTSparameterButtonClick(Sender: TObject);
+    { Handles edit summary prompt button click. }
+    procedure EditSummaryPromptButtonClick(Sender: TObject);
+    { Handles edit system prompt button click. }
+    procedure EditSystemPromptButtonClick(Sender: TObject);
     { Handles remove TTS parameter button click. }
     procedure RemoveTTSparameterButtonClick(Sender: TObject);
     { Enables or disables TTS service based on checkbox. }
@@ -462,6 +464,10 @@ type
     EmbeddingTitleList: TStringList;
     { List of TTS parameter titles for grid hints. }
     TTStitleList: TStringList;
+    { Container for the system prompt of the selected persona. }
+    PersonaSystemPrompt: TStringList;
+    { Container for the summary prompt of the selected persona. }
+    PersonaSummaryPrompt: TStringList;
     { Image format for avatar (png, jpg, etc.). }
     AvatarImageFormat: string;
     { Image format for background (png, jpg, etc.). }
@@ -552,6 +558,8 @@ type
     procedure ShowHintForValueListCoords(ValueListEditor: TValueListEditor; StringList: TStringList; X, Y: Integer);
     { Helper procedure to enable/disable TTS device listing. }
     procedure UpdateTTSdeviceListAvailability(const want_to_enable_list, want_to_enable_reload: boolean);
+    { Helper procedure to edit system messages. }
+    procedure EditSystemMessage(Container: TStringList; const Title: String = '');
   public
     { Path to the application directory. }
     appdir: AnsiString;
@@ -1535,10 +1543,46 @@ begin
   end;
 end;
 
+//Edit system messages
+procedure TSettingsForm.EditSystemMessage(Container: TStringList; const Title: String = '');
+var TitleFixed: String;
+begin
+  try
+    if not(Assigned(Container)) then
+    begin
+      MessageDlg('Error', 'No system message assigned!', mtError, [mbOK], 0);
+      Exit;
+    end;
+    TitleFixed := trim(Title);
+    if length(TitleFixed) >= 1 then
+      SystemMessageEditor.Caption := TitleFixed
+    else
+      SystemMessageEditor.Caption := 'System Message Editor';
+    SystemMessageEditor.Content.Lines.Text := Container.Text;
+    if not(SystemMessageEditor.ShowModal = mrOk) then Exit;
+    Container.Text := SystemMessageEditor.Content.Lines.Text;
+  except
+    on x: Exception do
+      MessageDlg('Error', 'Internal error: ' + x.Message, mtError, [mbOK], 0);
+  end;
+end;
+
 //Add TTS parameter
 procedure TSettingsForm.AddTTSparameterButtonClick(Sender: TObject);
 begin
   AddParameter(TTSparameterListEditor);
+end;
+
+//Edit summary prompt
+procedure TSettingsForm.EditSummaryPromptButtonClick(Sender: TObject);
+begin
+  EditSystemMessage(PersonaSummaryPrompt, 'Edit Summary Prompt');
+end;
+
+//Edit main system prompt
+procedure TSettingsForm.EditSystemPromptButtonClick(Sender: TObject);
+begin
+  EditSystemMessage(PersonaSystemPrompt, 'Edit System Prompt');
 end;
 
 //Enable or disable TTS service
@@ -2067,6 +2111,8 @@ begin
     TitleList.Clear;
     EmbeddingTitleList.Clear;
     TTStitleList.Clear;
+    PersonaSystemPrompt.Clear;
+    PersonaSummaryPrompt.Clear;
     modelFromDB := '';
     embeddingModelFromDB := '';
     ttsMainModelFromDB := '';
@@ -2429,9 +2475,9 @@ begin
       paramValue := trim(RootObj.Get('initial_message', ''));
       if length(paramValue) >= 1 then PersonaInitialMessage.Text := paramValue;
       paramValue := trim(RootObj.Get('system_prompt', ''));
-      if length(paramValue) >= 1 then PersonaSystemPrompt.Lines.Text := paramValue;
+      if length(paramValue) >= 1 then PersonaSystemPrompt.Text := paramValue;
       paramValue := trim(RootObj.Get('summary_prompt', ''));
-      if length(paramValue) >= 1 then PersonaSummaryPrompt.Lines.Text := paramValue;
+      if length(paramValue) >= 1 then PersonaSummaryPrompt.Text := paramValue;
       paramValue := uppercase(trim(RootObj.Get('default_theme', '')));
       if length(paramValue) >= 1 then
       begin
@@ -3042,8 +3088,8 @@ begin
     PersonaFullName.Text := personaItem.FullName;
     PersonaDescription.Text := personaItem.Description;
     PersonaInitialMessage.Text := personaItem.InitialMessage;
-    PersonaSystemPrompt.Lines.Text := personaItem.SystemPrompt;
-    PersonaSummaryPrompt.Lines.Text := personaItem.SummaryPrompt;
+    PersonaSystemPrompt.Text := personaItem.SystemPrompt;
+    PersonaSummaryPrompt.Text := personaItem.SummaryPrompt;
     if length(personaItem.defaultTheme) >= 1 then
     begin
       if personaItem.defaultTheme = 'DARK' then
@@ -3939,9 +3985,9 @@ begin
         end;
         PersonaObj.Add('full_name', trim(PersonaFullName.Text));
         PersonaObj.Add('description', trim(PersonaDescription.Text));
-        systemPrompt := trim(PersonaSystemPrompt.Lines.Text);
+        systemPrompt := trim(PersonaSystemPrompt.Text);
         if length(systemPrompt) >= 1 then PersonaObj.Add('system_prompt', systemPrompt);
-        summaryPrompt := trim(PersonaSummaryPrompt.Lines.Text);
+        summaryPrompt := trim(PersonaSummaryPrompt.Text);
         if length(summaryPrompt) >= 1 then PersonaObj.Add('summary_prompt', summaryPrompt);
         PersonaObj.Add('initial_message', trim(PersonaInitialMessage.Text));
         PersonaObj.Add('behavior_similarity_threshold', PersonaBehaviorSimilarityThreshold.Value);
@@ -4085,6 +4131,8 @@ begin
     TitleList := nil;
     EmbeddingTitleList := nil;
     TTStitleList := nil;
+    PersonaSystemPrompt := nil;
+    PersonaSummaryPrompt := nil;
     defaultTTSmodelList := nil;
     TitleList := TStringList.Create;
     TitleList.Sorted := true;
@@ -4095,6 +4143,8 @@ begin
     TTStitleList := TStringList.Create;
     TTStitleList.Sorted := true;
     TTStitleList.Duplicates := dupIgnore;
+    PersonaSystemPrompt := TStringList.Create;
+    PersonaSummaryPrompt := TStringList.Create;
     defaultTTSmodelList :=  TTTSmodelList.Create;
     //Directories and files
     {$IFDEF MSWINDOWS}
@@ -4278,6 +4328,8 @@ begin
       if Assigned(TitleList) then FreeAndNil(TitleList);
       if Assigned(EmbeddingTitleList) then FreeAndNil(EmbeddingTitleList);
       if Assigned(TTStitleList) then FreeAndNil(TTStitleList);
+      if Assigned(PersonaSystemPrompt) then FreeAndNil(PersonaSystemPrompt);
+      if Assigned(PersonaSummaryPrompt) then FreeAndNil(PersonaSummaryPrompt);
       if Assigned(defaultTTSmodelList) then FreeAndNil(defaultTTSmodelList);
       Abort;
     end;
@@ -4334,6 +4386,8 @@ begin
     if Assigned(TitleList) then FreeAndNil(TitleList);
     if Assigned(EmbeddingTitleList) then FreeAndNil(EmbeddingTitleList);
     if Assigned(TTStitleList) then FreeAndNil(TTStitleList);
+    if Assigned(PersonaSystemPrompt) then FreeAndNil(PersonaSystemPrompt);
+    if Assigned(PersonaSummaryPrompt) then FreeAndNil(PersonaSummaryPrompt);
     if Assigned(defaultTTSmodelList) then FreeAndNil(defaultTTSmodelList);
     ClearEngineComboBox;
     ClearLLMdeviceComboBox;

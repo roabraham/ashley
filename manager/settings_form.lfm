@@ -643,7 +643,7 @@ object SettingsForm: TSettingsForm
             )
             ColWidths = (
               250
-              475
+              471
             )
           end
           object AddButton: TButton
@@ -745,7 +745,7 @@ object SettingsForm: TSettingsForm
           )
           ColWidths = (
             250
-            492
+            467
           )
         end
         object AddEmbeddingParameterButton: TButton
@@ -920,7 +920,7 @@ object SettingsForm: TSettingsForm
             )
             ColWidths = (
               250
-              471
+              446
             )
           end
           object AddTTSparameterButton: TButton
@@ -1383,8 +1383,8 @@ object SettingsForm: TSettingsForm
         Height = 436
         Top = 0
         Width = 778
-        HorzScrollBar.Increment = 26
-        HorzScrollBar.Page = 269
+        HorzScrollBar.Increment = 48
+        HorzScrollBar.Page = 487
         HorzScrollBar.Smooth = True
         HorzScrollBar.Tracking = True
         VertScrollBar.Increment = 43
@@ -1435,12 +1435,12 @@ object SettingsForm: TSettingsForm
         end
         object PersonaPropertiesGroupBox: TGroupBox
           Left = 8
-          Height = 968
+          Height = 896
           Top = 96
           Width = 743
           Anchors = [akTop, akLeft, akRight]
           Caption = 'Properties'
-          ClientHeight = 938
+          ClientHeight = 866
           ClientWidth = 739
           TabOrder = 1
           object PersonaAvatarGroupBox: TGroupBox
@@ -1532,35 +1532,18 @@ object SettingsForm: TSettingsForm
             EditLabel.Caption = 'Initial message'
             TabOrder = 5
           end
-          object PersonaSystemPromptLabel: TLabel
-            Left = 7
-            Height = 25
-            Top = 416
-            Width = 123
-            Caption = 'System prompt'
-          end
-          object PersonaSystemPrompt: TMemo
-            Left = 7
-            Height = 120
-            Hint = 'Edit the behavior of the persona'
-            Top = 448
-            Width = 720
-            Anchors = [akTop, akLeft, akRight]
-            ScrollBars = ssAutoVertical
-            TabOrder = 6
-          end
           object PersonaCSSoverrideLabel: TLabel
             Left = 8
             Height = 25
-            Top = 736
+            Top = 504
             Width = 101
             Caption = 'CSS override'
           end
           inline PersonaCSSoverride: TSynEdit
             Left = 7
-            Height = 160
+            Height = 320
             Hint = 'Edit persona appearance (CSS)'
-            Top = 768
+            Top = 536
             Width = 720
             BlockIndent = 4
             BlockTabIndent = 4
@@ -2065,23 +2048,6 @@ object SettingsForm: TSettingsForm
               end
             end
           end
-          object PersonaSummaryPromptLabel: TLabel
-            Left = 7
-            Height = 25
-            Top = 576
-            Width = 212
-            Caption = 'Summary prompt override'
-          end
-          object PersonaSummaryPrompt: TMemo
-            Left = 7
-            Height = 120
-            Hint = 'Edit summary message for LLM server'
-            Top = 608
-            Width = 720
-            Anchors = [akTop, akLeft, akRight]
-            ScrollBars = ssAutoVertical
-            TabOrder = 8
-          end
           object DefaultThemeGroupBox: TGroupBox
             Left = 496
             Height = 184
@@ -2114,11 +2080,42 @@ object SettingsForm: TSettingsForm
               TabStop = True
             end
           end
+          object SystemMessagesGroupBox: TGroupBox
+            Left = 7
+            Height = 80
+            Top = 416
+            Width = 720
+            Anchors = [akTop, akLeft, akRight]
+            Caption = 'System messages'
+            ClientHeight = 50
+            ClientWidth = 716
+            TabOrder = 6
+            object EditSystemPromptButton: TButton
+              Left = 9
+              Height = 31
+              Hint = 'Edit system prompt'
+              Top = 8
+              Width = 231
+              Caption = 'Edit system prompt'
+              TabOrder = 0
+              OnClick = EditSystemPromptButtonClick
+            end
+            object EditSummaryPromptButton: TButton
+              Left = 248
+              Height = 31
+              Hint = 'Edit summary prompt'
+              Top = 8
+              Width = 231
+              Caption = 'Edit summary prompt'
+              TabOrder = 1
+              OnClick = EditSummaryPromptButtonClick
+            end
+          end
         end
         object PersonaSystemGroupBox: TGroupBox
           Left = 8
           Height = 112
-          Top = 1072
+          Top = 1000
           Width = 743
           Anchors = [akTop, akLeft, akRight]
           Caption = 'System'
@@ -2203,7 +2200,6 @@ object SettingsForm: TSettingsForm
     Top = 501
     Width = 94
     Anchors = [akRight, akBottom]
-    Cancel = True
     Caption = 'Cancel'
     ModalResult = 2
     ParentShowHint = False
@@ -2218,7 +2214,6 @@ object SettingsForm: TSettingsForm
     Width = 94
     Anchors = [akRight, akBottom]
     Caption = 'OK'
-    Default = True
     ModalResult = 1
     ParentShowHint = False
     ShowHint = True

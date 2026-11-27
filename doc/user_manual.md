@@ -305,8 +305,9 @@ This tab configures the AI chatbot's personality, appearance and behavior.
 * **Full name**: the full display name of the persona. Maximum 255 characters.
 * **Description**: a short description of the persona. Maximum 255 characters.
 * **Initial message**: the greeting message the persona sends when a new conversation starts.
-* **System prompt**: the main behavior prompt that defines how the persona acts, its personality traits, and how it should respond to users. This is a multi-line text area.
-* **Summary prompt override**: a multi-line text area for a custom summary prompt. This overrides the default summary prompt used by the *LLM server* for conversation summarization.
+* **System messages**: in this section, you can edit how the perona behaves. The main settings are the following:
+  * **Edit system prompt**: lets you edit the main behavior prompt that defines how the persona acts, its personality traits, and how it should respond to users. This is a multi-line text area.
+  * **Edit summary prompt**: a multi-line text area for a custom summary prompt. This overrides the default summary prompt used by the *LLM server* for conversation summarization.
 * **CSS override**: a *CSS* code editor with syntax highlighting that lets you customize the chatbot's appearance in the web interface. You can override colors, fonts, layouts and other visual elements. The editor supports standard *CSS* syntax with code folding, bracket matching, and keyboard shortcuts.
 
 #### System Group

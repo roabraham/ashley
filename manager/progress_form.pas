@@ -27,8 +27,6 @@ type
     procedure FormCreate(Sender: TObject);
     { Handles timer ticks to animate the progress bar. }
     procedure ProgressTimerTimer(Sender: TObject);
-  protected
-
   public
     { Animation direction for the pulsing progress bar. }
     FProgressDirection: Integer;
